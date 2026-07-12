@@ -11,6 +11,8 @@
   import MarkdownViewer from './MarkdownViewer.svelte';
   import JsonViewer from './JsonViewer.svelte';
   import CsvViewer from './CsvViewer.svelte';
+  import EpubViewer from './EpubViewer.svelte';
+  import ArchiveViewer from './ArchiveViewer.svelte';
   import UnsupportedViewer from './UnsupportedViewer.svelte';
   import PlaceholderViewer from './PlaceholderViewer.svelte';
 
@@ -99,6 +101,10 @@
         <JsonViewer {...(doc as any)} />
       {:else if doc.kind === 'csv'}
         <CsvViewer {...(doc as any)} />
+      {:else if doc.kind === 'epub'}
+        <EpubViewer {...(doc as any)} />
+      {:else if doc.kind === 'archive'}
+        <ArchiveViewer {...(doc as any)} />
       {:else if doc.kind === 'unsupported'}
         <UnsupportedViewer uri={docUri ?? undefined} {...(doc as any)} />
       {:else if doc.kind === 'placeholder'}

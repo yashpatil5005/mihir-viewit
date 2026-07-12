@@ -128,15 +128,17 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
         Format::Epub => {
             #[cfg(feature = "fmt-ebook")]
             {
-                // TODO Phase 2.8
+                return viewit_fmt_ebook::parse(bytes, format, name).map_err(Error::from_parse);
             }
+            #[cfg(not(feature = "fmt-ebook"))]
             return Ok(Document::Placeholder { format, name: name.to_string(), byte_len: bytes.len() });
         }
-        Format::ArchiveZip | Format::ArchiveTar | Format::ArchiveTarGz | Format::Archive7z => {
+        Format::ArchiveZip | Format::ArchiveTar | Format::ArchiveTarGz => {
             #[cfg(feature = "fmt-archive")]
             {
-                // TODO Phase 2.9
+                return viewit_fmt_archive::parse(bytes, format, name).map_err(Error::from_parse);
             }
+            #[cfg(not(feature = "fmt-archive"))]
             return Ok(Document::Placeholder { format, name: name.to_string(), byte_len: bytes.len() });
         }
         Format::ArchiveRar => {

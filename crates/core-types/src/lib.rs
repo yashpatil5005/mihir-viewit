@@ -91,6 +91,26 @@ pub enum Document {
         #[serde(rename = "byte_len")]
         byte_len: usize,
     },
+    /// Phase 2.8 — EPUB. Per plan §4 "near-zero cost: zip + XHTML spine".
+    /// Frontend renders via <iframe srcdoc> sandbox.
+    Epub {
+        title: String,
+        author: Option<String>,
+        /// First chapter's XHTML eagerly. Subsequent chapters via follow-up
+        /// `epub_chapter` command in Phase 5 nav UI.
+        first_chapter_xhtml: String,
+        spine_len: usize,
+        #[serde(rename = "byte_len")]
+        byte_len: usize,
+    },
+    /// Phase 2.9 — archive listing. Drill-down via re-dispatch through
+    /// `core::open` on the extracted entry.
+    Archive {
+        entries: Vec<ArchiveEntry>,
+        format: Format,
+        #[serde(rename = "byte_len")]
+        byte_len: usize,
+    },
     Unsupported {
         format: Format,
         reason: String,
@@ -111,6 +131,14 @@ pub enum Document {
 pub enum Suggestion {
     OpenWithExternal,
     None,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArchiveEntry {
+    pub name: String,
+    pub size: u64,
+    pub is_dir: bool,
+    pub compressed_size: u64,
 }
 
 /// Errors that any fmt-* crate may return. Uniform so the frontend can rely

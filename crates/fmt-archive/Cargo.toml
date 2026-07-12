@@ -16,4 +16,6 @@ serde.workspace = true
 serde_json.workspace = true
 bytes.workspace = true
 zip.workspace = true
-# Phase 2.9 will add: flate2, tar, sevenz-rust here.
+flate2 = "1"
+tar = "0.4"
+sevenz-rust = "0.6"
