@@ -1,0 +1,69 @@
+# Phase 1.11 — CI size-budget gate.
+# Per plan §5: "CI size-budget gate: Add a script that measures the built
+# AAB / IPA / installer on every PR and fails the build if it exceeds budget.
+# Track growth crate-by-crate from commit 1."
+#
+# Jobs listed: one per OS / target. Each job builds the app for that target
+# and invokes scripts/size-budget.ts to compare against scripts/size-budget.json.
+# Optional jobs (iOS / Windows / macOS) are stubs until the platform-specific
+# build pipelines are wired in later phases.
+
+name: size-budget
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+
+jobs:
+  android:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: '1.96.0'
+          target: 'aarch64-linux-android'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm install --workspaces --include-workspace-root
+      - run: npm run build:android --workspace apps/mobile
+        env:
+          NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+      - run: node scripts/size-budget.ts --artifacts . --json scripts/size-budget.json
+
+  desktop-linux:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: '1.96.0'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm install --workspaces --include-workspace-root
+      - run: npm run build:desktop --workspace apps/desktop
+      - run: node scripts/size-budget.ts --artifacts . --json scripts/size-budget.json
+
+  web:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm install --workspaces --include-workspace-root
+      - run: npm run build:web --workspace apps/web
+      - run: node scripts/size-budget.ts --artifacts . --json scripts/size-budget.json

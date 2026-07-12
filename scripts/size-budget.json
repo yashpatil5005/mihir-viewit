@@ -1,0 +1,28 @@
+{
+  "_comment": "Per plan §5 — track size growth commit-by-commit from Phase 1 onward. Update after each phase's measurement.",
+  "_unit": "bytes",
+  "_date": "2026-07-13",
+  "_phase": "phase-1-scaffold",
+  "_pre_release_note": "These are STARTING budgets per plan §5. Phase 2 will re-measure against real Phase-1 builds and update if reality differs from the 12-18 MB Android estimate.",
+  "budgets": {
+    "android-aab-arm64-v8a": 18000000,
+    "android-apk-arm64-v8a": 20000000,
+    "ios-ipa": 20000000,
+    "desktop-linux": 15000000,
+    "windows-msi": 18000000,
+    "macos-dmg": 18000000,
+    "web-wasm-bundle": 8000000,
+    "web-wasm-bundle-gz": 3000000
+  },
+  "last_measured": {
+    "_status": "no measurement yet — captures baseline after Phase 1.11 commits and first real tauri android build runs",
+    "android-aab-arm64-v8a": null,
+    "android-apk-arm64-v8a": null,
+    "ios-ipa": null,
+    "desktop-linux": null,
+    "windows-msi": null,
+    "macos-dmg": null,
+    "web-wasm-bundle": null,
+    "web-wasm-bundle-gz": null
+  }
+}
