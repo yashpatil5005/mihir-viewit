@@ -1,0 +1,43 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "ViewIt",
+  "version": "0.1.0-scaffold",
+  "identifier": "ai.viewit.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "ViewIt",
+        "width": 1024,
+        "height": 768,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/[email protected]",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      { "ext": ["txt"], "mimeType": "text/plain", "role": "Viewer", "rank": "Default" },
+      { "ext": ["md"], "mimeType": "text/markdown", "role": "Viewer" },
+      { "ext": ["json"], "mimeType": "application/json", "role": "Viewer" },
+      { "ext": ["csv"], "mimeType": "text/csv", "role": "Viewer" }
+    ]
+  },
+  "plugins": {}
+}

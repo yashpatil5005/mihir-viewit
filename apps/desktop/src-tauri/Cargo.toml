@@ -1,0 +1,39 @@
+[package]
+name = "viewit-desktop"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "ViewIt desktop (Windows/macOS/Linux)"
+
+[lib]
+name = "viewit_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "viewit-desktop"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+viewit-core = { path = "../../../crates/core", features = ["fmt-text"] }
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[features]
+# This enables the default set of fmt-* features mobile/desktop apps opt in to.
+default = ["fmt-text-only"]
+fmt-text-only = ["viewit-core/fmt-text"]
+fmt-office = ["viewit-core/fmt-office"]
+fmt-pdf = ["viewit-core/fmt-pdf"]
+fmt-archive = ["viewit-core/fmt-archive"]
+fmt-image = ["viewit-core/fmt-image"]
+fmt-ebook = ["viewit-core/fmt-ebook"]

@@ -1,0 +1,40 @@
+[package]
+name = "viewit-mobile"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "ViewIt mobile (Android — arm64-v8a only Phase 1)"
+
+[lib]
+name = "viewit_mobile_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+# On Android this binary is not invoked directly; the mobile_entry_point kicks in
+# via the lib. Keeping the bin target only because Tauri's setup expects it.
+name = "viewit-mobile"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+viewit-core = { path = "../../../crates/core", features = ["fmt-text"] }
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[features]
+default = ["fmt-text-only"]
+fmt-text-only = ["viewit-core/fmt-text"]
+fmt-office = ["viewit-core/fmt-office"]
+fmt-pdf = ["viewit-core/fmt-pdf"]
+fmt-archive = ["viewit-core/fmt-archive"]
+fmt-image = ["viewit-core/fmt-image"]
+fmt-ebook = ["viewit-core/fmt-ebook"]
