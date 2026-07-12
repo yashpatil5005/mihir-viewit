@@ -1,8 +1,16 @@
 <script lang="ts">
   // Top-level dispatcher: given a Document variant, render the right viewer.
   // Per plan §2: "Svelte viewer components" consume "Structured JSON over IPC".
+  //
+  // `uri` is carried alongside the Document so Image (Phase 2.1) and Unsupported
+  // (Phase 4 — "Open with…" hand-off per ADR 0004) viewers can act on it.
+
   import type { Document } from '@viewit/platform';
   import TextViewer from './TextViewer.svelte';
+  import ImageViewer from './ImageViewer.svelte';
+  import MarkdownViewer from './MarkdownViewer.svelte';
+  import JsonViewer from './JsonViewer.svelte';
+  import CsvViewer from './CsvViewer.svelte';
   import UnsupportedViewer from './UnsupportedViewer.svelte';
   import PlaceholderViewer from './PlaceholderViewer.svelte';
 
@@ -15,11 +23,11 @@
   } = $props();
 
   let doc: Document | null = $state(null);
+  let docUri: string | null = initialFile ?? null;
   let pendingUri: string | null = initialFile ?? null;
   let busy = $state(false);
   let error: string | null = $state(null);
 
-  // On mount, ask the platform layer for any cold-start file URI.
   import { onMount } from 'svelte';
   import { openFile, openedFiles, onOpenedFiles } from '@viewit/platform';
   onMount(async () => {
@@ -30,7 +38,6 @@
         await load();
       }
     } catch (e) {
-      // Desktop / web builds have no RunEvent.Opened; that's fine.
       console.debug('openedFiles unavailable in this env:', e);
     }
     onOpenedFiles((urls) => {
@@ -45,6 +52,7 @@
     if (!pendingUri) return;
     busy = true;
     error = null;
+    docUri = pendingUri;
     try {
       doc = await openFile(pendingUri);
     } catch (e: any) {
@@ -54,15 +62,12 @@
     }
   }
 
-  // Manual file picker (works in web/desktop browsers; mobile uses share intent).
   async function pick() {
     const input = document.createElement('input');
     input.type = 'file';
     input.onchange = async () => {
       const f = input.files?.[0];
       if (!f) return;
-      // Use object URL inside the file://-style seam so the platform layer
-      // resolves bytes via fetch().
       const url = URL.createObjectURL(f);
       pendingUri = url;
       await load();
@@ -86,8 +91,16 @@
     {:else if doc}
       {#if doc.kind === 'text'}
         <TextViewer {...(doc as any)} />
+      {:else if doc.kind === 'image' && docUri}
+        <ImageViewer uri={docUri} {...(doc as any)} />
+      {:else if doc.kind === 'markdown'}
+        <MarkdownViewer {...(doc as any)} />
+      {:else if doc.kind === 'json'}
+        <JsonViewer {...(doc as any)} />
+      {:else if doc.kind === 'csv'}
+        <CsvViewer {...(doc as any)} />
       {:else if doc.kind === 'unsupported'}
-        <UnsupportedViewer {...(doc as any)} />
+        <UnsupportedViewer uri={docUri ?? undefined} {...(doc as any)} />
       {:else if doc.kind === 'placeholder'}
         <PlaceholderViewer {...(doc as any)} />
       {:else}

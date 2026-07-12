@@ -8,7 +8,7 @@
 // in Phase 1.6 of the scaffold work; until then, the web path falls back to
 // a JS-only text reader so the loop is exercisable immediately.
 
-export type DocumentKind = 'text' | 'unsupported' | 'placeholder';
+export type DocumentKind = 'text' | 'image' | 'markdown' | 'json' | 'csv' | 'unsupported' | 'placeholder';
 export type Format =
   | 'plain-text' | 'markdown' | 'json' | 'csv' | 'code'
   | 'pdf' | 'image-png' | 'image-jpg' | 'image-webp' | 'image-gif'
@@ -131,23 +131,62 @@ async function webOpenFile(uri: string): Promise<Document> {
     throw new Error(`Failed to read ${uri}: ${res.status} ${res.statusText}`);
   }
   const buf = new Uint8Array(await res.arrayBuffer());
-  const name = uri.split('/').pop() ?? 'file';
+  const name = uri.split('/').pop()?.split('?')[0] ?? 'file';
   const ext = name.split('.').pop()?.toLowerCase() ?? '';
+
+  // Image — native webview decoder path. Hand the URI directly back to
+  // the frontend ImageViewer's <img> tag.
+  if (isImageExt(ext)) {
+    return {
+      kind: 'image',
+      byte_len: buf.length,
+      name,
+      format: extToFormat(ext) as any,
+    };
+  }
+
   if (isTextExt(ext)) {
     const lossy = new TextDecoder('utf-8', { fatal: false }).decode(buf);
-    return {
-      kind: 'text',
-      content: lossy,
-      encoding: 'utf-8',
-      byte_len: buf.length
-    };
+    // Mirror the Rust routing — markdown/json/csv parsed JS-side as a fallback.
+    if (ext === 'md' || ext === 'markdown') {
+      // Minimal CommonMark fallback: just escape and wrap in <pre>. The Rust
+      // path through pulldown-cmark is the real one; web fills for Phase 1.
+      return { kind: 'markdown', html: `<pre>${escapeHtml(lossy)}</pre>`, byte_len: buf.length };
+    }
+    if (ext === 'json') {
+      try {
+        const pretty = JSON.stringify(JSON.parse(lossy), null, 2);
+        return { kind: 'json', pretty, byte_len: buf.length };
+      } catch {
+        return { kind: 'json', pretty: lossy, byte_len: buf.length };
+      }
+    }
+    if (ext === 'csv' || ext === 'tsv') {
+      // Naive CSV: split first ~50 lines.
+      const lines = lossy.split(/\r?\n/).slice(0, 200);
+      const sep = ext === 'tsv' ? '\t' : ',';
+      const parseRow = (l: string): string[] => l.split(sep).map(s => s.replace(/^"(.*)"$/, '$1'));
+      const header = parseRow(lines[0] ?? '');
+      const previewRows = lines.slice(1).map(parseRow);
+      return { kind: 'csv', header, preview_rows: previewRows, total_rows_hint: previewRows.length, byte_len: buf.length };
+    }
+    return { kind: 'text', content: lossy, encoding: 'utf-8', byte_len: buf.length };
   }
   return {
     kind: 'placeholder',
     format: extToFormat(ext),
     name,
-    byte_len: buf.length
+    byte_len: buf.length,
   };
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"]/g, (c) => ({ '&': '&', '<': '<', '>': '>', '"': '"' }[c] ?? c));
+}
+
+const IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'tif', 'tiff', 'svg']);
+function isImageExt(ext: string): boolean {
+  return IMAGE_EXT.has(ext);
 }
 
 const TEXT_EXT = new Set(['txt', 'text', 'log', 'md', 'markdown', 'json', 'csv', 'tsv', 'jsonl']);

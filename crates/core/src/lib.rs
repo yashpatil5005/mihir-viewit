@@ -100,7 +100,10 @@ fn sniff_ext(ext: &str) -> Format {
 /// time, we return Placeholder instead — keeps the binary lean.
 pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<Document, Error> {
     match format {
-        Format::PlainText | Format::Markdown | Format::Json | Format::Csv | Format::Code => {
+        Format::PlainText | Format::Code => {
+            return parse_text_like(bytes, format, name);
+        }
+        Format::Markdown | Format::Json | Format::Csv => {
             return parse_text_like(bytes, format, name);
         }
         Format::Pdf => {
@@ -113,8 +116,14 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
         }
         Format::ImagePng | Format::ImageJpg | Format::ImageWebp | Format::ImageGif
         | Format::ImageBmp | Format::ImageTiff | Format::ImageSvg => {
-            // Per plan §5: native webview decoder. No Rust work at all.
-            return Ok(Document::Placeholder { format, name: name.to_string(), byte_len: bytes.len() });
+            // Per plan §5: native webview decoder. Rust emits the `Image`
+            // variant; the frontend uses `<img src=...>` directly.
+            // (Phase 2.1 — zero Rust deps added.)
+            return Ok(Document::Image {
+                format,
+                byte_len: bytes.len(),
+                name: name.to_string(),
+            });
         }
         Format::Epub => {
             #[cfg(feature = "fmt-ebook")]

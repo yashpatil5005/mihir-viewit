@@ -16,6 +16,19 @@ serde.workspace = true
 serde_json.workspace = true
 bytes.workspace = true
 
-# Encoding sniff — Phase 1.10 ticket.
-# (Optional: chardetng will be added in Phase 1.10 ticket, kept out for now
-# to avoid requiring the Cargo registry fetch mid-scaffold.)
+# Phase 2.4 — markdown → HTML via pulldown-cmark (Rust-side per plan §4 for determinism).
+# 0.13+ gates the html module behind the "html" cargo feature.
+pulldown-cmark = { version = "=0.13.4", default-features = false, features = ["html"] }
+
+# Phase 2.6 — CSV streaming.
+csv = "1"
+
+# Phase 2.3 — encoding detection (chardetng + encoding_rs).
+# chardetng pulls a small native C lib; kept feature-gated so users who
+# don't need encoding detection can disable.
+chardetng = { version = "0.1", optional = true }
+encoding_rs = { version = "0.8", optional = true }
+
+[features]
+default = ["encoding_detect"]
+encoding_detect = ["dep:chardetng", "dep:encoding_rs"]

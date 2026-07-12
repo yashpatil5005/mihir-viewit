@@ -58,6 +58,39 @@ pub enum Document {
         #[serde(rename = "byte_len")]
         byte_len: usize,
     },
+    /// Phase 2.1 — native webview pass-through. Rust emits the format + URI;
+    /// the Svelte `ImageViewer.svelte` hands the URI to `<img>` /
+    /// `<object>` (or `convertFileSrc` on Tauri hosts).
+    Image {
+        format: Format,
+        #[serde(rename = "byte_len")]
+        byte_len: usize,
+        name: String,
+    },
+    /// Phase 2.4 — Markdown body (already converted to safe-ish HTML by
+    /// `pulldown-cmark` on the Rust side).
+    Markdown {
+        html: String,
+        #[serde(rename = "byte_len")]
+        byte_len: usize,
+    },
+    /// Phase 2.5 — pretty-printed JSON (serde_json already re-serialized
+    /// with `pretty`).
+    Json {
+        pretty: String,
+        #[serde(rename = "byte_len")]
+        byte_len: usize,
+    },
+    /// Phase 2.6 — CSV streaming. First N rows are sent eagerly; later rows
+    /// are pulled via a separate command (`csv_page`) when the user scrolls
+    /// near the bottom of the virtualized table.
+    Csv {
+        header: Vec<String>,
+        preview_rows: Vec<Vec<String>>,
+        total_rows_hint: Option<usize>,
+        #[serde(rename = "byte_len")]
+        byte_len: usize,
+    },
     Unsupported {
         format: Format,
         reason: String,
