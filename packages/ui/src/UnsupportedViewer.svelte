@@ -1,7 +1,16 @@
 <script lang="ts">
   import { openWithExternal } from '@viewit/platform';
-  let { format, reason, suggestion }: { format: string; reason: string; suggestion?: 'open-with-external' | 'none' } = $props();
-  let { uri } = $props();
+  let {
+    format,
+    reason,
+    suggestion,
+    uri
+  }: {
+    format: string;
+    reason: string;
+    suggestion?: 'open-with-external' | 'none';
+    uri?: string;
+  } = $props();
 </script>
 
 <article class="unsupported">

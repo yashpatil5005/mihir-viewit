@@ -15,14 +15,14 @@
     "web-wasm-bundle-gz": 3000000
   },
   "last_measured": {
-    "_status": "no measurement yet — captures baseline after Phase 1.11 commits and first real tauri android build runs",
+    "_status": "measured 2026-07-12T22:41:30.497Z",
     "android-aab-arm64-v8a": null,
     "android-apk-arm64-v8a": null,
     "ios-ipa": null,
     "desktop-linux": null,
     "windows-msi": null,
     "macos-dmg": null,
-    "web-wasm-bundle": null,
-    "web-wasm-bundle-gz": null
+    "web-wasm-bundle": 81382,
+    "web-wasm-bundle-gz": 30545
   }
 }

@@ -6,8 +6,8 @@ export default {
   kit: {
     adapter: adapter({ strict: true }),
     alias: {
-      $viewit-ui: '@viewit/ui/src',
-      $viewit-platform: '@viewit/platform/src'
+      '$viewit-ui': '@viewit/ui/src',
+      '$viewit-platform': '@viewit/platform/src'
     }
   }
 };

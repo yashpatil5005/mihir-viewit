@@ -68,6 +68,32 @@ function findArtifact(target: string, rootDir: string): string | null {
   const dir = resolve(rootDir, candidates);
   if (!existsSync(dir)) return null;
   const exts = EXTENSIONS[target] ?? [];
+  // Returns either:
+  // - for single-artifact targets (aab, apk, ipa, deb, msi, dmg): the path to
+  //   that artifact, OR null
+  // - for `web-wasm-bundle`: a synthetic "directory aggregate" marker — we
+  //   sum all file sizes in the directory recursively and return a sentinel
+  //   path. measure() knows how to handle this.
+  if (target === 'web-wasm-bundle') {
+    // Walk recursive and accumulate; synthesize a path-style sentinel that
+    // measure() understands. The string still needs to round-trip through
+    // `resolve()` cleanly so callers can be agnostic.
+    let total = 0;
+    let largest = dir;
+    function walk(p: string) {
+      for (const entry of readdirSync(p, { withFileTypes: true })) {
+        const full = join(p, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else {
+          total += statSync(full).size;
+          if (statSync(largest).size < statSync(full).size) largest = full;
+        }
+      }
+    }
+    walk(dir);
+    // Special encoded form for measure() to detect.
+    return `web-aggregate:${dir}:${total}:${largest}`;
+  }
   for (const f of readdirSync(dir, { recursive: true }) as string[]) {
     const full = join(dir, f);
     if (exts.includes(extname(full).toLowerCase())) return full;
@@ -76,10 +102,29 @@ function findArtifact(target: string, rootDir: string): string | null {
 }
 
 function measure(path: string): number {
+  // web-wasm-bundle aggregate marker: extract precomputed size.
+  if (path.startsWith('web-aggregate:')) {
+    return Number(path.split(':')[2]);
+  }
   return statSync(path).size;
 }
 
 function gzipSize(path: string): number {
+  if (path.startsWith('web-aggregate:')) {
+    // Reconstruct and gzip all files concatenated. Cheap approximation: gzip
+    // the bytes of the concat of all files (close enough for size-budget).
+    const dir = path.split(':')[1];
+    let totalBytes = Buffer.alloc(0);
+    function walk(p: string) {
+      for (const entry of readdirSync(p, { withFileTypes: true })) {
+        const full = join(p, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else totalBytes = Buffer.concat([totalBytes, readFileSync(full)]);
+      }
+    }
+    walk(dir);
+    return gzipSync(totalBytes).length;
+  }
   return gzipSync(readFileSync(path)).length;
 }
 
