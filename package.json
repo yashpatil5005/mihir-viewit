@@ -1,0 +1,32 @@
+{
+  "name": "viewit",
+  "version": "0.1.0-scaffold",
+  "private": true,
+  "type": "module",
+  "description": "Universal file viewer — Tauri v2 + Svelte 5 monorepo root",
+  "workspaces": ["packages/*", "apps/*"],
+  "scripts": {
+    "dev": "echo 'Specify a target: dev:desktop | dev:mobile | dev:web' && exit 1",
+    "dev:desktop": "npm run tauri dev --workspace apps/desktop",
+    "dev:android": "npm run tauri android dev --workspace apps/mobile",
+    "dev:web": "npm run dev --workspace apps/web",
+    "build": "echo 'Specify a target: build:desktop | build:android | build:web' && exit 1",
+    "build:desktop": "npm run tauri build --workspace apps/desktop",
+    "build:android": "npm run tauri android build --workspace apps/mobile",
+    "build:web": "npm run build --workspace apps/web",
+    "lint": "echo TODO_lint",
+    "format": "prettier --write 'apps/**/*.{ts,svelte,js}' 'packages/**/*.{ts,svelte,js}'",
+    "size-check": "node scripts/size-budget.ts"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4",
+    "prettier": "^3.3.3",
+    "prettier-plugin-svelte": "^3.2.6",
+    "typescript": "^5.6.0"
+  },
+  "prettier": {
+    "plugins": ["prettier-plugin-svelte"],
+    "overrides": [{ "files": "*.svelte", "options": { "parser": "svelte" } }],
+    "printWidth": 100
+  }
+}
