@@ -1,0 +1,18 @@
+[package]
+name = "viewit-fmt-iwork"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "ViewIt Apple iWork (.pages/.numbers/.key) — Phase 4. Per ADR 0003 best-effort only."
+
+[dependencies]
+viewit-core-types = { path = "../core-types" }
+anyhow.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+bytes.workspace = true
+# Phase 4 will add: zip, snap, prost here.

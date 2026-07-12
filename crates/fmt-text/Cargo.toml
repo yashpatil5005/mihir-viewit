@@ -1,0 +1,21 @@
+[package]
+name = "viewit-fmt-text"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "ViewIt text/markdown/json/csv/code parsing"
+
+[dependencies]
+viewit-core-types = { path = "../core-types" }
+anyhow.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+bytes.workspace = true
+
+# Encoding sniff — Phase 1.10 ticket.
+# (Optional: chardetng will be added in Phase 1.10 ticket, kept out for now
+# to avoid requiring the Cargo registry fetch mid-scaffold.)

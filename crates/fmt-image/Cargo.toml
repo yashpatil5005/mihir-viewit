@@ -1,0 +1,17 @@
+[package]
+name = "viewit-fmt-image"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "ViewIt image pass-through — Phase 2.1 (native webview decoder, zero bundle)"
+
+[dependencies]
+viewit-core-types = { path = "../core-types" }
+anyhow.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+bytes.workspace = true

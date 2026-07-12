@@ -1,0 +1,38 @@
+[package]
+name = "viewit-core"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "ViewIt core: file sniffing, dispatch, format registry"
+
+[features]
+default = ["fmt-text"]
+# Each fmt-* feature pulls in the corresponding crate. Mobile builds enable
+# only what they need; desktop / web can afford a larger default set.
+fmt-text      = ["dep:viewit-fmt-text"]
+fmt-office    = ["dep:viewit-fmt-office"]
+fmt-opendoc   = ["dep:viewit-fmt-opendoc"]
+fmt-iwork     = ["dep:viewit-fmt-iwork"]
+fmt-pdf       = ["dep:viewit-fmt-pdf"]
+fmt-image     = ["dep:viewit-fmt-image"]
+fmt-archive   = ["dep:viewit-fmt-archive"]
+fmt-ebook     = ["dep:viewit-fmt-ebook"]
+
+[dependencies]
+anyhow.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+bytes.workspace = true
+viewit-core-types = { path = "../core-types" }
+viewit-fmt-text      = { path = "../fmt-text",      optional = true }
+viewit-fmt-office    = { path = "../fmt-office",    optional = true }
+viewit-fmt-opendoc   = { path = "../fmt-opendoc",   optional = true }
+viewit-fmt-iwork     = { path = "../fmt-iwork",     optional = true }
+viewit-fmt-pdf       = { path = "../fmt-pdf",       optional = true }
+viewit-fmt-image     = { path = "../fmt-image",     optional = true }
+viewit-fmt-archive   = { path = "../fmt-archive",   optional = true }
+viewit-fmt-ebook     = { path = "../fmt-ebook",     optional = true }

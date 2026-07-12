@@ -1,0 +1,18 @@
+[package]
+name = "viewit-fmt-pdf"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "ViewIt PDF rendering path — Phase 2.2 (per ADR 0002: bundled pdfium arm64)"
+
+[dependencies]
+viewit-core-types = { path = "../core-types" }
+anyhow.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+bytes.workspace = true
+# Phase 2.2 will add: pdfium-render (default-features = false, features = ["image_latest", "thread_safe", "pdfium_latest"])
