@@ -1,0 +1,77 @@
+# / — workspace-level ignore
+.agent/
+*~
+
+# --- OS / editor cruft ---
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# --- IDE / tooling ---
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+.zed*
+
+# --- Logs / tmp ---
+*.log
+*.tmp
+tmp/
+.cache/
+
+# --- Node / SvelteKit ---
+node_modules/
+dist/
+build/
+.svelte-kit/
+package-lock.json.bak
+.vite/
+.stats/
+
+# --- Rust / Cargo ---
+target/
+target_*/
+**/*.rs.bk
+Cargo.lock.bak
+
+# --- Tauri ---
+src-tauri/gen/
+src-tauri/target/
+*.apk
+*.aab
+*.ipa
+*.app
+
+# --- Android ---
+.gradle/
+local.properties
+*.keystore
+*.jks
+!debug.keystore     # checked-in debug signing only if we choose to later
+captures/
+.cxx/
+
+# --- iOS ---
+Pods/
+xcuserdata/
+*.xcworkspace/contents.xcworkspacedata
+
+# --- WASM build outputs (mid-stage) ---
+*.wasm.tmp
+
+# --- Per-project environment ---
+.env
+.env.*
+!.env.example
+
+# --- Misc project artifacts ---
+*.pid
+*.seed
+*.pids
