@@ -90,7 +90,13 @@
   let error: string | null = $state(null);
 
   import { onMount } from 'svelte';
-  import { openFile, openFileFromPicker, openedFiles, onOpenedFiles } from '@viewit/platform';
+  import {
+    openFile,
+    openFileFromPicker,
+    openedFiles,
+    onOpenedFiles,
+    checkFileBeforeRead,
+  } from '@viewit/platform';
 
   let imagePreviewUrl: string | null = null;
   import { theme, toggleTheme, applyTheme } from './theme.svelte';
@@ -146,8 +152,19 @@
     error = null;
     pendingUri = f.name;
     docUri = f.name;
-    busyHint = `Reading ${f.name} (${(f.size / 1_048_576).toFixed(1)} MB)…`;
+    const mb = (f.size / 1_048_576).toFixed(1);
     try {
+      const gate = checkFileBeforeRead(f);
+      if (gate.reject) {
+        doc = {
+          kind: 'unsupported',
+          format: 'unsupported',
+          reason: gate.reason,
+          suggestion: gate.openWithExternal ? 'open-with-external' : 'none',
+        };
+        return;
+      }
+      busyHint = `Reading ${f.name} (${mb} MB)…`;
       doc = await openFileFromPicker(f);
       if (doc.kind === 'image') {
         imagePreviewUrl = URL.createObjectURL(f);
@@ -171,6 +188,7 @@
         {theme.mode === 'dark' ? '☀' : '☾'}
       </button>
       <button onclick={pick}>Open file…</button>
+      <span class="hint" title="Videos and files over 32 MB are not loaded into memory">≤32 MB docs</span>
       <button class="mode-toggle" onclick={() => mode = mode === 'view' ? 'browse' : 'view'} aria-label="Toggle browse mode" title="Toggle browse mode">
         {mode === 'view' ? '▦' : '↩'}
       </button>
@@ -256,7 +274,8 @@
   .viewit-root { display: flex; flex-direction: column; min-height: 100vh; }
   header { display: flex; align-items: center; justify-content: space-between; padding: 0.5rem 1rem; border-bottom: 1px solid var(--border); background: var(--bg-primary); }
   header h1 { font-size: 1.2rem; margin: 0; letter-spacing: -0.01em; color: var(--text-primary); }
-  .header-actions { display: flex; gap: 0.5rem; align-items: center; }
+  .header-actions { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+  .hint { font-size: 0.65rem; color: var(--text-secondary); opacity: 0.85; }
   header button { cursor: pointer; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border); border-radius: 0.3rem; padding: 0.3rem 0.7rem; font-size: 0.85rem; }
   header button:hover { background: var(--border); }
   .theme-toggle { font-size: 1rem; padding: 0.3rem 0.5rem; }

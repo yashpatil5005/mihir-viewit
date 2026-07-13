@@ -4,7 +4,7 @@
 //! Phase 1.10: invoke `viewit_core::open(bytes, ext, name)` to dispatch.
 use std::sync::Mutex;
 use tauri::{Manager, Url};
-use viewit_core::{open, Document};
+use viewit_core::{open, Document, Format, Suggestion};
 
 /// Buffer for cold-start file URIs (the webview/JS may not be listening yet
 /// when RunEvent::Opened fires during a cold-start launch).
@@ -45,6 +45,17 @@ async fn open_uri(uri: String, name: Option<String>) -> Result<Document, String>
 
 #[tauri::command]
 fn open_bytes(bytes: Vec<u8>, name: String) -> Result<Document, String> {
+    if bytes.len() > viewit_core::OPEN_BYTES_CAP {
+        return Ok(Document::Unsupported {
+            format: Format::Unsupported,
+            reason: format!(
+                "File is {:.1} MB — max {} MB in memory.",
+                bytes.len() as f64 / 1_048_576.0,
+                viewit_core::OPEN_BYTES_CAP / 1_048_576
+            ),
+            suggestion: Suggestion::OpenWithExternal,
+        });
+    }
     let ext = name
         .rsplit('.')
         .next()

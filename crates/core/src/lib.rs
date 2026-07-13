@@ -14,7 +14,7 @@ pub use viewit_core_types::{Document, Error, Format, Suggestion};
 /// `name` is the user-facing filename for display. The dispatch is byte-sniff
 /// first (for magic-numbered formats), extension fallback.
 /// Max bytes read into memory for a single open (picker / share). Avoids OOM on video etc.
-pub const OPEN_BYTES_CAP: usize = 64 * 1024 * 1024;
+pub const OPEN_BYTES_CAP: usize = 32 * 1024 * 1024;
 
 pub fn open(bytes: &[u8], ext: &str, name: &str) -> Result<Document, Error> {
     if bytes.len() > OPEN_BYTES_CAP {

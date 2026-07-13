@@ -36,6 +36,17 @@ async fn open_uri(
 /// In-app file picker: bytes from JS (`File.arrayBuffer()`). `blob:` URLs are WebView-only.
 #[tauri::command]
 fn open_bytes(bytes: Vec<u8>, name: String) -> Result<Document, String> {
+    if bytes.len() > viewit_core::OPEN_BYTES_CAP {
+        return Ok(Document::Unsupported {
+            format: Format::Unsupported,
+            reason: format!(
+                "File is {:.1} MB — max {} MB in memory.",
+                bytes.len() as f64 / 1_048_576.0,
+                viewit_core::OPEN_BYTES_CAP / 1_048_576
+            ),
+            suggestion: Suggestion::OpenWithExternal,
+        });
+    }
     let ext = name
         .rsplit('.')
         .next()

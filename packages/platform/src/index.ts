@@ -92,20 +92,21 @@ export async function openFile(uri: string): Promise<Document> {
   return await webOpenFile(uri);
 }
 
-/** After `<input type="file">` or GridView pick — sends bytes to Rust (Tauri) or parses in JS (web). */
-const OPEN_BYTES_CAP = 64 * 1024 * 1024;
+export { OPEN_BYTES_CAP, checkFileBeforeRead, unsupportedDocument } from './filePolicy';
 
+/** After `<input type="file">` — checks size/type first (no read for video/large). */
 export async function openFileFromPicker(file: File): Promise<Document> {
-  const name = file.name || 'file';
-  if (file.size > OPEN_BYTES_CAP) {
-    throw new Error(
-      `File is ${(file.size / 1_048_576).toFixed(1)} MB — max ${OPEN_BYTES_CAP / 1_048_576} MB in-app. Use Open with… for large/video files.`,
-    );
+  const gate = checkFileBeforeRead(file);
+  if (gate.reject) {
+    return unsupportedDocument(gate.reason, gate.openWithExternal);
   }
+  const name = file.name || 'file';
   const buf = new Uint8Array(await file.arrayBuffer());
   if (IS_TAURI) {
     const { invoke } = await import('@tauri-apps/api/core');
-    return invoking(() => invoke<Document>('open_bytes', { bytes: Array.from(buf), name }));
+    return invoking(() =>
+      invoke<Document>('open_bytes', { bytes: Array.from(buf), name }),
+    );
   }
   return webOpenBytes(buf, name);
 }

@@ -1,0 +1,62 @@
+/** Offline viewer — reject before reading bytes into RAM / IPC. */
+
+export const OPEN_BYTES_CAP = 32 * 1024 * 1024;
+
+const VIDEO_EXT = new Set([
+  'mp4', 'm4v', 'webm', 'mkv', 'mov', 'avi', 'mpg', 'mpeg', '3gp', 'wmv', 'flv', 'ts',
+]);
+
+const AUDIO_EXT = new Set(['mp3', 'm4a', 'aac', 'flac', 'ogg', 'wav', 'wma']);
+
+export function fileExtension(name: string): string {
+  const base = name.split(/[/\\]/).pop() ?? name;
+  const i = base.lastIndexOf('.');
+  return i >= 0 ? base.slice(i + 1).toLowerCase() : '';
+}
+
+export type PickerReject =
+  | { reject: true; reason: string; openWithExternal: boolean }
+  | { reject: false };
+
+export function checkFileBeforeRead(file: File): PickerReject {
+  const ext = fileExtension(file.name);
+  const mb = (file.size / 1_048_576).toFixed(1);
+
+  if (VIDEO_EXT.has(ext)) {
+    return {
+      reject: true,
+      openWithExternal: false,
+      reason:
+        `Video (.${ext}, ${mb} MB) — ViewIt doesn't play video. No load needed. Open it in your gallery/player app.`,
+    };
+  }
+  if (AUDIO_EXT.has(ext)) {
+    return {
+      reject: true,
+      openWithExternal: false,
+      reason:
+        `Audio (.${ext}, ${mb} MB) — not supported in ViewIt. Use a music app.`,
+    };
+  }
+  if (file.size > OPEN_BYTES_CAP) {
+    return {
+      reject: true,
+      openWithExternal: true,
+      reason:
+        `File is ${mb} MB — max ${OPEN_BYTES_CAP / 1_048_576} MB loaded at once. Use Share → another app, or split the file.`,
+    };
+  }
+  return { reject: false };
+}
+
+export function unsupportedDocument(
+  reason: string,
+  openWithExternal: boolean,
+): { kind: 'unsupported'; format: 'unsupported'; reason: string; suggestion: 'open-with-external' | 'none' } {
+  return {
+    kind: 'unsupported',
+    format: 'unsupported',
+    reason,
+    suggestion: openWithExternal ? 'open-with-external' : 'none',
+  };
+}
