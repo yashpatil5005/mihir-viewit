@@ -89,7 +89,9 @@
   let error: string | null = $state(null);
 
   import { onMount } from 'svelte';
-  import { openFile, openedFiles, onOpenedFiles } from '@viewit/platform';
+  import { openFile, openFileFromPicker, openedFiles, onOpenedFiles } from '@viewit/platform';
+
+  let imagePreviewUrl: string | null = null;
   import { theme, toggleTheme, applyTheme } from './theme.svelte';
   onMount(async () => {
     applyTheme();
@@ -135,10 +137,26 @@
   }
 
   async function pickFile(f: File) {
-    const url = URL.createObjectURL(f);
-    pendingUri = url;
-    await load();
-    URL.revokeObjectURL(url);
+    if (imagePreviewUrl) {
+      URL.revokeObjectURL(imagePreviewUrl);
+      imagePreviewUrl = null;
+    }
+    busy = true;
+    error = null;
+    pendingUri = f.name;
+    docUri = f.name;
+    try {
+      doc = await openFileFromPicker(f);
+      if (doc.kind === 'image') {
+        imagePreviewUrl = URL.createObjectURL(f);
+        docUri = imagePreviewUrl;
+      }
+    } catch (e: unknown) {
+      error = e instanceof Error ? e.message : String(e);
+      doc = null;
+    } finally {
+      busy = false;
+    }
   }
 </script>
 

@@ -81,12 +81,26 @@ export async function onOpenedFiles(cb: (urls: string[]) => void): Promise<() =>
  * entry-point the Viewer root component calls.
  */
 export async function openFile(uri: string): Promise<Document> {
+  if (uri.startsWith('blob:')) {
+    throw new Error(
+      'blob: URLs cannot be read by the host. Use openFileFromPicker(File) after the in-app file picker.',
+    );
+  }
   if (IS_TAURI) {
     return await invokeOpenUri(uri);
-  } else {
-    // Web fallback — pure JS, ignores most formats but renders text.
-    return await webOpenFile(uri);
   }
+  return await webOpenFile(uri);
+}
+
+/** After `<input type="file">` or GridView pick — sends bytes to Rust (Tauri) or parses in JS (web). */
+export async function openFileFromPicker(file: File): Promise<Document> {
+  const name = file.name || 'file';
+  const buf = new Uint8Array(await file.arrayBuffer());
+  if (IS_TAURI) {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoking(() => invoke<Document>('open_bytes', { bytes: Array.from(buf), name }));
+  }
+  return webOpenBytes(buf, name);
 }
 
 /** Per ADR 0004 — RAR5 / unsupported with OpenWith-External suggestion. */
@@ -123,17 +137,28 @@ async function invoking<T>(fn: () => Promise<T>): Promise<T> {
 // ---------------------------------------------------------------------------
 // Internal: web-only fallback reader (no Tauri, no WASM yet).
 // ---------------------------------------------------------------------------
-async function webOpenFile(uri: string): Promise<Document> {
-  // For Phase 1 web path: fetch as bytes, detect MIME, render text shapes.
-  // The real Phase 1.6 will replace this with a direct call into the
-  // WASM-compiled viewit-core crate, exactly as the Tauri host does.
-  const res = await fetch(uri);
-  if (!res.ok) {
-    throw new Error(`Failed to read ${uri}: ${res.status} ${res.statusText}`);
-  }
-  const buf = new Uint8Array(await res.arrayBuffer());
-  const name = uri.split('/').pop()?.split('?')[0] ?? 'file';
+function webOpenBytes(buf: Uint8Array, name: string): Promise<Document> {
   const ext = name.split('.').pop()?.toLowerCase() ?? '';
+  const uri = URL.createObjectURL(new Blob([buf]));
+  return webOpenFile(uri, { bytes: buf, name, ext }).finally(() => URL.revokeObjectURL(uri));
+}
+
+async function webOpenFile(
+  uri: string,
+  hint?: { bytes: Uint8Array; name: string; ext: string },
+): Promise<Document> {
+  let buf: Uint8Array;
+  if (hint) {
+    buf = hint.bytes;
+  } else {
+    const res = await fetch(uri);
+    if (!res.ok) {
+      throw new Error(`Failed to read ${uri}: ${res.status} ${res.statusText}`);
+    }
+    buf = new Uint8Array(await res.arrayBuffer());
+  }
+  const name = hint?.name ?? uri.split('/').pop()?.split('?')[0] ?? 'file';
+  const ext = hint?.ext ?? name.split('.').pop()?.toLowerCase() ?? '';
 
   // Image — native webview decoder path. Hand the URI directly back to
   // the frontend ImageViewer's <img> tag.

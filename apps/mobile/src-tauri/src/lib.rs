@@ -33,6 +33,18 @@ async fn open_uri(
     open(&bytes, &ext, &display_name).map_err(|e| e.to_string())
 }
 
+/// In-app file picker: bytes from JS (`File.arrayBuffer()`). `blob:` URLs are WebView-only.
+#[tauri::command]
+fn open_bytes(bytes: Vec<u8>, name: String) -> Result<Document, String> {
+    let ext = name
+        .rsplit('.')
+        .next()
+        .unwrap_or("")
+        .to_lowercase();
+    let display = if name.is_empty() { "file".to_string() } else { name };
+    open(&bytes, &ext, &display).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 async fn text_page(
     app: tauri::AppHandle,
@@ -282,6 +294,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             opened_urls,
             open_uri,
+            open_bytes,
             text_page,
             csv_page,
             epub_chapter,

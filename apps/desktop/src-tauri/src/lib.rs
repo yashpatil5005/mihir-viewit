@@ -43,6 +43,17 @@ async fn open_uri(uri: String, name: Option<String>) -> Result<Document, String>
     open(&bytes, &ext, &display_name).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn open_bytes(bytes: Vec<u8>, name: String) -> Result<Document, String> {
+    let ext = name
+        .rsplit('.')
+        .next()
+        .unwrap_or("")
+        .to_lowercase();
+    let display = if name.is_empty() { "file".to_string() } else { name };
+    open(&bytes, &ext, &display).map_err(|e| e.to_string())
+}
+
 /// Phase 2.3 — fetch a slice of a large text file as UTF-8 string.
 /// `offset` and `len` are byte offsets into the already-decoded form.
 #[tauri::command]
@@ -223,7 +234,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .manage(OpenedUrls(Mutex::new(vec![])))
-        .invoke_handler(tauri::generate_handler![opened_urls, open_uri, text_page, csv_page, epub_chapter, archive_extract])
+        .invoke_handler(tauri::generate_handler![opened_urls, open_uri, open_bytes, text_page, csv_page, epub_chapter, archive_extract])
         .build(tauri::generate_context!())
         .expect("error while building viewit-desktop Tauri application")
         .run(|app, event| {
