@@ -90,7 +90,7 @@
 
   import { onMount } from 'svelte';
   import { openFile, openedFiles, onOpenedFiles } from '@viewit/platform';
-  import { theme, toggleTheme, applyTheme } from './theme';
+  import { theme, toggleTheme, applyTheme } from './theme.svelte';
   onMount(async () => {
     applyTheme();
     try {

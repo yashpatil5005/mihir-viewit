@@ -1,5 +1,4 @@
-// Phase 5.3 — Theme store (system-pref dark mode, manual override).
-// Defaults to OS prefers-color-scheme. Persists user override in localStorage.
+// Phase 5.3 — theme store. Must be .svelte.ts so $state is compiled (not raw in bundle).
 
 type Theme = 'light' | 'dark' | 'system';
 

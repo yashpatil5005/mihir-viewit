@@ -39,10 +39,17 @@ Native libs in APK: `libviewit_mobile_lib.so` (~8.4 MB), `libpdfium.so` (~6.1 MB
 
 ## Live dev (USB, recommended while iterating UI)
 
-Phone + USB debugging on. On PC:
+**`chrome://inspect` is on your PC Chrome** (not the phone). USB debugging on → open that URL on the **computer** → find **ViewIt** under Remote Target → Inspect.
+
+Phone + USB debugging on. From **repo root**:
 
 ```bash
-cd apps/mobile
+TAURI_DEV_HOST=$(hostname -I | awk '{print $1}') npm run dev:android
+```
+
+Or from `apps/mobile`:
+
+```bash
 TAURI_DEV_HOST=$(hostname -I | awk '{print $1}') npm run dev:android
 ```
 
