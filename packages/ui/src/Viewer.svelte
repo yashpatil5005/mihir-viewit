@@ -8,22 +8,69 @@
   import type { Document } from '@viewit/platform';
   import TextViewer from './TextViewer.svelte';
   import ImageViewer from './ImageViewer.svelte';
-  import MarkdownViewer from './MarkdownViewer.svelte';
-  import JsonViewer from './JsonViewer.svelte';
-  import CsvViewer from './CsvViewer.svelte';
-  import PdfViewer from './PdfViewer.svelte';
-  import EpubViewer from './EpubViewer.svelte';
-  import ArchiveViewer from './ArchiveViewer.svelte';
   import UnsupportedViewer from './UnsupportedViewer.svelte';
   import PlaceholderViewer from './PlaceholderViewer.svelte';
-  import PptxViewer from './PptxViewer.svelte';
-  import DocxViewer from './DocxViewer.svelte';
-  import XlsxViewer from './XlsxViewer.svelte';
-  import IcsViewer from './IcsViewer.svelte';
-  import VcfViewer from './VcfViewer.svelte';
-  import DesktopEntryViewer from './DesktopEntryViewer.svelte';
   import GridView from './GridView.svelte';
   import Onboarding from './Onboarding.svelte';
+
+  // Phase 3.8 — per-format lazy code-split. Heavy viewers load on demand via
+  // dynamic import() so opening a .txt never pulls in the PDF/Office chunks.
+  type Comp = { default: any };
+  let MarkdownViewer = $state<any>(null);
+  let JsonViewer = $state<any>(null);
+  let CsvViewer = $state<any>(null);
+  let PdfViewer = $state<any>(null);
+  let EpubViewer = $state<any>(null);
+  let ArchiveViewer = $state<any>(null);
+  let PptxViewer = $state<any>(null);
+  let DocxViewer = $state<any>(null);
+  let XlsxViewer = $state<any>(null);
+  let IcsViewer = $state<any>(null);
+  let VcfViewer = $state<any>(null);
+  let DesktopEntryViewer = $state<any>(null);
+
+  // Pre-resolve the lazy chunk for the current document kind once we know it.
+  $effect(() => {
+    if (!doc) return;
+    const k = (doc as any).kind;
+    const uri = docUri ?? '';
+    const isIcs = /\.ics?$/i.test(uri);
+    const isVcf = /\.vcf$/i.test(uri);
+    const isDesktop = /\.desktop$/i.test(uri);
+    const loaders: Record<string, (() => Promise<Comp>) | undefined> = {
+      'markdown': () => import('./MarkdownViewer.svelte'),
+      'json':     () => import('./JsonViewer.svelte'),
+      'csv':      () => import('./CsvViewer.svelte'),
+      'pdf':      () => import('./PdfViewer.svelte'),
+      'epub':     () => import('./EpubViewer.svelte'),
+      'archive':  () => import('./ArchiveViewer.svelte'),
+      'pptx':     () => import('./PptxViewer.svelte'),
+      'docx':     () => import('./DocxViewer.svelte'),
+      'xlsx':     () => import('./XlsxViewer.svelte'),
+    };
+    let loader = loaders[k] as (() => Promise<Comp>) | undefined;
+    if (k === 'text') {
+      if (isIcs) loader = () => import('./IcsViewer.svelte');
+      else if (isVcf) loader = () => import('./VcfViewer.svelte');
+      else if (isDesktop) loader = () => import('./DesktopEntryViewer.svelte');
+      else loader = undefined;
+    }
+    if (!loader) return;
+    loader().then((m) => {
+      if (k === 'markdown') MarkdownViewer = m.default;
+      else if (k === 'json') JsonViewer = m.default;
+      else if (k === 'csv') CsvViewer = m.default;
+      else if (k === 'pdf') PdfViewer = m.default;
+      else if (k === 'epub') EpubViewer = m.default;
+      else if (k === 'archive') ArchiveViewer = m.default;
+      else if (k === 'pptx') PptxViewer = m.default;
+      else if (k === 'docx') DocxViewer = m.default;
+      else if (k === 'xlsx') XlsxViewer = m.default;
+      else if (k === 'text' && isIcs) IcsViewer = m.default;
+      else if (k === 'text' && isVcf) VcfViewer = m.default;
+      else if (k === 'text' && isDesktop) DesktopEntryViewer = m.default;
+    });
+  });
 
   let mode: 'view' | 'browse' = $state('view');
 
@@ -122,34 +169,34 @@
       <pre class="error">{error}</pre>
     {:else if doc}
       {#if doc.kind === 'text'}
-        {#if docUri && /\.ics?$/i.test(docUri)}
+        {#if docUri && /\.ics?$/i.test(docUri) && IcsViewer}
           <IcsViewer {...(doc as any)} />
-        {:else if docUri && /\.vcf$/i.test(docUri)}
+        {:else if docUri && /\.vcf$/i.test(docUri) && VcfViewer}
           <VcfViewer {...(doc as any)} />
-        {:else if docUri && /\.desktop$/i.test(docUri)}
+        {:else if docUri && /\.desktop$/i.test(docUri) && DesktopEntryViewer}
           <DesktopEntryViewer {...(doc as any)} />
         {:else}
           <TextViewer {...(doc as any)} />
         {/if}
       {:else if doc.kind === 'image' && docUri}
         <ImageViewer uri={docUri} {...(doc as any)} />
-      {:else if doc.kind === 'markdown'}
+      {:else if doc.kind === 'markdown' && MarkdownViewer}
         <MarkdownViewer {...(doc as any)} />
-      {:else if doc.kind === 'json'}
+      {:else if doc.kind === 'json' && JsonViewer}
         <JsonViewer {...(doc as any)} />
-      {:else if doc.kind === 'csv'}
+      {:else if doc.kind === 'csv' && CsvViewer}
         <CsvViewer {...(doc as any)} />
-      {:else if doc.kind === 'pdf'}
+      {:else if doc.kind === 'pdf' && PdfViewer}
         <PdfViewer {...(doc as any)} />
-      {:else if doc.kind === 'epub'}
+      {:else if doc.kind === 'epub' && EpubViewer}
         <EpubViewer {...(doc as any)} />
-      {:else if doc.kind === 'archive'}
+      {:else if doc.kind === 'archive' && ArchiveViewer}
         <ArchiveViewer {...(doc as any)} />
-      {:else if doc.kind === 'pptx'}
+      {:else if doc.kind === 'pptx' && PptxViewer}
         <PptxViewer {...(doc as any)} />
-      {:else if doc.kind === 'docx'}
+      {:else if doc.kind === 'docx' && DocxViewer}
         <DocxViewer {...(doc as any)} />
-      {:else if doc.kind === 'xlsx'}
+      {:else if doc.kind === 'xlsx' && XlsxViewer}
         <XlsxViewer {...(doc as any)} />
       {:else if doc.kind === 'unsupported'}
         <UnsupportedViewer uri={docUri ?? undefined} {...(doc as any)} />
