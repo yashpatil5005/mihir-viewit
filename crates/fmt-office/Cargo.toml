@@ -27,3 +27,4 @@ office-crypto = "=0.2.0"
 
 # Phase 3.3 PPTX + 3.4 ODT/ODP — quick-xml for OOXML zip+XML parsing
 quick-xml = "0.36"
+cfb = "=0.7.3"

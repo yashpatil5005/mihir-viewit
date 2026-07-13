@@ -15,7 +15,8 @@ export type Format =
   | 'image-bmp' | 'image-tiff' | 'image-svg'
   | 'epub'
   | 'archive-zip' | 'archive-tar' | 'archive-tar-gz' | 'archive-7z' | 'archive-rar'
-  | 'docx' | 'xlsx' | 'pptx' | 'odt' | 'ods' | 'odp' | 'rtf'
+  | 'docx' | 'xlsx' | 'xls' | 'pptx' | 'odt' | 'ods' | 'odp' | 'doc' | 'ppt' | 'rtf'
+  | 'psd' | 'image-heic'
   | 'iwork-pages' | 'iwork-numbers' | 'iwork-key'
   | 'unsupported';
 
@@ -184,7 +185,7 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"]/g, (c) => ({ '&': '&', '<': '<', '>': '>', '"': '"' }[c] ?? c));
 }
 
-const IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'tif', 'tiff', 'svg']);
+const IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'tif', 'tiff', 'svg', 'heic', 'heif', 'psd']);
 function isImageExt(ext: string): boolean {
   return IMAGE_EXT.has(ext);
 }
@@ -215,11 +216,17 @@ function extToFormat(ext: string): Format {
     case 'rar': return 'archive-rar';
     case 'docx': return 'docx';
     case 'xlsx': return 'xlsx';
+    case 'xls': return 'xls';
     case 'pptx': return 'pptx';
     case 'odt': return 'odt';
     case 'ods': return 'ods';
     case 'odp': return 'odp';
+    case 'doc': return 'doc';
+    case 'ppt': return 'ppt';
     case 'rtf': return 'rtf';
+    case 'psd': return 'psd';
+    case 'heic':
+    case 'heif': return 'image-heic';
     case 'pages': return 'iwork-pages';
     case 'numbers': return 'iwork-numbers';
     case 'key': return 'iwork-key';

@@ -24,10 +24,14 @@ pub fn parse(bytes: &[u8], format: Format, name: &str) -> Result<Document, Error
 
     match format {
         Format::Xlsx | Format::Ods => parse_xlsx_ods(bytes, format),
+        Format::Xls => parse_xls_binary(bytes),
         Format::Docx => parse_docx(bytes),
         Format::Pptx => pptx::parse_pptx(bytes, format, name),
         Format::Odt => odt::parse_odt(bytes, format, name),
         Format::Odp => odp::parse_odp(bytes, format, name),
+        // Phase 3.6 — legacy binary Office (.doc / .ppt). Best-effort text
+        // extraction via CFB compound-storage walk. Per plan §4: "best-effort".
+        Format::Doc | Format::Ppt => parse_legacy_binary(bytes, format),
         _ => Err(Error::UnsupportedFormat(format)),
     }
 }
@@ -46,6 +50,138 @@ fn try_decrypt_if_encrypted(bytes: &[u8]) -> Result<Option<Vec<u8>>, Error> {
             "Encrypted Office file — password required (not yet supported in UI)".into(),
         )),
     }
+}
+
+/// Phase 3.6 — legacy binary `.xls` via calamine's Xls reader.
+fn parse_xls_binary(bytes: &[u8]) -> Result<Document, Error> {
+    use calamine::Reader;
+    use viewit_core_types::XlsxSheet;
+    let cursor = Cursor::new(bytes.to_vec());
+    let mut workbook = calamine::Xls::<Cursor<Vec<u8>>>::new(cursor)
+        .map_err(|e| Error::Parse(format!("calamine xls: {}", e)))?;
+    let sheets_meta = workbook.worksheets();
+    let mut sheets: Vec<XlsxSheet> = Vec::with_capacity(sheets_meta.len().min(8));
+    for (name, range) in sheets_meta.into_iter().take(8) {
+        let mut rows_iter = range.rows();
+        let header: Vec<String> = rows_iter
+            .next()
+            .map(|r| r.iter().map(|c| c.to_string()).collect())
+            .unwrap_or_default();
+        let preview_rows: Vec<Vec<String>> = rows_iter
+            .take(200)
+            .map(|r| r.iter().map(|c| c.to_string()).collect())
+            .collect();
+        sheets.push(XlsxSheet {
+            name,
+            header,
+            preview_rows,
+            total_rows_hint: Some(range.height()),
+        });
+    }
+    Ok(Document::Xlsx {
+        sheets,
+        byte_len: bytes.len(),
+    })
+}
+
+/// Phase 3.6 — legacy binary .doc / .ppt best-effort.
+/// Uses `cfb` to walk compound storage, then extracts readable UTF-16 LE
+/// (typical for Word's WordDocument / PowerPoint Document streams) and ASCII
+/// sequences from the other streams. Marked partial-preview.
+fn parse_legacy_binary(bytes: &[u8], format: Format) -> Result<Document, Error> {
+    let cursor = std::io::Cursor::new(bytes.to_vec());
+    let mut cfb = cfb::CompoundFile::open(cursor)
+        .map_err(|e| Error::Parse(format!("cfb open: {}", e)))?;
+
+    // Stream targets per format.
+    let primary_stream = match format {
+        Format::Doc => "WordDocument",
+        Format::Ppt => "PowerPoint Document",
+        _ => return Err(Error::UnsupportedFormat(format)),
+    };
+
+    let mut text = String::new();
+    if cfb.is_stream(primary_stream) {
+        use std::io::Read;
+        let mut stream = cfb.open_stream(primary_stream)
+            .map_err(|e| Error::Parse(format!("cfb open_stream {}: {}", primary_stream, e)))?;
+        let mut buf = Vec::new();
+        stream.read_to_end(&mut buf).map_err(|e| Error::Parse(format!("stream read: {}", e)))?;
+        text.push_str(&extract_utf16_le(&buf));
+        text.push_str(&extract_ascii(&buf));
+    }
+    // Fallback: walk all streams and harvest ASCII prints if primary stream empty.
+    if text.trim().is_empty() {
+        let paths: Vec<_> = cfb.read_root_storage()
+            .filter(|e| e.is_stream())
+            .map(|e| e.path().to_path_buf())
+            .collect();
+        for path in paths {
+            if let Ok(mut s) = cfb.open_stream(&path) {
+                use std::io::Read;
+                let mut b = Vec::new();
+                if s.read_to_end(&mut b).is_ok() {
+                    text.push_str(&extract_ascii(&b));
+                }
+            }
+        }
+    }
+
+    let label = match format { Format::Doc => "Word .doc", Format::Ppt => "PowerPoint .ppt", _ => "legacy" };
+    Ok(Document::Text {
+        content: format!(
+            "[Partial preview — {} legacy binary, layout/formatting not preserved]\n\n{}",
+            label, text.trim()
+        ),
+        encoding: "utf-8".into(),
+        byte_len: bytes.len(),
+        truncated: text.len() > 256 * 1024,
+    })
+}
+
+/// Extract printable UTF-16 LE strings from a byte slice.
+fn extract_utf16_le(bytes: &[u8]) -> String {
+    let mut out = String::new();
+    let mut cur = String::new();
+    let mut i = 0;
+    while i + 1 < bytes.len() {
+        let lo = bytes[i] as u16;
+        let hi = bytes[i + 1] as u16;
+        let cp = lo | (hi << 8);
+        if (0x20..=0x7E).contains(&cp) {
+            cur.push(cp as u8 as char);
+        } else if cp == 0x0A || cp == 0x0D {
+            if !cur.is_empty() {
+                cur.push('\n');
+                out.push_str(&cur);
+                cur.clear();
+            }
+        } else if !cur.is_empty() {
+            if cur.len() >= 4 { out.push_str(&cur); out.push('\n'); }
+            cur.clear();
+        }
+        i += 2;
+    }
+    if cur.len() >= 4 { out.push_str(&cur); }
+    out
+}
+
+/// Extract printable ASCII strings (len >= 4) from a byte slice.
+fn extract_ascii(bytes: &[u8]) -> String {
+    let mut out = String::new();
+    let mut cur: Vec<u8> = Vec::new();
+    for &b in bytes {
+        if (0x20..=0x7E).contains(&b) { cur.push(b); }
+        else if b == 0x0A || b == 0x0D {
+            if cur.len() >= 4 { out.push_str(&String::from_utf8_lossy(&cur)); out.push('\n'); }
+            cur.clear();
+        } else if !cur.is_empty() {
+            if cur.len() >= 4 { out.push_str(&String::from_utf8_lossy(&cur)); out.push_str(" "); }
+            cur.clear();
+        }
+    }
+    if cur.len() >= 4 { out.push_str(&String::from_utf8_lossy(&cur)); }
+    out
 }
 
 /// Phase 3.2 (XLSX) + 3.4 (ODS) — `calamine` reader.

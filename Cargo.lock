@@ -5162,6 +5162,7 @@ dependencies = [
  "anyhow",
  "bytes",
  "calamine",
+ "cfb",
  "docx-rust",
  "office-crypto",
  "quick-xml 0.36.2",

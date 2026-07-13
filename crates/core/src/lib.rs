@@ -90,10 +90,13 @@ fn sniff_ext(ext: &str) -> Format {
         "rar" => Format::ArchiveRar,
         "docx" => Format::Docx,
         "xlsx" => Format::Xlsx,
+        "xls" => Format::Xls,
         "pptx" => Format::Pptx,
         "odt" => Format::Odt,
         "ods" => Format::Ods,
         "odp" => Format::Odp,
+        "doc" => Format::Doc,
+        "ppt" => Format::Ppt,
         "rtf" => Format::Rtf,
         "pages" => Format::IworkPages,
         "numbers" => Format::IworkNumbers,
@@ -165,7 +168,8 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
                 suggestion: Suggestion::OpenWithExternal,
             });
         }
-        Format::Docx | Format::Xlsx | Format::Pptx | Format::Odt | Format::Ods | Format::Odp => {
+        Format::Docx | Format::Xlsx | Format::Pptx | Format::Odt | Format::Ods | Format::Odp
+        | Format::Doc | Format::Ppt => {
             #[cfg(feature = "fmt-office")]
             {
                 return viewit_fmt_office::parse(bytes, format, name).map_err(Error::from_parse);
