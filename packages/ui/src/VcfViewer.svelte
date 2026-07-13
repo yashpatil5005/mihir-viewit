@@ -47,10 +47,6 @@
   {/each}
 </article>
 
-<script context="module" lang="ts">
-  // 동일 scope에서 충돌 방지용 alias
-</script>
-
 <style>
   .vcf-viewer { padding: 0.5rem 1rem; color: var(--text-primary); max-width: 500px; margin: 0 auto; }
   .meta { color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.75rem; }
