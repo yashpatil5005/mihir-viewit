@@ -10,7 +10,11 @@ export JAVA_HOME
 PDFIUM_CACHE="${ROOT}/.cache/pdfium-android-arm64"
 JNI="$GEN/app/src/main/jniLibs/arm64-v8a"
 
+chmod +x "$ROOT/scripts/patch-pdfium-render.sh" "$ROOT/scripts/patch-tauri-android-protocol.sh"
 "$ROOT/scripts/patch-pdfium-render.sh"
+"$ROOT/scripts/patch-tauri-android-protocol.sh"
+
+export TAURI_ANDROID_PROJECT_PATH="$GEN"
 
 echo "[android] frontend build"
 (cd "$MOBILE" && npm run build)
@@ -34,6 +38,11 @@ echo "[android] cargo release lib (fmt-everything + embedded assets)"
 # tauri/custom-protocol: must match Tauri release APK (no http://localhost:1421).
 (cd "$MOBILE" && cargo build --target aarch64-linux-android --release -p viewit-mobile --lib \
   --features "fmt-everything,tauri/custom-protocol")
+
+echo "[android] sync frontend into APK assets (WebViewAssetLoader fallback)"
+ASSETS="$GEN/app/src/main/assets"
+mkdir -p "$ASSETS"
+rsync -a --delete "$MOBILE/build/" "$ASSETS/"
 
 echo "[android] gradle AAB + APK"
 (cd "$GEN" && ./gradlew :app:bundleUniversalRelease :app:assembleUniversalRelease \

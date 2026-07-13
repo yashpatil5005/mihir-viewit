@@ -37,10 +37,32 @@ adb shell am start -n ai.viewit.app/.MainActivity
 
 Native libs in APK: `libviewit_mobile_lib.so` (~8.4 MB), `libpdfium.so` (~6.1 MB).
 
-## Live dev (optional)
+## Live dev (USB, recommended while iterating UI)
+
+Phone + USB debugging on. On PC:
 
 ```bash
-npm run dev:android
+cd apps/mobile
+TAURI_DEV_HOST=$(hostname -I | awk '{print $1}') npm run dev:android
 ```
 
-Requires emulator or USB device; uses debug build + hot reload (different from release APK above).
+Uses Vite on `0.0.0.0:1421`; Tauri proxies dev URL to the phone. **Not** the same as release APK.
+
+## Release APK still blank / Internal Server Error?
+
+Rebuild after protocol patch:
+
+```bash
+JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 npm run build:android-release
+adb install -r dist/viewit-android-universal-debug.apk
+```
+
+Chrome inspect WebView: `chrome://inspect` (enabled in `MainActivity` via `WebView.setWebContentsDebuggingEnabled`).
+
+Logcat while launching:
+
+```bash
+adb logcat -c && adb shell am force-stop ai.viewit.app
+adb shell am start -n ai.viewit.app/.MainActivity
+adb logcat | grep -iE 'AssetNotFound|custom protocol timed out|RustStdoutStderr'
+```
