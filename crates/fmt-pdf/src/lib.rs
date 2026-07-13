@@ -18,13 +18,20 @@ use image::{ImageFormat, DynamicImage};
 const MAX_EAGER_PAGES: usize = 5;
 
 pub fn parse(bytes: &[u8], _format: Format, _name: &str) -> Result<Document, Error> {
-    // Bind to pdfium at runtime. The bundled .so should be in the same
-    // dir as the binary; if not, fall back to the system library.
-    let pdfium = Pdfium::new(
+    // Bind to pdfium at runtime. Per ADR 0002:
+    // - Android: MainActivity.kt calls `System.loadLibrary("pdfium")` at class init,
+    //   so by the time we get here the lib pdfium is already in the linker namespace.
+    //   `bind_to_system_library()` will resolve `libpdfium.so` via `dlopen`.
+    // - Desktop: try the bundled .so next to the binary (./libpdfium.so), then the
+    //   system library as a fallback.
+    let bindings = if cfg!(target_os = "android") {
+        Pdfium::bind_to_system_library()
+    } else {
         Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./"))
             .or_else(|_| Pdfium::bind_to_system_library())
-            .map_err(|e| Error::Parse(format!("pdfium bind: {}", e)))?
-    );
+    }
+    .map_err(|e| Error::Parse(format!("pdfium bind: {}", e)))?;
+    let pdfium = Pdfium::new(bindings);
 
     let document = pdfium.load_pdf_from_byte_vec(bytes.to_vec(), None)
         .map_err(|e| Error::Parse(format!("pdfium load: {}", e)))?;
@@ -51,7 +58,8 @@ pub fn parse(bytes: &[u8], _format: Format, _name: &str) -> Result<Document, Err
         DynamicImage::ImageRgb8(img)
             .write_to(&mut std::io::Cursor::new(&mut buf), ImageFormat::Png)
             .map_err(|e| Error::Parse(format!("png encode page {}: {}", i, e)))?;
-        let b64 = base64::encode(&buf);
+        use base64::Engine;
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&buf);
         pages.push(format!("data:image/png;base64,{}", b64));
     }
 

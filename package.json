@@ -16,6 +16,7 @@
     "build": "echo 'Specify a target: build:desktop | build:android | build:web' && exit 1",
     "build:desktop": "npm run tauri build --workspace apps/desktop",
     "build:android": "npm run tauri android build --workspace apps/mobile",
+    "build:android-release": "./scripts/android-release.sh",
     "build:web": "npm run build --workspace apps/web",
     "lint": "echo TODO_lint",
     "format": "prettier --write 'apps/**/*.{ts,svelte,js}' 'packages/**/*.{ts,svelte,js}'",

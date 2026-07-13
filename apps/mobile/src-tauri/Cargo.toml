@@ -30,12 +30,28 @@ tauri-plugin-shell = "2"
 tauri-plugin-notification = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+csv = "1"
+zip = "=8.6.0"
+tar = "0.4"
+flate2 = "1"
 
 [features]
 default = ["fmt-text-only"]
 fmt-text-only = ["viewit-core/fmt-text"]
+# Phase 1.4 / 5 — umbrella for full Android build (all fmt-* parsers + iWork).
+# fmt-text is always on (text/markdown/json/csv/rtf) since it's tiny and core to the viewer experience.
+fmt-everything = [
+  "fmt-text-only",
+  "fmt-office",
+  "fmt-pdf",
+  "fmt-archive",
+  "fmt-image",
+  "fmt-ebook",
+  "fmt-iwork",
+]
 fmt-office = ["viewit-core/fmt-office"]
 fmt-pdf = ["viewit-core/fmt-pdf"]
 fmt-archive = ["viewit-core/fmt-archive"]
 fmt-image = ["viewit-core/fmt-image"]
 fmt-ebook = ["viewit-core/fmt-ebook"]
+fmt-iwork = ["viewit-core/fmt-iwork"]

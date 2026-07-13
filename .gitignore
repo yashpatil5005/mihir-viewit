@@ -75,3 +75,4 @@ xcuserdata/
 *.pid
 *.seed
 *.pids
+patches/pdfium-render/
