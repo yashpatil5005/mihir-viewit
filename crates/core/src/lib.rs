@@ -52,6 +52,8 @@ fn sniff_magic(bytes: &[u8]) -> Option<Format> {
         | [_, _, _, _, 0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x76, 0x63, ..]
         | [_, _, _, _, 0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x69, 0x6D, ..]
         | [_, _, _, _, 0x66, 0x74, 0x79, 0x70, 0x6D, 0x69, 0x66, 0x31, ..] => Format::ImageHeic,
+        // PSD: "8BPS"
+        [0x38, 0x42, 0x50, 0x53, ..] => Format::ImagePsd,
         // ZIP signature (also docx/xlsx/pptx/odt/ods/odp/epub/iWork — extension resolves those)
         [0x50, 0x4B, 0x03, 0x04, ..] | [0x50, 0x4B, 0x05, 0x06, ..] => Format::ArchiveZip,
         // gzip (so tar.gz or single-file gz)
@@ -79,6 +81,7 @@ fn sniff_ext(ext: &str) -> Format {
         "tif" | "tiff" => Format::ImageTiff,
         "svg" => Format::ImageSvg,
         "heic" | "heif" => Format::ImageHeic,
+        "psd" => Format::ImagePsd,
         "epub" => Format::Epub,
         "zip" => Format::ArchiveZip,
         "tar" => Format::ArchiveTar,
@@ -98,6 +101,7 @@ fn sniff_ext(ext: &str) -> Format {
         "plist" => Format::Plist,
         "ics" => Format::Ics,
         "vcf" => Format::Vcf,
+        "desktop" => Format::Code,
         "rs" | "ts" | "js" | "py" | "go" | "c" | "cpp" | "h" | "hpp" | "java" | "kt"
         | "swift" | "sh" | "sql" | "lua" | "php" | "rb" | "ex" | "exs" | "erl" | "hs"
         | "ml" | "clj" | "cljs" | "scala" | "r" | "jl" | "vim" | "ps1" | "bat" => Format::Code,
@@ -126,7 +130,8 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
             return Ok(Document::Placeholder { format, name: name.to_string(), byte_len: bytes.len() });
         }
         Format::ImagePng | Format::ImageJpg | Format::ImageWebp | Format::ImageGif
-        | Format::ImageBmp | Format::ImageTiff | Format::ImageSvg | Format::ImageHeic => {
+        | Format::ImageBmp | Format::ImageTiff | Format::ImageSvg | Format::ImageHeic
+        | Format::ImagePsd => {
             // Per plan §5: native webview decoder. Rust emits the `Image`
             // variant; the frontend uses `<img src=...>` directly.
             // (Phase 2.1 — zero Rust deps added.)

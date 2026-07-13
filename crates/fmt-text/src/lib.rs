@@ -16,7 +16,19 @@ use viewit_core_types::{Document, Format, Error};
 /// later pages as the user scrolls near the bottom of the virtualized table.
 const CSV_PREVIEW_ROWS: usize = 200;
 
+/// Phase 2.3 — eager payload cap. Larger files truncate and frontend
+/// requests follow-up pages via `text_page` Tauri command.
+const TEXT_EAGER_CAP: usize = 256 * 1024;
+
 pub fn parse_text(bytes: &[u8], format: Format, _name: &str) -> Result<Document, Error> {
+    // Step 1 — decode bytes to a String. Phase 2.3 swaps lossy for chardetng.
+    let (text, encoding_label) = decode(bytes);
+    let truncated = text.len() > TEXT_EAGER_CAP;
+    let content = if truncated {
+        text[..TEXT_EAGER_CAP].to_string()
+    } else {
+        text
+    };
     // Step 1 — decode bytes to a String. Phase 2.3 swaps lossy for chardetng.
     let (text, encoding_label) = decode(bytes);
 
@@ -24,10 +36,12 @@ pub fn parse_text(bytes: &[u8], format: Format, _name: &str) -> Result<Document,
     match format {
         Format::Rtf => {
             let plain = rtf_to_text(&text);
+            let truncated = plain.len() > TEXT_EAGER_CAP;
             Ok(Document::Text {
-                content: plain,
+                content: if truncated { plain[..TEXT_EAGER_CAP].to_string() } else { plain },
                 encoding: "ascii".into(),
                 byte_len: bytes.len(),
+                truncated,
             })
         }
         Format::Markdown => {
@@ -55,9 +69,10 @@ pub fn parse_text(bytes: &[u8], format: Format, _name: &str) -> Result<Document,
         }
         // PlainText, Code, and any other text-like format fall through here.
         Format::PlainText | Format::Code | _ => Ok(Document::Text {
-            content: text,
+            content,
             encoding: encoding_label,
             byte_len: bytes.len(),
+            truncated,
         }),
     }
 }

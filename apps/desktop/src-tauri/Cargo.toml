@@ -25,8 +25,13 @@ tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-shell = "2"
+tauri-plugin-notification = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+csv = "1"
+zip = "=8.6.0"
+tar = "0.4"
+flate2 = "1"
 
 [features]
 # This enables the default set of fmt-* features mobile/desktop apps opt in to.

@@ -26,6 +26,7 @@ pub enum Format {
     ImageTiff,
     ImageSvg,
     ImageHeic,
+    ImagePsd,
     Epub,
     ArchiveZip,
     ArchiveTarGz,
@@ -61,6 +62,10 @@ pub enum Document {
         encoding: String,
         #[serde(rename = "byte_len")]
         byte_len: usize,
+        /// Phase 2.3 — true when content was truncated for transport safety.
+        /// The frontend must request additional pages via `text_page` Tauri
+        /// command (offset+len) when the user scrolls past the eager payload.
+        truncated: bool,
     },
     /// Phase 2.1 — native webview pass-through. Rust emits the format + URI;
     /// the Svelte `ImageViewer.svelte` hands the URI to `<img>` /
@@ -137,6 +142,20 @@ pub enum Document {
         #[serde(rename = "byte_len")]
         byte_len: usize,
     },
+    /// Phase 3.1 — DOCX structured: paragraphs (with optional heading level),
+    /// tables (rows × cells), and lazily-rendered text runs.
+    Docx {
+        blocks: Vec<DocxBlock>,
+        #[serde(rename = "byte_len")]
+        byte_len: usize,
+    },
+    /// Phase 3.2 — XLSX structured sheet listing. Each sheet has its own
+    /// header + preview rows; the frontend renders a tab strip + virtualized grid.
+    Xlsx {
+        sheets: Vec<XlsxSheet>,
+        #[serde(rename = "byte_len")]
+        byte_len: usize,
+    },
     /// Phase 1 only — placeholder while the wiring is exercised. Other
     /// variants are added in Phase 2+.
     Placeholder {
@@ -163,9 +182,26 @@ pub struct ArchiveEntry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", tag = "kind")]
+pub enum DocxBlock {
+    Paragraph { text: String, heading: Option<u8> },
+    ListItem { text: String, level: u8 },
+    Table { rows: Vec<Vec<String>> },
+    Image { name: String },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PptxSlide {
     pub title: String,
     pub body: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct XlsxSheet {
+    pub name: String,
+    pub header: Vec<String>,
+    pub preview_rows: Vec<Vec<String>>,
+    pub total_rows_hint: Option<usize>,
 }
 
 /// Errors that any fmt-* crate may return. Uniform so the frontend can rely

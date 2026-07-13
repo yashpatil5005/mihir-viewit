@@ -19,6 +19,7 @@ pub fn parse_odt(bytes: &[u8], _format: Format, _name: &str) -> Result<Document,
         Err(_) => return Ok(Document::Text {
             content: "(ODT archive with no content.xml)".into(),
             encoding: "utf-8".into(),
+            truncated: false,
             byte_len: bytes.len(),
         }),
     };
@@ -29,6 +30,7 @@ pub fn parse_odt(bytes: &[u8], _format: Format, _name: &str) -> Result<Document,
         content: text,
         encoding: "utf-8".into(),
         byte_len: bytes.len(),
+        truncated: false,
     })
 }
 

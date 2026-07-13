@@ -2,7 +2,7 @@
   import SearchBar from './SearchBar.svelte';
   import { findAllMatches, highlightHtml, type Match } from './search';
 
-  let { content, encoding = 'utf-8', byte_len = 0 }: { content: string; encoding?: string; byte_len?: number } = $props();
+  let { content, encoding = 'utf-8', byte_len = 0, truncated = false }: { content: string; encoding?: string; byte_len?: number; truncated?: boolean } = $props();
 
   let query = $state('');
   let caseSensitive = $state(false);
@@ -34,7 +34,7 @@
   <SearchBar onSearch={runSearch} matchCount={matches.length} currentMatch={currentIdx + 1} onNext={() => scrollToMatch(currentIdx + 1)} onPrev={() => scrollToMatch(currentIdx - 1)} />
   {#if byte_len > 0}
     <aside class="meta">
-      <strong>{byte_len.toLocaleString()} bytes</strong> · encoding: <code>{encoding}</code>
+      <strong>{byte_len.toLocaleString()} bytes</strong> · encoding: <code>{encoding}</code>{#if truncated} · <em>truncated preview — load full file to view all</em>{/if}
     </aside>
   {/if}
   <!-- eslint-disable-next-line svelte/no-at-html-tags -->

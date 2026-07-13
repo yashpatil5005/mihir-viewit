@@ -62,6 +62,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(OpenedUrls(Mutex::new(vec![])))
         .invoke_handler(tauri::generate_handler![opened_urls, open_uri])
         .build(tauri::generate_context!())

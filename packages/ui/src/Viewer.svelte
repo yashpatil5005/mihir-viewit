@@ -17,6 +17,11 @@
   import UnsupportedViewer from './UnsupportedViewer.svelte';
   import PlaceholderViewer from './PlaceholderViewer.svelte';
   import PptxViewer from './PptxViewer.svelte';
+  import DocxViewer from './DocxViewer.svelte';
+  import XlsxViewer from './XlsxViewer.svelte';
+  import IcsViewer from './IcsViewer.svelte';
+  import VcfViewer from './VcfViewer.svelte';
+  import DesktopEntryViewer from './DesktopEntryViewer.svelte';
   import GridView from './GridView.svelte';
   import Onboarding from './Onboarding.svelte';
 
@@ -117,7 +122,15 @@
       <pre class="error">{error}</pre>
     {:else if doc}
       {#if doc.kind === 'text'}
-        <TextViewer {...(doc as any)} />
+        {#if docUri && /\.ics?$/i.test(docUri)}
+          <IcsViewer {...(doc as any)} />
+        {:else if docUri && /\.vcf$/i.test(docUri)}
+          <VcfViewer {...(doc as any)} />
+        {:else if docUri && /\.desktop$/i.test(docUri)}
+          <DesktopEntryViewer {...(doc as any)} />
+        {:else}
+          <TextViewer {...(doc as any)} />
+        {/if}
       {:else if doc.kind === 'image' && docUri}
         <ImageViewer uri={docUri} {...(doc as any)} />
       {:else if doc.kind === 'markdown'}
@@ -134,6 +147,10 @@
         <ArchiveViewer {...(doc as any)} />
       {:else if doc.kind === 'pptx'}
         <PptxViewer {...(doc as any)} />
+      {:else if doc.kind === 'docx'}
+        <DocxViewer {...(doc as any)} />
+      {:else if doc.kind === 'xlsx'}
+        <XlsxViewer {...(doc as any)} />
       {:else if doc.kind === 'unsupported'}
         <UnsupportedViewer uri={docUri ?? undefined} {...(doc as any)} />
       {:else if doc.kind === 'placeholder'}
