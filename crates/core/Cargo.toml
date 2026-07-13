@@ -27,6 +27,7 @@ thiserror.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 bytes.workspace = true
+zip.workspace = true
 viewit-core-types = { path = "../core-types" }
 viewit-fmt-text      = { path = "../fmt-text",      optional = true }
 viewit-fmt-office    = { path = "../fmt-office",    optional = true }

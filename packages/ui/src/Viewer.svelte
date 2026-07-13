@@ -86,6 +86,7 @@
   let docUri: string | null = initialFile ?? null;
   let pendingUri: string | null = initialFile ?? null;
   let busy = $state(false);
+  let busyHint = $state('');
   let error: string | null = $state(null);
 
   import { onMount } from 'svelte';
@@ -145,6 +146,7 @@
     error = null;
     pendingUri = f.name;
     docUri = f.name;
+    busyHint = `Reading ${f.name} (${(f.size / 1_048_576).toFixed(1)} MB)…`;
     try {
       doc = await openFileFromPicker(f);
       if (doc.kind === 'image') {
@@ -156,6 +158,7 @@
       doc = null;
     } finally {
       busy = false;
+      busyHint = '';
     }
   }
 </script>
@@ -182,7 +185,7 @@
       <p class="empty">Drop a file or pick one — everything opens.</p>
       <GridView onPick={(f) => { mode = 'view'; pickFile(f); }} />
     {:else if busy}
-      <p class="status">Reading file…</p>
+      <p class="status">{busyHint || 'Reading file…'}</p>
     {:else if error}
       <pre class="error">{error}</pre>
     {:else if doc}

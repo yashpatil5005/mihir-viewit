@@ -2135,6 +2135,7 @@ dependencies = [
  "byteorder-lite",
  "moxcms",
  "num-traits",
+ "png 0.18.1",
  "zune-core",
  "zune-jpeg",
 ]
@@ -5068,6 +5069,7 @@ dependencies = [
  "viewit-fmt-opendoc",
  "viewit-fmt-pdf",
  "viewit-fmt-text",
+ "zip 8.6.0",
 ]
 
 [[package]]

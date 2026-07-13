@@ -13,7 +13,21 @@ pub use viewit_core_types::{Document, Error, Format, Suggestion};
 /// `bytes` is the file content; `ext` is the lowercase extension (no dot);
 /// `name` is the user-facing filename for display. The dispatch is byte-sniff
 /// first (for magic-numbered formats), extension fallback.
+/// Max bytes read into memory for a single open (picker / share). Avoids OOM on video etc.
+pub const OPEN_BYTES_CAP: usize = 64 * 1024 * 1024;
+
 pub fn open(bytes: &[u8], ext: &str, name: &str) -> Result<Document, Error> {
+    if bytes.len() > OPEN_BYTES_CAP {
+        return Ok(Document::Unsupported {
+            format: Format::Unsupported,
+            reason: format!(
+                "File is {:.1} MB — ViewIt loads up to {} MB in memory. Open with another app.",
+                bytes.len() as f64 / 1_048_576.0,
+                OPEN_BYTES_CAP / 1_048_576
+            ),
+            suggestion: Suggestion::OpenWithExternal,
+        });
+    }
     let format = sniff(bytes, ext);
     dispatch(format, bytes, ext, name)
 }
@@ -22,13 +36,77 @@ pub fn open(bytes: &[u8], ext: &str, name: &str) -> Result<Document, Error> {
 /// Phase 1 priority is PlainText — the rest return `Unsupported` and become
 /// `Placeholder` documents so the runtime path can be wired up first.
 pub fn sniff(bytes: &[u8], ext: &str) -> Format {
-    if let Some(f) = sniff_magic(bytes) {
+    if let Some(f) = sniff_magic(bytes, ext) {
         return f;
     }
     sniff_ext(ext)
 }
 
-fn sniff_magic(bytes: &[u8]) -> Option<Format> {
+/// ZIP magic matches docx/xlsx/pptx/odt/ods/odp/epub/iWork — extension wins over ArchiveZip.
+fn sniff_zip_as_office_or_epub(bytes: &[u8], ext: &str) -> Format {
+    match ext {
+        "docx" => Format::Docx,
+        "xlsx" => Format::Xlsx,
+        "pptx" => Format::Pptx,
+        "odt" => Format::Odt,
+        "ods" => Format::Ods,
+        "odp" => Format::Odp,
+        "epub" => Format::Epub,
+        "pages" => Format::IworkPages,
+        "numbers" => Format::IworkNumbers,
+        "key" => Format::IworkKey,
+        _ => sniff_zip_inner(bytes).unwrap_or(Format::ArchiveZip),
+    }
+}
+
+/// OOXML / ODF / EPUB / iWork inside a ZIP (when extension missing or wrong).
+fn sniff_zip_inner(bytes: &[u8]) -> Option<Format> {
+    let cursor = std::io::Cursor::new(bytes);
+    let mut archive = zip::ZipArchive::new(cursor).ok()?;
+    let mut has_content_types = false;
+    let mut has_word = false;
+    let mut has_xl = false;
+    let mut has_ppt = false;
+    let mut has_epub = false;
+    for i in 0..archive.len() {
+        let Ok(file) = archive.by_index(i) else {
+            continue;
+        };
+        let name = file.name();
+        if name == "[Content_Types].xml" {
+            has_content_types = true;
+        }
+        if name.starts_with("word/") {
+            has_word = true;
+        }
+        if name.starts_with("xl/") {
+            has_xl = true;
+        }
+        if name.starts_with("ppt/") {
+            has_ppt = true;
+        }
+        if name == "META-INF/container.xml" {
+            has_epub = true;
+        }
+    }
+    if has_epub {
+        return Some(Format::Epub);
+    }
+    if has_content_types {
+        if has_xl {
+            return Some(Format::Xlsx);
+        }
+        if has_word {
+            return Some(Format::Docx);
+        }
+        if has_ppt {
+            return Some(Format::Pptx);
+        }
+    }
+    None
+}
+
+fn sniff_magic(bytes: &[u8], ext: &str) -> Option<Format> {
     if bytes.len() < 4 {
         return None;
     }
@@ -54,8 +132,10 @@ fn sniff_magic(bytes: &[u8]) -> Option<Format> {
         | [_, _, _, _, 0x66, 0x74, 0x79, 0x70, 0x6D, 0x69, 0x66, 0x31, ..] => Format::ImageHeic,
         // PSD: "8BPS"
         [0x38, 0x42, 0x50, 0x53, ..] => Format::ImagePsd,
-        // ZIP signature (also docx/xlsx/pptx/odt/ods/odp/epub/iWork — extension resolves those)
-        [0x50, 0x4B, 0x03, 0x04, ..] | [0x50, 0x4B, 0x05, 0x06, ..] => Format::ArchiveZip,
+        // ZIP — extension + inner paths disambiguate Office / EPUB from plain zip.
+        [0x50, 0x4B, 0x03, 0x04, ..] | [0x50, 0x4B, 0x05, 0x06, ..] => {
+            return Some(sniff_zip_as_office_or_epub(bytes, ext));
+        }
         // gzip (so tar.gz or single-file gz)
         [0x1F, 0x8B, ..] => Format::ArchiveTarGz,
         // 7z
@@ -64,6 +144,13 @@ fn sniff_magic(bytes: &[u8]) -> Option<Format> {
         [0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, ..] => Format::ArchiveRar,
         _ => return None,
     })
+}
+
+fn is_video_ext(ext: &str) -> bool {
+    matches!(
+        ext,
+        "mp4" | "m4v" | "webm" | "mkv" | "mov" | "avi" | "mpg" | "mpeg" | "3gp" | "wmv"
+    )
 }
 
 fn sniff_ext(ext: &str) -> Format {
@@ -105,6 +192,9 @@ fn sniff_ext(ext: &str) -> Format {
         "ics" => Format::Ics,
         "vcf" => Format::Vcf,
         "desktop" => Format::Code,
+        "mp4" | "m4v" | "webm" | "mkv" | "mov" | "avi" | "mpg" | "mpeg" | "3gp" | "wmv" => {
+            Format::Unsupported
+        }
         "rs" | "ts" | "js" | "py" | "go" | "c" | "cpp" | "h" | "hpp" | "java" | "kt"
         | "swift" | "sh" | "sql" | "lua" | "php" | "rb" | "ex" | "exs" | "erl" | "hs"
         | "ml" | "clj" | "cljs" | "scala" | "r" | "jl" | "vim" | "ps1" | "bat" => Format::Code,
@@ -195,11 +285,22 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
         }
         // `Format` is `#[non_exhaustive]`, so a future variant MUST be handled
         // explicitly. Falling back to Unsupported here is the safety net.
-        Format::Unsupported => return Ok(Document::Unsupported {
-            format,
-            reason: format!("No handler for file extension '.{}'", ext),
-            suggestion: Suggestion::None,
-        }),
+        Format::Unsupported => {
+            let reason = if is_video_ext(ext) {
+                "Video isn't viewable in ViewIt yet — use Open with… to play in another app.".into()
+            } else {
+                format!("No handler for file extension '.{}'", ext)
+            };
+            return Ok(Document::Unsupported {
+                format,
+                reason,
+                suggestion: if is_video_ext(ext) {
+                    Suggestion::OpenWithExternal
+                } else {
+                    Suggestion::None
+                },
+            });
+        }
         _ => return Ok(Document::Unsupported {
             format,
             reason: format!("Unknown format in this build: {:?}", format),
@@ -223,5 +324,18 @@ fn parse_text_like(bytes: &[u8], format: Format, name: &str) -> Result<Document,
             name: name.to_string(),
             byte_len: bytes.len(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn zip_magic_xlsx_ext_is_office_not_archive() {
+        let pk = &[0x50, 0x4B, 0x03, 0x04, 0x00, 0x00];
+        assert_eq!(sniff(pk, "xlsx"), Format::Xlsx);
+        assert_eq!(sniff(pk, "docx"), Format::Docx);
+        assert_eq!(sniff(pk, "zip"), Format::ArchiveZip);
     }
 }
