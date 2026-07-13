@@ -30,8 +30,10 @@ export ANDROID_NDK_HOME="$NDK"
 export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$LINKER"
 export PATH="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
 
-echo "[android] cargo release lib (fmt-everything)"
-(cd "$MOBILE" && cargo build --target aarch64-linux-android --release -p viewit-mobile --lib --features fmt-everything)
+echo "[android] cargo release lib (fmt-everything + embedded assets)"
+# tauri/custom-protocol: must match Tauri release APK (no http://localhost:1421).
+(cd "$MOBILE" && cargo build --target aarch64-linux-android --release -p viewit-mobile --lib \
+  --features "fmt-everything,tauri/custom-protocol")
 
 echo "[android] gradle AAB + APK"
 (cd "$GEN" && ./gradlew :app:bundleUniversalRelease :app:assembleUniversalRelease \

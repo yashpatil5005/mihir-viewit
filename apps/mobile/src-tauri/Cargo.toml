@@ -23,7 +23,8 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 viewit-core = { path = "../../../crates/core", features = ["fmt-text"] }
-tauri = { version = "2", features = [] }
+# custom-protocol: release webview serves embedded frontend, not devUrl (CLI sets this too).
+tauri = { version = "2", features = ["custom-protocol"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-shell = "2"
