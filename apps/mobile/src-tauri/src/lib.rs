@@ -69,14 +69,14 @@ pub fn run() {
         .expect("error while building viewit-mobile Tauri application")
         .run(|app, event| {
             #[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
-            if let tauri::RunEvent::Opened { urls } = event {
+            if let tauri::RunEvent::Opened { ref urls } = event {
                 use tauri::Emitter;
                 app.state::<OpenedUrls>()
                     .0
                     .lock()
                     .unwrap()
-                    .extend(urls.clone());
-                let _ = app.emit("opened", urls);
+                    .extend(urls.iter().cloned());
+                let _ = app.emit("opened", urls.clone());
             }
             let _ = (app, event);
         });

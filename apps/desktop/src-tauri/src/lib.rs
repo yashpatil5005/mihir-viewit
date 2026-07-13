@@ -229,14 +229,14 @@ pub fn run() {
         .run(|app, event| {
             // macOS / iOS / Android file-association events emit RunEvent::Opened.
             #[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
-            if let tauri::RunEvent::Opened { urls } = event {
+            if let tauri::RunEvent::Opened { ref urls } = event {
                 use tauri::Emitter;
                 app.state::<OpenedUrls>()
                     .0
                     .lock()
                     .unwrap()
-                    .extend(urls.clone());
-                let _ = app.emit("opened", urls);
+                    .extend(urls.iter().cloned());
+                let _ = app.emit("opened", urls.clone());
             }
             // Other desktop platforms get to fall through; Windows/Linux
             // typically use drag-drop events separately (Phase 1.6+).
