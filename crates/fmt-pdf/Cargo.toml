@@ -15,4 +15,8 @@ thiserror.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 bytes.workspace = true
-# Phase 2.2 will add: pdfium-render (default-features = false, features = ["image_latest", "thread_safe", "pdfium_latest"])
+# pdfium-render: dynamic linking at runtime (per ADR 0002).
+# The libpdfium.so is bundled alongside the binary.
+pdfium-render = { version = "=0.9.2", default-features = false, features = ["image_latest", "thread_safe", "pdfium_latest"] }
+image = { version = "0.25", default-features = false }
+base64 = "0.22"

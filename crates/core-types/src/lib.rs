@@ -111,6 +111,16 @@ pub enum Document {
         #[serde(rename = "byte_len")]
         byte_len: usize,
     },
+    /// Phase 2.2 — PDF. Per ADR 0002: bundled pdfium arm64-v8a.
+    /// Pages are rasterized to PNG bitmaps, base64-encoded as data URLs.
+    /// First MAX_EAGER_PAGES are shipped eagerly; the rest via `pdf_page`.
+    Pdf {
+        page_count: usize,
+        /// Base64 data URLs of the first N pages (PNG).
+        pages: Vec<String>,
+        #[serde(rename = "byte_len")]
+        byte_len: usize,
+    },
     Unsupported {
         format: Format,
         reason: String,

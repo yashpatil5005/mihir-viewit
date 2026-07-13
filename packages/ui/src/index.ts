@@ -4,6 +4,7 @@ export { default as ImageViewer } from './ImageViewer.svelte';
 export { default as MarkdownViewer } from './MarkdownViewer.svelte';
 export { default as JsonViewer } from './JsonViewer.svelte';
 export { default as CsvViewer } from './CsvViewer.svelte';
+export { default as PdfViewer } from './PdfViewer.svelte';
 export { default as EpubViewer } from './EpubViewer.svelte';
 export { default as ArchiveViewer } from './ArchiveViewer.svelte';
 export { default as UnsupportedViewer } from './UnsupportedViewer.svelte';

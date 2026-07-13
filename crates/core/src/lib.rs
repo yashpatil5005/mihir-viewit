@@ -109,9 +109,9 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
         Format::Pdf => {
             #[cfg(feature = "fmt-pdf")]
             {
-                let _ = (ext, name);
-                // TODO Phase 2.2
+                return viewit_fmt_pdf::parse(bytes, format, name).map_err(Error::from_parse);
             }
+            #[cfg(not(feature = "fmt-pdf"))]
             return Ok(Document::Placeholder { format, name: name.to_string(), byte_len: bytes.len() });
         }
         Format::ImagePng | Format::ImageJpg | Format::ImageWebp | Format::ImageGif
