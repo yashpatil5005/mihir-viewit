@@ -9,13 +9,7 @@ pub fn parse(bytes: &[u8], format: Format, _name: &str) -> Result<Document, Erro
         Format::ArchiveZip => list_zip(bytes)?,
         Format::ArchiveTar => list_tar(bytes, false)?,
         Format::ArchiveTarGz => list_tar(bytes, true)?,
-        Format::Archive7z => {
-            return Ok(Document::Unsupported {
-                format,
-                reason: "7z listing is planned for Phase 4.4 (sevenz-rust 0.6 requires full extraction for listing).".into(),
-                suggestion: viewit_core_types::Suggestion::None,
-            });
-        }
+        Format::Archive7z => list_7z(bytes)?,
         _ => return Err(Error::UnsupportedFormat(format)),
     };
     Ok(Document::Archive {
@@ -61,5 +55,25 @@ fn list_tar(bytes: &[u8], gzipped: bool) -> Result<Vec<ArchiveEntry>, Error> {
             });
         }
     }
+    Ok(entries)
+}
+
+/// Phase 4.4 — 7z listing via `sevenz-rust`. Uses `archive().files` to
+/// read entry metadata without decompressing folder payloads.
+fn list_7z(bytes: &[u8]) -> Result<Vec<ArchiveEntry>, Error> {
+    let cursor = std::io::Cursor::new(bytes.to_vec());
+    let password = sevenz_rust::Password::empty();
+    let reader = sevenz_rust::SevenZReader::new(cursor, bytes.len() as u64, password)
+        .map_err(|e| Error::Parse(format!("7z: {}", e)))?;
+    let files = reader.archive().files.clone();
+    let entries = files
+        .iter()
+        .map(|f| ArchiveEntry {
+            name: f.name().to_string(),
+            size: f.size(),
+            is_dir: f.is_directory(),
+            compressed_size: f.size(), // 7z doesn't expose per-file compressed size
+        })
+        .collect();
     Ok(entries)
 }

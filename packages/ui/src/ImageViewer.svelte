@@ -48,10 +48,10 @@
 
 <style>
   .image-viewer { display: flex; flex-direction: column; height: 100%; }
-  .meta { display: flex; gap: 0.5rem; align-items: baseline; padding: 0.5rem 1rem; border-bottom: 1px solid #eee; font-size: 0.8rem; color: #888; }
-  .meta strong { color: #222; }
-  .format { background: #f0f0f0; padding: 0.1rem 0.4rem; border-radius: 0.3rem; font-family: ui-monospace, monospace; }
-  .frame { flex: 1; display: flex; align-items: center; justify-content: center; padding: 1rem; background: #fafafa; overflow: auto; }
+  .meta { display: flex; gap: 0.5rem; align-items: baseline; padding: 0.5rem 1rem; border-bottom: 1px solid var(--border); font-size: 0.8rem; color: var(--text-secondary); }
+  .meta strong { color: var(--text-primary); }
+  .format { background: var(--bg-secondary); padding: 0.1rem 0.4rem; border-radius: 0.3rem; font-family: ui-monospace, monospace; }
+  .frame { flex: 1; display: flex; align-items: center; justify-content: center; padding: 1rem; background: var(--bg-secondary); overflow: auto; }
   .frame img { max-width: 100%; max-height: 100%; object-fit: contain; }
   .svg-embed { width: 100%; height: 100%; }
 </style>

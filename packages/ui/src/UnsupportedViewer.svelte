@@ -23,7 +23,7 @@
 </article>
 
 <style>
-  .unsupported { padding: 2rem; text-align: center; color: #555; }
+  .unsupported { padding: 2rem; text-align: center; color: var(--text-secondary); }
   .reason { margin-bottom: 1rem; }
   button { padding: 0.5rem 1rem; cursor: pointer; }
 </style>

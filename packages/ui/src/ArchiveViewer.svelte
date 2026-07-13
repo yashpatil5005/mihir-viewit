@@ -34,10 +34,10 @@
 
 <style>
   .archive-viewer { padding: 0.5rem 1rem; }
-  .meta { color: #888; margin-bottom: 0.5rem; font-size: 0.75rem; }
-  .table-frame { overflow: auto; max-height: 75vh; border: 1px solid #e0e0e0; border-radius: 0.4rem; }
+  .meta { color: var(--text-secondary); margin-bottom: 0.5rem; font-size: 0.75rem; }
+  .table-frame { overflow: auto; max-height: 75vh; border: 1px solid var(--border); border-radius: 0.4rem; }
   table { border-collapse: collapse; width: 100%; font-family: ui-monospace, monospace; font-size: 0.85rem; }
-  th, td { border-bottom: 1px solid #eee; padding: 0.3rem 0.6rem; text-align: left; }
-  th { background: #f5f5f5; font-weight: 600; position: sticky; top: 0; }
-  .dir td { font-weight: 600; color: #444; }
+  th, td { border-bottom: 1px solid var(--border); padding: 0.3rem 0.6rem; text-align: left; }
+  th { background: var(--bg-secondary); font-weight: 600; position: sticky; top: 0; }
+  .dir td { font-weight: 600; color: var(--text-primary); }
 </style>

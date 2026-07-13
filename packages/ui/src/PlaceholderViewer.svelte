@@ -11,7 +11,7 @@
 </article>
 
 <style>
-  .placeholder { padding: 1rem; color: #555; }
-  .meta { color: #888; margin-bottom: 0.5rem; font-size: 0.85rem; }
-  code { background: #f0f0f0; padding: 0.1rem 0.3rem; border-radius: 0.2rem; }
+  .placeholder { padding: 1rem; color: var(--text-secondary); }
+  .meta { color: var(--text-secondary); margin-bottom: 0.5rem; font-size: 0.85rem; }
+  code { background: var(--bg-secondary); padding: 0.1rem 0.3rem; border-radius: 0.2rem; }
 </style>

@@ -8,7 +8,7 @@
 // in Phase 1.6 of the scaffold work; until then, the web path falls back to
 // a JS-only text reader so the loop is exercisable immediately.
 
-export type DocumentKind = 'text' | 'image' | 'markdown' | 'json' | 'csv' | 'pdf' | 'epub' | 'archive' | 'unsupported' | 'placeholder';
+export type DocumentKind = 'text' | 'image' | 'markdown' | 'json' | 'csv' | 'pdf' | 'epub' | 'archive' | 'pptx' | 'unsupported' | 'placeholder';
 export type Format =
   | 'plain-text' | 'markdown' | 'json' | 'csv' | 'code'
   | 'pdf' | 'image-png' | 'image-jpg' | 'image-webp' | 'image-gif'

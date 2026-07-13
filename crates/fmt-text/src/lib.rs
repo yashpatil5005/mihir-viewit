@@ -22,6 +22,14 @@ pub fn parse_text(bytes: &[u8], format: Format, _name: &str) -> Result<Document,
 
     // Step 2 — branch on the format.
     match format {
+        Format::Rtf => {
+            let plain = rtf_to_text(&text);
+            Ok(Document::Text {
+                content: plain,
+                encoding: "ascii".into(),
+                byte_len: bytes.len(),
+            })
+        }
         Format::Markdown => {
             let html = markdown_to_html(&text);
             Ok(Document::Markdown {
@@ -52,6 +60,90 @@ pub fn parse_text(bytes: &[u8], format: Format, _name: &str) -> Result<Document,
             byte_len: bytes.len(),
         }),
     }
+}
+
+// --- Phase 3.5 — RTF plain-text extraction ----------------------------------
+
+fn rtf_to_text(rtf: &str) -> String {
+    let mut out = String::with_capacity(rtf.len());
+    let mut chars = rtf.chars().peekable();
+    let mut depth: i32 = 0;
+    let mut skip_group: i32 = -1;
+
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => {
+                let next = match chars.peek() {
+                    Some(&n) => n,
+                    None => break
+                };
+                if next == '\\' || next == '{' || next == '}' {
+                    out.push(next);
+                    chars.next();
+                } else if next == '*' {
+                    // destination control — skip group
+                    if skip_group == -1 { skip_group = depth; }
+                    chars.next();
+                    // consume rest of control word
+                    while let Some(&w) = chars.peek() {
+                        if w.is_alphabetic() { chars.next(); } else { break; }
+                    }
+                } else if next.is_alphabetic() {
+                    // control word
+                    let mut word = String::new();
+                    chars.next();
+                    while let Some(&w) = chars.peek() {
+                        if w.is_alphabetic() { word.push(w); chars.next(); } else { break; }
+                    }
+                    // optional digit parameter
+                    if let Some(&w) = chars.peek() {
+                        if w == '-' || w.is_ascii_digit() {
+                            chars.next();
+                            while let Some(&d) = chars.peek() {
+                                if d.is_ascii_digit() { chars.next(); } else { break; }
+                            }
+                        }
+                    }
+                    // space after control word is consumed
+                    if let Some(&' ') = chars.peek() { chars.next(); }
+                    // insert paragraph break for \par, line break for \line
+                    if word == "par" { out.push_str("\n\n"); }
+                    else if word == "line" { out.push('\n'); }
+                    else if word == "tab" { out.push('\t'); }
+                } else if next == '\'' {
+                    // hex escape \'XX
+                    chars.next();
+                    let h1 = chars.next();
+                    let h2 = chars.next();
+                    if let (Some(a), Some(b)) = (h1, h2) {
+                        let s = format!("{}{}", a, b);
+                        if let Ok(b) = u8::from_str_radix(&s, 16) {
+                            out.push(b as char);
+                        }
+                    }
+                } else {
+                    chars.next();
+                }
+            }
+            '{' => {
+                depth += 1;
+            }
+            '}' => {
+                depth -= 1;
+                if skip_group != -1 && depth < skip_group {
+                    skip_group = -1;
+                }
+            }
+            c if skip_group == -1 && !c.is_control() => {
+                out.push(c);
+            }
+            _ => {}
+        }
+    }
+    out
+        .replace("\n{3,}", "\n\n")
+        .trim_matches('\n')
+        .to_string()
 }
 
 // --- Phase 2.3 — encoding detection ----------------------------------------

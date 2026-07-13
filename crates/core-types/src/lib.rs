@@ -25,6 +25,7 @@ pub enum Format {
     ImageBmp,
     ImageTiff,
     ImageSvg,
+    ImageHeic,
     Epub,
     ArchiveZip,
     ArchiveTarGz,
@@ -41,6 +42,9 @@ pub enum Format {
     IworkPages,
     IworkNumbers,
     IworkKey,
+    Plist,
+    Ics,
+    Vcf,
     Unsupported,
 }
 
@@ -126,6 +130,13 @@ pub enum Document {
         reason: String,
         suggestion: Suggestion,
     },
+    /// Phase 3.3 — PPTX slide listing with title + body text per slide.
+    Pptx {
+        slide_count: usize,
+        slides: Vec<PptxSlide>,
+        #[serde(rename = "byte_len")]
+        byte_len: usize,
+    },
     /// Phase 1 only — placeholder while the wiring is exercised. Other
     /// variants are added in Phase 2+.
     Placeholder {
@@ -149,6 +160,12 @@ pub struct ArchiveEntry {
     pub size: u64,
     pub is_dir: bool,
     pub compressed_size: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PptxSlide {
+    pub title: String,
+    pub body: String,
 }
 
 /// Errors that any fmt-* crate may return. Uniform so the frontend can rely

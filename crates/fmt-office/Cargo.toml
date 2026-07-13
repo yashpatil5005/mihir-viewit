@@ -20,6 +20,8 @@ bytes.workspace = true
 calamine = "=0.36.0"
 # Phase 3.1 DOCX (reader)
 docx-rust = "=0.1.11"
+# Phase 3.3 PPTX (zip reader)
+zip = "=8.6.0"
 # Phase 3.7 Encrypted Office
 office-crypto = "=0.2.0"
 

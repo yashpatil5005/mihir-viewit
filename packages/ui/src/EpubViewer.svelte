@@ -27,9 +27,9 @@
 
 <style>
   .epub-viewer { display: flex; flex-direction: column; height: 100%; }
-  .book-meta { padding: 1rem; border-bottom: 1px solid #ddd; }
+  .book-meta { padding: 1rem; border-bottom: 1px solid var(--border); }
   .book-meta h2 { margin: 0 0 0.25rem; }
-  .author { color: #666; margin: 0 0 0.5rem; }
-  .stats { color: #888; font-size: 0.75rem; }
+  .author { color: var(--text-secondary); margin: 0 0 0.5rem; }
+  .stats { color: var(--text-secondary); font-size: 0.75rem; }
   .chapter-frame { flex: 1; padding: 2rem; overflow: auto; max-width: 45ch; margin: 0 auto; line-height: 1.6; }
 </style>

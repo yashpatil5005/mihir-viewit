@@ -46,6 +46,12 @@ fn sniff_magic(bytes: &[u8]) -> Option<Format> {
         [0x42, 0x4D, ..] => Format::ImageBmp,
         // WebP: "RIFF....WEBP"
         [0x52, 0x49, 0x46, 0x46, _, _, _, _, 0x57, 0x45, 0x42, 0x50, ..] => Format::ImageWebp,
+        // HEIC/HEIF: ISO BMFF ftyp box at offset 4
+        [_, _, _, _, 0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x69, 0x63, ..]
+        | [_, _, _, _, 0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x69, 0x78, ..]
+        | [_, _, _, _, 0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x76, 0x63, ..]
+        | [_, _, _, _, 0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x69, 0x6D, ..]
+        | [_, _, _, _, 0x66, 0x74, 0x79, 0x70, 0x6D, 0x69, 0x66, 0x31, ..] => Format::ImageHeic,
         // ZIP signature (also docx/xlsx/pptx/odt/ods/odp/epub/iWork — extension resolves those)
         [0x50, 0x4B, 0x03, 0x04, ..] | [0x50, 0x4B, 0x05, 0x06, ..] => Format::ArchiveZip,
         // gzip (so tar.gz or single-file gz)
@@ -72,6 +78,7 @@ fn sniff_ext(ext: &str) -> Format {
         "bmp" => Format::ImageBmp,
         "tif" | "tiff" => Format::ImageTiff,
         "svg" => Format::ImageSvg,
+        "heic" | "heif" => Format::ImageHeic,
         "epub" => Format::Epub,
         "zip" => Format::ArchiveZip,
         "tar" => Format::ArchiveTar,
@@ -88,6 +95,9 @@ fn sniff_ext(ext: &str) -> Format {
         "pages" => Format::IworkPages,
         "numbers" => Format::IworkNumbers,
         "key" => Format::IworkKey,
+        "plist" => Format::Plist,
+        "ics" => Format::Ics,
+        "vcf" => Format::Vcf,
         "rs" | "ts" | "js" | "py" | "go" | "c" | "cpp" | "h" | "hpp" | "java" | "kt"
         | "swift" | "sh" | "sql" | "lua" | "php" | "rb" | "ex" | "exs" | "erl" | "hs"
         | "ml" | "clj" | "cljs" | "scala" | "r" | "jl" | "vim" | "ps1" | "bat" => Format::Code,
@@ -103,7 +113,8 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
         Format::PlainText | Format::Code => {
             return parse_text_like(bytes, format, name);
         }
-        Format::Markdown | Format::Json | Format::Csv => {
+        Format::Markdown | Format::Json | Format::Csv
+        | Format::Plist | Format::Ics | Format::Vcf => {
             return parse_text_like(bytes, format, name);
         }
         Format::Pdf => {
@@ -115,7 +126,7 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
             return Ok(Document::Placeholder { format, name: name.to_string(), byte_len: bytes.len() });
         }
         Format::ImagePng | Format::ImageJpg | Format::ImageWebp | Format::ImageGif
-        | Format::ImageBmp | Format::ImageTiff | Format::ImageSvg => {
+        | Format::ImageBmp | Format::ImageTiff | Format::ImageSvg | Format::ImageHeic => {
             // Per plan §5: native webview decoder. Rust emits the `Image`
             // variant; the frontend uses `<img src=...>` directly.
             // (Phase 2.1 — zero Rust deps added.)
@@ -133,7 +144,7 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
             #[cfg(not(feature = "fmt-ebook"))]
             return Ok(Document::Placeholder { format, name: name.to_string(), byte_len: bytes.len() });
         }
-        Format::ArchiveZip | Format::ArchiveTar | Format::ArchiveTarGz => {
+        Format::ArchiveZip | Format::ArchiveTar | Format::ArchiveTarGz | Format::Archive7z => {
             #[cfg(feature = "fmt-archive")]
             {
                 return viewit_fmt_archive::parse(bytes, format, name).map_err(Error::from_parse);
@@ -160,15 +171,17 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
         Format::Rtf => {
             #[cfg(feature = "fmt-text")]
             {
-                // TODO Phase 3.5
+                return viewit_fmt_text::parse_text(bytes, format, name).map_err(Error::from_parse);
             }
+            #[cfg(not(feature = "fmt-text"))]
             return Ok(Document::Placeholder { format, name: name.to_string(), byte_len: bytes.len() });
         }
         Format::IworkPages | Format::IworkNumbers | Format::IworkKey => {
             #[cfg(feature = "fmt-iwork")]
             {
-                // TODO Phase 4.1
+                return viewit_fmt_iwork::parse(bytes, format, name).map_err(Error::from_parse);
             }
+            #[cfg(not(feature = "fmt-iwork"))]
             return Ok(Document::Placeholder { format, name: name.to_string(), byte_len: bytes.len() });
         }
         // `Format` is `#[non_exhaustive]`, so a future variant MUST be handled
