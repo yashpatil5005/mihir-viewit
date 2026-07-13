@@ -149,18 +149,12 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
                 suggestion: Suggestion::OpenWithExternal,
             });
         }
-        Format::Docx | Format::Xlsx | Format::Pptx => {
+        Format::Docx | Format::Xlsx | Format::Pptx | Format::Odt | Format::Ods | Format::Odp => {
             #[cfg(feature = "fmt-office")]
             {
-                // TODO Phase 3
+                return viewit_fmt_office::parse(bytes, format, name).map_err(Error::from_parse);
             }
-            return Ok(Document::Placeholder { format, name: name.to_string(), byte_len: bytes.len() });
-        }
-        Format::Odt | Format::Ods | Format::Odp => {
-            #[cfg(feature = "fmt-opendoc")]
-            {
-                // TODO Phase 3
-            }
+            #[cfg(not(feature = "fmt-office"))]
             return Ok(Document::Placeholder { format, name: name.to_string(), byte_len: bytes.len() });
         }
         Format::Rtf => {

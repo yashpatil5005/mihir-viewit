@@ -9,7 +9,7 @@ repository.workspace = true
 description = "ViewIt core: file sniffing, dispatch, format registry"
 
 [features]
-default = ["fmt-text"]
+default = ["fmt-text", "fmt-office"]
 # Each fmt-* feature pulls in the corresponding crate. Mobile builds enable
 # only what they need; desktop / web can afford a larger default set.
 fmt-text      = ["dep:viewit-fmt-text"]
