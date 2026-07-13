@@ -5222,6 +5222,7 @@ dependencies = [
 name = "viewit-mobile"
 version = "0.1.0-scaffold"
 dependencies = [
+ "base64 0.22.1",
  "csv",
  "flate2",
  "serde",
@@ -5234,6 +5235,8 @@ dependencies = [
  "tauri-plugin-notification",
  "tauri-plugin-shell",
  "viewit-core",
+ "viewit-core-types",
+ "viewit-fmt-pdf",
  "zip 8.6.0",
 ]
 

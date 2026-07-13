@@ -4,7 +4,10 @@
 //! Phase 1.10: invoke `viewit_core::open(bytes, ext, name)` to dispatch.
 use std::sync::Mutex;
 use tauri::{Manager, Url};
-use viewit_core::{open, Document, Format, Suggestion};
+use viewit_core::{open, Document, Format, Suggestion, OPEN_BYTES_CAP};
+
+#[cfg(feature = "fmt-pdf")]
+use viewit_fmt_pdf;
 
 /// Buffer for cold-start file URIs (the webview/JS may not be listening yet
 /// when RunEvent::Opened fires during a cold-start launch).
@@ -40,21 +43,32 @@ async fn open_uri(uri: String, name: Option<String>) -> Result<Document, String>
             .unwrap_or("file")
             .to_string()
     });
+    if bytes.len() > OPEN_BYTES_CAP {
+        return Err(format!("file exceeds {} MB cap", OPEN_BYTES_CAP / 1_048_576));
+    }
     open(&bytes, &ext, &display_name).map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "fmt-pdf")]
+#[tauri::command]
+async fn pdf_page(uri: String, index: usize) -> Result<String, String> {
+    let path = parse_file_uri(&uri).ok_or_else(|| format!("not a file:// URI: {}", uri))?;
+    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+    if bytes.len() > OPEN_BYTES_CAP {
+        return Err("PDF too large".into());
+    }
+    pdf_page_render(&bytes, index)
+}
+
+#[cfg(feature = "fmt-pdf")]
+fn pdf_page_render(bytes: &[u8], index: usize) -> Result<String, String> {
+    viewit_fmt_pdf::render_page(bytes, index).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn open_bytes(bytes: Vec<u8>, name: String) -> Result<Document, String> {
-    if bytes.len() > viewit_core::OPEN_BYTES_CAP {
-        return Ok(Document::Unsupported {
-            format: Format::Unsupported,
-            reason: format!(
-                "File is {:.1} MB — max {} MB in memory.",
-                bytes.len() as f64 / 1_048_576.0,
-                viewit_core::OPEN_BYTES_CAP / 1_048_576
-            ),
-            suggestion: Suggestion::OpenWithExternal,
-        });
+    if let Some(doc) = viewit_core::reject_if_too_large(bytes.len()) {
+        return Ok(doc);
     }
     let ext = name
         .rsplit('.')
@@ -245,7 +259,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .manage(OpenedUrls(Mutex::new(vec![])))
-        .invoke_handler(tauri::generate_handler![opened_urls, open_uri, open_bytes, text_page, csv_page, epub_chapter, archive_extract])
+        .invoke_handler(tauri::generate_handler![opened_urls, open_uri, open_bytes, text_page, csv_page, epub_chapter, archive_extract, pdf_page])
         .build(tauri::generate_context!())
         .expect("error while building viewit-desktop Tauri application")
         .run(|app, event| {

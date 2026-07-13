@@ -3,16 +3,36 @@
   // Pages are rasterized PNG data URLs. We render them in a vertical
   // scroll with lazy loading (each page as an <img>).
   import { onMount, onDestroy } from 'svelte';
+  import { pdfPage } from '@viewit/platform';
 
   let {
-    page_count = 0,
-    pages = [],
-    byte_len = 0
-  }: {
-    page_count: number;
-    pages: string[];
-    byte_len: number;
-  } = $props();
+    document: docProp = {},
+    source_uri = '',
+  }: { document?: { page_count?: number; pages?: string[]; byte_len?: number }; source_uri?: string } = $props();
+
+  let page_count = $derived(docProp.page_count ?? 0);
+  let byte_len = $derived(docProp.byte_len ?? 0);
+
+  let pages = $state<string[]>([...(docProp.pages ?? [])]);
+  let loadingPage = $state<number | null>(null);
+
+  $effect(() => {
+    pages = [...(docProp.pages ?? [])];
+  });
+
+  async function ensurePage(i: number) {
+    if (pages[i] || !source_uri || loadingPage !== null) return;
+    loadingPage = i;
+    try {
+      const url = await pdfPage(source_uri, i);
+      const next = [...pages];
+      while (next.length <= i) next.push('');
+      next[i] = url;
+      pages = next;
+    } finally {
+      loadingPage = null;
+    }
+  }
 
   let containerEl: HTMLElement | null = $state(null);
 
@@ -41,16 +61,19 @@
   <aside class="meta">
     <strong>{page_count} page{page_count !== 1 ? 's' : ''}</strong> · {byte_len.toLocaleString()} bytes · pdf
   </aside>
-  <div class="pages" bind:this={containerEl} role="document" aria-label="PDF document {page_count} pages">
-    {#each pages as page, i}
+  <div class="pages" bind:this={containerEl} role="document">
+    {#each Array(page_count) as _, i}
       <figure class="page">
         <figcaption>Page {i + 1}</figcaption>
-        <img src={page} alt="Page {i + 1}" loading="lazy" />
+        {#if pages[i]}
+          <img src={pages[i]} alt="Page {i + 1}" loading="lazy" />
+        {:else}
+          <button type="button" class="load-page" onclick={() => ensurePage(i)} disabled={loadingPage === i}>
+            {loadingPage === i ? 'Rendering…' : 'Load page'}
+          </button>
+        {/if}
       </figure>
     {/each}
-    {#if pages.length < page_count}
-      <p class="more">… and {page_count - pages.length} more pages (Phase 5 pagination)</p>
-    {/if}
   </div>
 </article>
 
@@ -61,5 +84,5 @@
   .page { max-width: 100%; }
   .page figcaption { text-align: center; color: var(--text-secondary); font-size: 0.8rem; margin-bottom: 0.5rem; }
   .page img { max-width: 100%; height: auto; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-  .more { text-align: center; color: var(--text-secondary); font-style: italic; }
+  .load-page { padding: 0.5rem 1rem; cursor: pointer; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 0.4rem; }
 </style>

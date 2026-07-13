@@ -1,16 +1,16 @@
 <script lang="ts">
   import { openWithExternal } from '@viewit/platform';
   let {
-    format,
-    reason,
-    suggestion,
+    document: docProp = {},
     uri
   }: {
-    format: string;
-    reason: string;
-    suggestion?: 'open-with-external' | 'none';
+    document?: { format?: string; reason?: string; suggestion?: string };
     uri?: string;
   } = $props();
+
+  const format = docProp.format ?? 'unsupported';
+  const reason = docProp.reason ?? '';
+  const suggestion = (docProp.suggestion as 'open-with-external' | 'none' | undefined) ?? 'none';
 </script>
 
 <article class="unsupported">

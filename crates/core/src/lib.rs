@@ -8,6 +8,9 @@
 
 pub use viewit_core_types::{Document, Error, Format, Suggestion};
 
+pub mod io;
+pub use io::reject_if_too_large;
+
 /// Entry point invoked by Tauri commands and by WASM.
 ///
 /// `bytes` is the file content; `ext` is the lowercase extension (no dot);

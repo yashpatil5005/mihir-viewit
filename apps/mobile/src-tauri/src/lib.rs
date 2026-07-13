@@ -1,13 +1,13 @@
 //! ViewIt mobile Tauri backend. Mirrors desktop commands; Android uses
 //! `tauri-plugin-fs` for `content://` URIs (share / file picker).
 
+mod uri_util;
+
 use std::io::Read;
-use std::str::FromStr;
 use std::sync::Mutex;
 
 use tauri::{Manager, Url};
-use tauri_plugin_fs::{FilePath, FsExt};
-use viewit_core::{open, Document};
+use viewit_core::Document;
 
 #[derive(Default, serde::Serialize)]
 struct OpenedUrls(Mutex<Vec<Url>>);
@@ -29,31 +29,37 @@ async fn open_uri(
     uri: String,
     name: Option<String>,
 ) -> Result<Document, String> {
-    let (bytes, ext, display_name) = read_uri_meta(&app, &uri, name)?;
-    open(&bytes, &ext, &display_name).map_err(|e| e.to_string())
+    uri_util::open_from_uri(&app, uri, name)
 }
 
-/// In-app file picker: bytes from JS (`File.arrayBuffer()`). `blob:` URLs are WebView-only.
+#[tauri::command]
+fn probe_uri(
+    app: tauri::AppHandle,
+    uri: String,
+    name: Option<String>,
+) -> Result<Option<Document>, String> {
+    uri_util::probe_before_read(&app, &uri, name)
+}
+
+/// Picker path: raw `Vec<u8>` from Tauri IPC (not JSON `number[]`).
 #[tauri::command]
 fn open_bytes(bytes: Vec<u8>, name: String) -> Result<Document, String> {
-    if bytes.len() > viewit_core::OPEN_BYTES_CAP {
-        return Ok(Document::Unsupported {
-            format: Format::Unsupported,
-            reason: format!(
-                "File is {:.1} MB — max {} MB in memory.",
-                bytes.len() as f64 / 1_048_576.0,
-                viewit_core::OPEN_BYTES_CAP / 1_048_576
-            ),
-            suggestion: Suggestion::OpenWithExternal,
-        });
-    }
-    let ext = name
-        .rsplit('.')
-        .next()
-        .unwrap_or("")
-        .to_lowercase();
-    let display = if name.is_empty() { "file".to_string() } else { name };
-    open(&bytes, &ext, &display).map_err(|e| e.to_string())
+    uri_util::open_from_bytes(bytes, name)
+}
+
+#[tauri::command]
+fn open_bytes_b64(b64: String, name: String) -> Result<Document, String> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(b64.trim())
+        .map_err(|e| format!("base64 decode: {}", e))?;
+    uri_util::open_from_bytes(bytes, name)
+}
+
+#[cfg(feature = "fmt-pdf")]
+#[tauri::command]
+async fn pdf_page(app: tauri::AppHandle, uri: String, index: usize) -> Result<String, String> {
+    uri_util::pdf_page_from_uri(&app, uri, index)
 }
 
 #[tauri::command]
@@ -63,7 +69,7 @@ async fn text_page(
     offset: usize,
     len: usize,
 ) -> Result<String, String> {
-    let (bytes, _, _) = read_uri_meta(&app, &uri, None)?;
+    let (bytes, _, _) = uri_util::read_uri_meta(&app, &uri, None)?;
     let text = String::from_utf8_lossy(&bytes);
     let end = (offset + len).min(text.len());
     let start = offset.min(text.len());
@@ -77,7 +83,7 @@ async fn csv_page(
     skip: usize,
     take: usize,
 ) -> Result<Vec<Vec<String>>, String> {
-    let (bytes, ext, _) = read_uri_meta(&app, &uri, None)?;
+    let (bytes, ext, _) = uri_util::read_uri_meta(&app, &uri, None)?;
     let text = String::from_utf8_lossy(&bytes);
     let sep = if ext == "tsv" { b'\t' } else { b',' };
     let mut rdr = csv::ReaderBuilder::new()
@@ -110,7 +116,7 @@ async fn archive_extract(
     uri: String,
     entry_name: String,
 ) -> Result<Vec<u8>, String> {
-    let (bytes, ext, _) = read_uri_meta(&app, &uri, None)?;
+    let (bytes, ext, _) = uri_util::read_uri_meta(&app, &uri, None)?;
     let cursor = std::io::Cursor::new(bytes);
     match ext.as_str() {
         "zip" => {
@@ -144,7 +150,7 @@ async fn archive_extract(
 
 #[tauri::command]
 async fn epub_chapter(app: tauri::AppHandle, uri: String, index: usize) -> Result<String, String> {
-    let (bytes, _, _) = read_uri_meta(&app, &uri, None)?;
+    let (bytes, _, _) = uri_util::read_uri_meta(&app, &uri, None)?;
     let cursor = std::io::Cursor::new(bytes);
     let mut archive = zip::ZipArchive::new(cursor).map_err(|e| e.to_string())?;
     let mut container = String::new();
@@ -170,55 +176,6 @@ async fn epub_chapter(app: tauri::AppHandle, uri: String, index: usize) -> Resul
         f.read_to_string(&mut chapter).ok();
     }
     Ok(chapter)
-}
-
-fn read_uri_meta(
-    app: &tauri::AppHandle,
-    uri: &str,
-    name: Option<String>,
-) -> Result<(Vec<u8>, String, String), String> {
-    let bytes = app
-        .fs()
-        .read(FilePath::from_str(uri).map_err(|e| e.to_string())?)
-        .map_err(|e| e.to_string())?;
-    let (ext, display_name) = uri_display_name(uri, name);
-    Ok((bytes, ext, display_name))
-}
-
-fn uri_display_name(uri: &str, name: Option<String>) -> (String, String) {
-    if let Some(n) = name.filter(|s| !s.is_empty()) {
-        let ext = n.rsplit('.').next().unwrap_or("").to_lowercase();
-        return (ext, n);
-    }
-    let url = Url::parse(uri).ok();
-    let path_hint = url
-        .as_ref()
-        .and_then(|u| {
-            if u.scheme() == "file" {
-                u.to_file_path().ok()
-            } else {
-                None
-            }
-        })
-        .or_else(|| {
-            url.as_ref().and_then(|u| {
-                u.path_segments()
-                    .and_then(|s| s.last())
-                    .map(|s| std::path::PathBuf::from(s))
-            })
-        });
-    let display_name = path_hint
-        .as_ref()
-        .and_then(|p| p.file_name())
-        .and_then(|s| s.to_str())
-        .unwrap_or("file")
-        .to_string();
-    let ext = display_name
-        .rsplit('.')
-        .next()
-        .unwrap_or("")
-        .to_lowercase();
-    (ext, display_name)
 }
 
 fn extract_opf_path(container_xml: &str) -> Option<String> {
@@ -304,12 +261,15 @@ pub fn run() {
         .manage(OpenedUrls(Mutex::new(vec![])))
         .invoke_handler(tauri::generate_handler![
             opened_urls,
+            probe_uri,
             open_uri,
             open_bytes,
+            open_bytes_b64,
             text_page,
             csv_page,
             epub_chapter,
-            archive_extract
+            archive_extract,
+            pdf_page
         ])
         .build(tauri::generate_context!())
         .expect("error while building viewit-mobile Tauri application")

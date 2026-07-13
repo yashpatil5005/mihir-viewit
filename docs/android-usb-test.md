@@ -55,6 +55,13 @@ TAURI_DEV_HOST=$(hostname -I | awk '{print $1}') npm run dev:android
 
 Uses Vite on `0.0.0.0:1421`; Tauri proxies dev URL to the phone. **Not** the same as release APK.
 
+## Performance (offline)
+
+- **Video / audio**: rejected from extension before any read (picker + share `probe_uri`).
+- **Picker files**: base64 IPC chunk to Rust (`open_bytes_b64`) — not `number[]` JSON.
+- **Share `content://`**: still reads full file once (≤32 MB); video blocked by extension on `probe_uri` first.
+- **PDF**: 2 eager pages on Android; extra pages via **Load page** (`pdf_page` command).
+
 ## Release APK still blank / Internal Server Error?
 
 Rebuild after protocol patch:

@@ -87,6 +87,13 @@ export async function openFile(uri: string): Promise<Document> {
     );
   }
   if (IS_TAURI) {
+    const { invoke } = await import('@tauri-apps/api/core');
+    const blocked = await invoking(() =>
+      invoke<Document | null>('probe_uri', { uri, name: null }),
+    );
+    if (blocked && typeof blocked === 'object' && (blocked as Document).kind === 'unsupported') {
+      return blocked as Document;
+    }
     return await invokeOpenUri(uri);
   }
   return await webOpenFile(uri);
@@ -104,11 +111,22 @@ export async function openFileFromPicker(file: File): Promise<Document> {
   const buf = new Uint8Array(await file.arrayBuffer());
   if (IS_TAURI) {
     const { invoke } = await import('@tauri-apps/api/core');
-    return invoking(() =>
-      invoke<Document>('open_bytes', { bytes: Array.from(buf), name }),
-    );
+    let binary = '';
+    const chunk = 0x8000;
+    for (let i = 0; i < buf.length; i += chunk) {
+      binary += String.fromCharCode(...buf.subarray(i, i + chunk));
+    }
+    const b64 = btoa(binary);
+    return invoking(() => invoke<Document>('open_bytes_b64', { b64, name }));
   }
   return webOpenBytes(buf, name);
+}
+
+/** Lazy PDF page (share / open_uri path — re-reads file in Rust). */
+export async function pdfPage(uri: string, index: number): Promise<string> {
+  if (!IS_TAURI) throw new Error('pdfPage only on Tauri');
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoking(() => invoke<string>('pdf_page', { uri, index }));
 }
 
 /** Per ADR 0004 — RAR5 / unsupported with OpenWith-External suggestion. */

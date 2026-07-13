@@ -34,11 +34,20 @@ tar = "0.4"
 flate2 = "1"
 
 [features]
-# This enables the default set of fmt-* features mobile/desktop apps opt in to.
-default = ["fmt-text-only"]
+default = ["fmt-everything"]
+fmt-everything = [
+  "fmt-text-only",
+  "fmt-office",
+  "fmt-pdf",
+  "fmt-archive",
+  "fmt-image",
+  "fmt-ebook",
+  "fmt-iwork",
+]
 fmt-text-only = ["viewit-core/fmt-text"]
 fmt-office = ["viewit-core/fmt-office"]
 fmt-pdf = ["viewit-core/fmt-pdf"]
 fmt-archive = ["viewit-core/fmt-archive"]
 fmt-image = ["viewit-core/fmt-image"]
 fmt-ebook = ["viewit-core/fmt-ebook"]
+fmt-iwork = ["viewit-core/fmt-iwork"]

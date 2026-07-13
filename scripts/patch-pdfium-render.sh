@@ -7,8 +7,13 @@ if [[ -z "$FILE" ]]; then
   echo "[patch-pdfium] pdfium-render not in cargo registry yet; run cargo fetch -p pdfium-render first"
   exit 0
 fi
+CHANGED=0
 if grep -q 'chars.as_ptr() as \*const i8' "$FILE"; then
-  sed -i 's/chars.as_ptr() as \*const i8/chars.as_ptr() as *const u8/' "$FILE"
+  sed -i 's/chars.as_ptr() as \*const u8/chars.as_ptr() as *const i8/' "$FILE"
+  CHANGED=1
+fi
+
+if [[ $CHANGED -eq 1 ]]; then
   echo "[patch-pdfium] patched $FILE"
 else
   echo "[patch-pdfium] already patched or upstream fixed"

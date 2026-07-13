@@ -124,12 +124,14 @@
     busy = true;
     error = null;
     docUri = pendingUri;
+    busyHint = 'Opening…';
     try {
       doc = await openFile(pendingUri);
     } catch (e: any) {
       error = e?.toString?.() ?? String(e);
     } finally {
       busy = false;
+      busyHint = '';
     }
   }
 
@@ -226,7 +228,7 @@
       {:else if doc.kind === 'csv' && CsvViewer}
         <CsvViewer {...(doc as any)} />
       {:else if doc.kind === 'pdf' && PdfViewer}
-        <PdfViewer {...(doc as any)} />
+        <PdfViewer document={doc} source_uri={docUri ?? ''} />
       {:else if doc.kind === 'epub' && EpubViewer}
         <EpubViewer {...(doc as any)} />
       {:else if doc.kind === 'archive' && ArchiveViewer}
@@ -238,9 +240,9 @@
       {:else if doc.kind === 'xlsx' && XlsxViewer}
         <XlsxViewer document={doc} />
       {:else if doc.kind === 'unsupported'}
-        <UnsupportedViewer uri={docUri ?? undefined} {...(doc as any)} />
+        <UnsupportedViewer uri={docUri ?? undefined} document={doc} />
       {:else if doc.kind === 'placeholder'}
-        <PlaceholderViewer {...(doc as any)} />
+        <PlaceholderViewer document={doc} />
       {:else}
         <p class="error">Unknown document kind: <code>{(doc as any).kind}</code></p>
       {/if}

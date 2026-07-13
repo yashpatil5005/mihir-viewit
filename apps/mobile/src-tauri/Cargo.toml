@@ -23,6 +23,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 viewit-core = { path = "../../../crates/core", features = ["fmt-text"] }
+viewit-core-types = { path = "../../../crates/core-types" }
 # custom-protocol: release webview serves embedded frontend, not devUrl (CLI sets this too).
 tauri = { version = "2", features = ["custom-protocol"] }
 tauri-plugin-dialog = "2"
@@ -35,6 +36,8 @@ csv = "1"
 zip = "=8.6.0"
 tar = "0.4"
 flate2 = "1"
+base64 = "0.22"
+viewit-fmt-pdf = { path = "../../../crates/fmt-pdf", optional = true }
 
 [features]
 default = ["fmt-text-only"]
@@ -51,7 +54,7 @@ fmt-everything = [
   "fmt-iwork",
 ]
 fmt-office = ["viewit-core/fmt-office"]
-fmt-pdf = ["viewit-core/fmt-pdf"]
+fmt-pdf = ["viewit-core/fmt-pdf", "viewit-fmt-pdf"]
 fmt-archive = ["viewit-core/fmt-archive"]
 fmt-image = ["viewit-core/fmt-image"]
 fmt-ebook = ["viewit-core/fmt-ebook"]
