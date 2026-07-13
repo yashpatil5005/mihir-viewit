@@ -4,7 +4,14 @@
   import { findAllMatches, escapeHtml } from './search';
 
   let { document: docProp = {} }: { document?: any } = $props();
-  const sheets: Array<{ name: string; header: string[]; preview_rows: string[][]; total_rows_hint?: number }> = docProp.sheets ?? [];
+  let sheets = $derived(
+    (docProp.sheets ?? []) as Array<{
+      name: string;
+      header: string[];
+      preview_rows: string[][];
+      total_rows_hint?: number;
+    }>,
+  );
   let activeSheet = $state(0);
   let query = $state('');
   let caseSensitive = $state(false);

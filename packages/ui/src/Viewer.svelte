@@ -214,11 +214,11 @@
       {:else if doc.kind === 'archive' && ArchiveViewer}
         <ArchiveViewer {...(doc as any)} />
       {:else if doc.kind === 'pptx' && PptxViewer}
-        <PptxViewer {...(doc as any)} />
+        <PptxViewer document={doc} />
       {:else if doc.kind === 'docx' && DocxViewer}
-        <DocxViewer {...(doc as any)} />
+        <DocxViewer document={doc} />
       {:else if doc.kind === 'xlsx' && XlsxViewer}
-        <XlsxViewer {...(doc as any)} />
+        <XlsxViewer document={doc} />
       {:else if doc.kind === 'unsupported'}
         <UnsupportedViewer uri={docUri ?? undefined} {...(doc as any)} />
       {:else if doc.kind === 'placeholder'}
