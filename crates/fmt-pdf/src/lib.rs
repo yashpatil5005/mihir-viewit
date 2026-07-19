@@ -65,5 +65,7 @@ pub fn parse(bytes: &[u8], _format: Format, _name: &str) -> Result<Document, Err
         page_count,
         pages,
         byte_len: bytes.len(),
+        native: false,
+        name: _name.to_string(),
     })
 }

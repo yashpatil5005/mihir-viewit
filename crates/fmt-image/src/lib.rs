@@ -6,5 +6,10 @@ use viewit_core_types::{Document, Format, Error};
 
 #[allow(dead_code)]
 pub fn parse(bytes: &[u8], format: Format, name: &str) -> Result<Document, Error> {
-    Ok(Document::Placeholder { format, name: name.to_string(), byte_len: bytes.len() })
+    Ok(Document::Image {
+        format,
+        byte_len: bytes.len(),
+        name: name.to_string(),
+        asset_path: String::new(),
+    })
 }

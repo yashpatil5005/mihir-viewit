@@ -2,8 +2,16 @@
 
 ## Build (Linux)
 
+Default **lite** (no pdfium, WebView PDF/video stream):
+
 ```bash
-JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 npm run build:android-release
+BUILD_PROFILE=lite JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 npm run build:android-release
+```
+
+Full raster PDF (`libpdfium`):
+
+```bash
+BUILD_PROFILE=full JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 npm run build:android-release
 ```
 
 Output: `dist/viewit-android-universal-debug.apk` (debug-signed, `adb install` OK).
@@ -22,20 +30,21 @@ adb shell am start -n ai.viewit.app/.MainActivity
 
 ## What to exercise
 
-- **Share into ViewIt**: Files / Drive → Share → ViewIt (SEND intent).
-- **Open with**: tap `.txt`, `.pdf`, `.json`, `.md`, `.csv`, image → Open with → ViewIt.
+- **Open with / Share → ViewIt**: PDF, image, txt, etc. (custom `MainActivity` queues URIs → Rust on startup).
+- **Open file…**: Tauri **dialog** (SAF picker, not broken `<input>`).
+- **Browse / Choose file…**: same SAF picker on mobile.
 - **In-app**: onboarding card, dark mode toggle, open file picker if wired in UI.
 
 `content://` URIs use `tauri-plugin-fs` in `open_uri` (not raw `file://` only).
 
-## Sizes (fmt-everything + libpdfium arm64)
+## Sizes (fmt-everything-lite, ADR 0010)
 
 | Artifact | Measured | Budget |
 |----------|----------|--------|
-| AAB | ~10.4 MB | 18 MB |
-| APK | ~17.8 MB | 20 MB |
+| AAB | ~7.0 MB | 18 MB |
+| APK | ~10.8 MB | 20 MB |
 
-Native libs in APK: `libviewit_mobile_lib.so` (~8.4 MB), `libpdfium.so` (~6.1 MB).
+Native libs in APK: `libviewit_mobile_lib.so` only (~8.2 MB). No `libpdfium.so` in lite.
 
 ## Live dev (USB, recommended while iterating UI)
 
@@ -57,10 +66,10 @@ Uses Vite on `0.0.0.0:1421`; Tauri proxies dev URL to the phone. **Not** the sam
 
 ## Performance (offline)
 
-- **Video / audio**: rejected from extension before any read (picker + share `probe_uri`).
-- **Picker files**: base64 IPC chunk to Rust (`open_bytes_b64`) — not `number[]` JSON.
-- **Share `content://`**: still reads full file once (≤32 MB); video blocked by extension on `probe_uri` first.
-- **PDF**: 2 eager pages on Android; extra pages via **Load page** (`pdf_page` command).
+- **PDF / video / audio (share)**: `open_stream` — no full read; WebView via `convertFileSrc` + asset protocol.
+- **PDF (picker, ≤32 MB)**: may raster via Rust if `fmt-pdf`; lite build uses **iframe** + blob URL.
+- **Video (picker, large)**: blob URL + `<video>` without reading into Rust.
+- **Docs (txt/xlsx/…)**: share still reads once (≤32 MB); picker uses `open_bytes_b64`.
 
 ## Release APK still blank / Internal Server Error?
 
@@ -71,7 +80,13 @@ JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 npm run build:android-release
 adb install -r dist/viewit-android-universal-debug.apk
 ```
 
-Chrome inspect WebView: `chrome://inspect` (enabled in `MainActivity` via `WebView.setWebContentsDebuggingEnabled`).
+**No Chrome?** Use in-app **▸ log** (header) for open/stream errors, or PC:
+
+```bash
+./scripts/adb-log-viewit.sh
+```
+
+Chrome inspect (optional): `chrome://inspect` on a PC with Chrome installed.
 
 Logcat while launching:
 

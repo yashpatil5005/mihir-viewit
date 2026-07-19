@@ -23,16 +23,7 @@ const TEXT_EAGER_CAP: usize = 256 * 1024;
 pub fn parse_text(bytes: &[u8], format: Format, _name: &str) -> Result<Document, Error> {
     // Step 1 — decode bytes to a String. Phase 2.3 swaps lossy for chardetng.
     let (text, encoding_label) = decode(bytes);
-    let truncated = text.len() > TEXT_EAGER_CAP;
-    let content = if truncated {
-        text[..TEXT_EAGER_CAP].to_string()
-    } else {
-        text
-    };
-    // Step 1 — decode bytes to a String. Phase 2.3 swaps lossy for chardetng.
-    let (text, encoding_label) = decode(bytes);
 
-    // Step 2 — branch on the format.
     match format {
         Format::Rtf => {
             let plain = rtf_to_text(&text);
@@ -53,8 +44,13 @@ pub fn parse_text(bytes: &[u8], format: Format, _name: &str) -> Result<Document,
         }
         Format::Json => {
             let pretty = pretty_json(&text).unwrap_or_else(|_| text.clone());
+            let truncated = pretty.len() > TEXT_EAGER_CAP;
             Ok(Document::Json {
-                pretty,
+                pretty: if truncated {
+                    pretty[..TEXT_EAGER_CAP].to_string()
+                } else {
+                    pretty
+                },
                 byte_len: bytes.len(),
             })
         }
@@ -67,13 +63,19 @@ pub fn parse_text(bytes: &[u8], format: Format, _name: &str) -> Result<Document,
                 byte_len: bytes.len(),
             })
         }
-        // PlainText, Code, and any other text-like format fall through here.
-        Format::PlainText | Format::Code | _ => Ok(Document::Text {
-            content,
-            encoding: encoding_label,
-            byte_len: bytes.len(),
-            truncated,
-        }),
+        Format::PlainText | Format::Code | Format::Plist | Format::Ics | Format::Vcf | _ => {
+            let truncated = text.len() > TEXT_EAGER_CAP;
+            Ok(Document::Text {
+                content: if truncated {
+                    text[..TEXT_EAGER_CAP].to_string()
+                } else {
+                    text
+                },
+                encoding: encoding_label,
+                byte_len: bytes.len(),
+                truncated,
+            })
+        }
     }
 }
 

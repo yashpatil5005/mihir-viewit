@@ -20,7 +20,11 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self' ipc: http://ipc.localhost asset: http://asset.localhost viewit-stream: https://viewit-stream.localhost blob: data: http://127.0.0.1:*; img-src 'self' asset: http://asset.localhost viewit-stream: https://viewit-stream.localhost blob: data: http://127.0.0.1:*; media-src 'self' asset: http://asset.localhost viewit-stream: https://viewit-stream.localhost blob: data: http://127.0.0.1:*; frame-src 'self' asset: http://asset.localhost viewit-stream: https://viewit-stream.localhost blob: data: http://127.0.0.1:*;",
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["**/*"]
+      }
     }
   },
   "bundle": {
@@ -37,7 +41,21 @@
       { "ext": ["txt"], "mimeType": "text/plain", "role": "Viewer", "rank": "Default" },
       { "ext": ["md"], "mimeType": "text/markdown", "role": "Viewer" },
       { "ext": ["json"], "mimeType": "application/json", "role": "Viewer" },
-      { "ext": ["csv"], "mimeType": "text/csv", "role": "Viewer" }
+      { "ext": ["csv"], "mimeType": "text/csv", "role": "Viewer" },
+      { "ext": ["pdf"], "mimeType": "application/pdf", "role": "Viewer" },
+      { "ext": ["png"], "mimeType": "image/png", "role": "Viewer" },
+      { "ext": ["jpg", "jpeg"], "mimeType": "image/jpeg", "role": "Viewer" },
+      { "ext": ["webp"], "mimeType": "image/webp", "role": "Viewer" },
+      { "ext": ["gif"], "mimeType": "image/gif", "role": "Viewer" },
+      { "ext": ["xlsx"], "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "role": "Viewer" },
+      { "ext": ["docx"], "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "role": "Viewer" },
+      { "ext": ["pptx", "pptm"], "mimeType": "application/vnd.openxmlformats-officedocument.presentationml.presentation", "role": "Viewer" },
+      { "ext": ["ppt"], "mimeType": "application/vnd.ms-powerpoint", "role": "Viewer" },
+      { "ext": ["odp"], "mimeType": "application/vnd.oasis.opendocument.presentation", "role": "Viewer" },
+      { "ext": ["mp4", "mkv", "webm", "mov", "3gp", "avi"], "mimeType": "video/*", "role": "Viewer" },
+      { "ext": ["rtf"], "mimeType": "application/rtf", "role": "Viewer" },
+      { "ext": ["odt"], "mimeType": "application/vnd.oasis.opendocument.text", "role": "Viewer" },
+      { "ext": ["ods"], "mimeType": "application/vnd.oasis.opendocument.spreadsheet", "role": "Viewer" }
     ],
     "android": {
       "minSdkVersion": 24

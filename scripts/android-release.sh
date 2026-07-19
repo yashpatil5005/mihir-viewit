@@ -16,42 +16,59 @@ chmod +x "$ROOT/scripts/patch-pdfium-render.sh" "$ROOT/scripts/patch-tauri-andro
 
 export TAURI_ANDROID_PROJECT_PATH="$GEN"
 
+# Ensure gen/android exists (tauri android init) then overlay MainActivity
+if [[ ! -d "$GEN/app/src/main/java" ]]; then
+  echo "[android] init android project (first-time gen)"
+  (cd "$MOBILE" && npm run tauri -- android init 2>/dev/null || true)
+fi
+chmod +x "$ROOT/scripts/patch-android-mainactivity.sh"
+"$ROOT/scripts/patch-android-mainactivity.sh"
+export WRY_ANDROID_PACKAGE="ai.viewit.app"
+
 echo "[android] frontend build"
 (cd "$MOBILE" && npm run build)
 
-echo "[android] fetch libpdfium.so (ADR 0002)"
-mkdir -p "$PDFIUM_CACHE" "$JNI"
-if [[ ! -f "$PDFIUM_CACHE/libpdfium.so" ]]; then
-  curl -fsSL -o "$PDFIUM_CACHE/pdfium.tgz" \
-    "https://github.com/bblanchon/pdfium-binaries/releases/latest/download/pdfium-android-arm64.tgz"
-  tar xzf "$PDFIUM_CACHE/pdfium.tgz" -C "$PDFIUM_CACHE" lib/libpdfium.so
-  mv "$PDFIUM_CACHE/lib/libpdfium.so" "$PDFIUM_CACHE/libpdfium.so"
+BUILD_PROFILE="${BUILD_PROFILE:-lite}"
+if [[ "$BUILD_PROFILE" == "full" ]]; then
+  CARGO_FEATURES="fmt-everything,tauri/custom-protocol"
+  echo "[android] fetch libpdfium.so (ADR 0002 full build)"
+  mkdir -p "$PDFIUM_CACHE" "$JNI"
+  if [[ ! -f "$PDFIUM_CACHE/libpdfium.so" ]]; then
+    curl -fsSL -o "$PDFIUM_CACHE/pdfium.tgz" \
+      "https://github.com/bblanchon/pdfium-binaries/releases/latest/download/pdfium-android-arm64.tgz"
+    tar xzf "$PDFIUM_CACHE/pdfium.tgz" -C "$PDFIUM_CACHE" lib/libpdfium.so
+    mv "$PDFIUM_CACHE/lib/libpdfium.so" "$PDFIUM_CACHE/libpdfium.so"
+  fi
+  cp "$PDFIUM_CACHE/libpdfium.so" "$JNI/libpdfium.so"
+else
+  CARGO_FEATURES="fmt-everything-lite,tauri/custom-protocol"
+  echo "[android] lite build (ADR 0010 — WebView PDF, no libpdfium)"
+  mkdir -p "$JNI"
+  rm -f "$JNI/libpdfium.so"
 fi
-cp "$PDFIUM_CACHE/libpdfium.so" "$JNI/libpdfium.so"
 
 LINKER="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
 export ANDROID_NDK_HOME="$NDK"
 export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$LINKER"
 export PATH="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
 
-echo "[android] cargo release lib (fmt-everything + embedded assets)"
-# tauri/custom-protocol: must match Tauri release APK (no http://localhost:1421).
+echo "[android] cargo release lib ($CARGO_FEATURES)"
 (cd "$MOBILE" && cargo build --target aarch64-linux-android --release -p viewit-mobile --lib \
-  --features "fmt-everything,tauri/custom-protocol")
+  --features "$CARGO_FEATURES")
 
 echo "[android] sync frontend into APK assets (WebViewAssetLoader fallback)"
 ASSETS="$GEN/app/src/main/assets"
 mkdir -p "$ASSETS"
 rsync -a --delete "$MOBILE/build/" "$ASSETS/"
 
-echo "[android] gradle AAB + APK"
-(cd "$GEN" && ./gradlew :app:bundleUniversalRelease :app:assembleUniversalRelease \
-  -x rustBuildArm64Release -x rustBuildUniversalRelease --no-daemon)
+echo "[android] gradle arm64-only APK (~11 MB, not 4-ABI universal)"
+(cd "$GEN" && ./gradlew :app:assembleArm64Release \
+  -PabiList=arm64-v8a -x rustBuildArm64Release -x rustBuildUniversalRelease --no-daemon)
 
 echo "[android] size gate"
 (cd "$ROOT" && npx tsx scripts/size-budget.ts)
 
-APK_UNSIGNED="$GEN/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk"
+APK_UNSIGNED="$GEN/app/build/outputs/apk/arm64/release/app-arm64-release-unsigned.apk"
 APK_SIGNED="$ROOT/dist/viewit-android-universal-debug.apk"
 mkdir -p "$ROOT/dist"
 

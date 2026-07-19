@@ -1,6 +1,11 @@
 //! ViewIt mobile Tauri backend. Mirrors desktop commands; Android uses
 //! `tauri-plugin-fs` for `content://` URIs (share / file picker).
 
+#[cfg(target_os = "android")]
+mod android_pending;
+
+mod materialize;
+mod stream_protocol;
 mod uri_util;
 
 use std::io::Read;
@@ -14,6 +19,8 @@ struct OpenedUrls(Mutex<Vec<Url>>);
 
 #[tauri::command]
 fn opened_urls(app: tauri::AppHandle) -> Vec<String> {
+    #[cfg(target_os = "android")]
+    android_pending::drain_into_opened_urls(&app);
     app.state::<OpenedUrls>()
         .0
         .lock()
@@ -30,6 +37,48 @@ async fn open_uri(
     name: Option<String>,
 ) -> Result<Document, String> {
     uri_util::open_from_uri(&app, uri, name)
+}
+
+/// Desktop / iOS: raw bytes via `tauri::ipc::Response` (optimal, no JSON encoding).
+/// Note: Android WebView doesn't support `InvokeBody::Raw`, so the mobile-frontend
+/// uses `read_materialized_bytes_b64` instead.
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+fn read_materialized_bytes(app: tauri::AppHandle, asset_path: String) -> Result<tauri::ipc::Response, String> {
+    let bytes = materialize::read_materialized_file(&app, &asset_path)?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+/// Android: base64-encoded string. ~33% size overhead but far cheaper than JSON `number[]`
+/// (one byte → one JS number would be ~3-4x raw size and 4-byte ints).
+/// Frontend decodes via `fetch('data:application/octet-stream;base64,...')` or `atob`.
+#[tauri::command]
+fn read_materialized_bytes_b64(app: tauri::AppHandle, asset_path: String) -> Result<String, String> {
+    use base64::Engine;
+    let bytes = materialize::read_materialized_file(&app, &asset_path)?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
+}
+
+/// PPTX viewer: materialize if needed, return cache file URL (offline).
+#[tauri::command]
+fn ensure_pptx_asset(
+    app: tauri::AppHandle,
+    uri: String,
+    name: Option<String>,
+) -> Result<String, String> {
+    let (ext, display_name) = uri_util::uri_display_name(&app, &uri, name);
+    let ext = if ext.is_empty() { "pptx".into() } else { ext };
+    let doc = materialize::open_pptx_materialized(&app, &uri, &display_name, &ext)?;
+    match doc {
+        viewit_core_types::Document::Pptx { asset_path, .. } => {
+            if asset_path.is_empty() {
+                Err("pptx materialize produced empty path".into())
+            } else {
+                Ok(asset_path)
+            }
+        }
+        _ => Err("expected pptx document".into()),
+    }
 }
 
 #[tauri::command]
@@ -253,14 +302,38 @@ fn resolve_relative(href: String, base: &str) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "android")]
+    {
+        // FIRST line — direct native log write before any other code so we can
+        // confirm `run()` is being entered even if Tauri panics elsewhere.
+        android_log_write_info("viewit", "[viewit] run() FIRST LINE");
+        android_logger::init_once(
+            android_logger::Config::default()
+                .with_max_level(log::LevelFilter::Info)
+                .with_tag("viewit"),
+        );
+        log::set_max_level(log::LevelFilter::Info);
+        android_log_write_info("viewit", "[viewit] android_logger wired");
+        log::info!("[viewit] run() entered — log crate is live");
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .manage(OpenedUrls(Mutex::new(vec![])))
+        .manage(stream_protocol::StreamSlots::default())
+        .register_uri_scheme_protocol("viewit-stream", |ctx, request| {
+            let app = ctx.app_handle();
+            let slots = app.state::<stream_protocol::StreamSlots>();
+            stream_protocol::handle_stream_request_http(app, slots.inner(), request)
+        })
         .invoke_handler(tauri::generate_handler![
             opened_urls,
+            read_materialized_bytes_b64,
+            #[cfg(not(target_os = "android"))]
+            read_materialized_bytes,
+            ensure_pptx_asset,
             probe_uri,
             open_uri,
             open_bytes,
@@ -269,8 +342,19 @@ pub fn run() {
             csv_page,
             epub_chapter,
             archive_extract,
+            #[cfg(feature = "fmt-pdf")]
             pdf_page
         ])
+        .setup(|app| {
+            #[cfg(target_os = "android")]
+            {
+                let _ = materialize::prune_viewit_cache(app.handle());
+                android_pending::drain_into_opened_urls(app.handle());
+            }
+            #[cfg(not(target_os = "android"))]
+            let _ = app;
+            Ok(())
+        })
         .build(tauri::generate_context!())
         .expect("error while building viewit-mobile Tauri application")
         .run(|app, event| {
@@ -286,4 +370,24 @@ pub fn run() {
             }
             let _ = (app, event);
         });
+}
+
+/// Direct FFI to `__android_log_write` — bypasses `log` crate entirely.
+/// Used so we can confirm native logging works even if `log::set_logger`
+/// was shadowed by another crate during init.
+#[cfg(target_os = "android")]
+#[inline(never)]
+fn android_log_write_info(tag: &str, msg: &str) {
+    use std::ffi::CString;
+    unsafe {
+        let tag_c = CString::new(tag).unwrap_or_default();
+        let msg_c = CString::new(msg).unwrap_or_default();
+        extern "C" {
+            fn __android_log_write(prio: i32, tag: *const u8, text: *const u8) -> i32;
+        }
+        const ANDROID_LOG_INFO: i32 = 4;
+        let r = __android_log_write(ANDROID_LOG_INFO, tag_c.as_ptr(), msg_c.as_ptr());
+        // sink the return value so LTO doesn't drop the call.
+        std::hint::black_box(r);
+    }
 }

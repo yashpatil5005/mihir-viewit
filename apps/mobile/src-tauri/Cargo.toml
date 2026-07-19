@@ -25,7 +25,7 @@ tauri-build = { version = "2", features = [] }
 viewit-core = { path = "../../../crates/core", features = ["fmt-text"] }
 viewit-core-types = { path = "../../../crates/core-types" }
 # custom-protocol: release webview serves embedded frontend, not devUrl (CLI sets this too).
-tauri = { version = "2", features = ["custom-protocol"] }
+tauri = { version = "2", features = ["custom-protocol", "protocol-asset"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-shell = "2"
@@ -37,21 +37,31 @@ zip = "=8.6.0"
 tar = "0.4"
 flate2 = "1"
 base64 = "0.22"
+http = "1"
+mime_guess = "2"
+url = "2"
 viewit-fmt-pdf = { path = "../../../crates/fmt-pdf", optional = true }
+
+[target.'cfg(target_os = "android")'.dependencies]
+android_logger = "0.13"
+log = "0.4"
 
 [features]
 default = ["fmt-text-only"]
 fmt-text-only = ["viewit-core/fmt-text"]
 # Phase 1.4 / 5 — umbrella for full Android build (all fmt-* parsers + iWork).
 # fmt-text is always on (text/markdown/json/csv/rtf) since it's tiny and core to the viewer experience.
-fmt-everything = [
+fmt-everything-lite = [
   "fmt-text-only",
   "fmt-office",
-  "fmt-pdf",
   "fmt-archive",
   "fmt-image",
   "fmt-ebook",
   "fmt-iwork",
+]
+fmt-everything = [
+  "fmt-everything-lite",
+  "fmt-pdf",
 ]
 fmt-office = ["viewit-core/fmt-office"]
 fmt-pdf = ["viewit-core/fmt-pdf", "viewit-fmt-pdf"]

@@ -24,7 +24,7 @@ pub fn parse_pptx(bytes: &[u8], _format: Format, _name: &str) -> Result<Document
     let slide_count = count_slides_in_presentation(&presentation_xml);
 
     let mut slides: Vec<PptxSlide> = Vec::with_capacity(slide_count);
-    for i in 1..=slide_count.min(10) {
+    for i in 1..=slide_count.min(200) {
         let slide_path = format!("ppt/slides/slide{}.xml", i);
         let mut slide_xml = String::new();
         if let Ok(mut f) = archive.by_name(&slide_path) {
@@ -38,6 +38,7 @@ pub fn parse_pptx(bytes: &[u8], _format: Format, _name: &str) -> Result<Document
         slide_count,
         slides,
         byte_len: bytes.len(),
+        asset_path: String::new(),
     })
 }
 

@@ -49,7 +49,24 @@ pub enum Format {
     Plist,
     Ics,
     Vcf,
+    Video,
+    Audio,
     Unsupported,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum MediaKind {
+    Video,
+    Audio,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum StreamKind {
+    Pdf,
+    Video,
+    Audio,
 }
 
 /// Parsed document model. Svelte renders based on the variant.
@@ -78,6 +95,9 @@ pub enum Document {
         #[serde(rename = "byte_len")]
         byte_len: usize,
         name: String,
+        /// Materialized cache `file://` for Android WebView (`convertFileSrc`).
+        #[serde(default)]
+        asset_path: String,
     },
     /// Phase 2.4 — Markdown body (already converted to safe-ish HTML by
     /// `pulldown-cmark` on the Rust side).
@@ -123,15 +143,35 @@ pub enum Document {
         #[serde(rename = "byte_len")]
         byte_len: usize,
     },
-    /// Phase 2.2 — PDF. Per ADR 0002: bundled pdfium arm64-v8a.
-    /// Pages are rasterized to PNG bitmaps, base64-encoded as data URLs.
-    /// First MAX_EAGER_PAGES are shipped eagerly; the rest via `pdf_page`.
+    /// Phase 2.2 — PDF. ADR 0010: `native` + empty `pages` → WebView iframe + asset URL.
+    /// ADR 0002 optional: raster `pages` via pdfium when `fmt-pdf` enabled.
     Pdf {
         page_count: usize,
-        /// Base64 data URLs of the first N pages (PNG).
         pages: Vec<String>,
         #[serde(rename = "byte_len")]
         byte_len: usize,
+        #[serde(default)]
+        native: bool,
+        name: String,
+    },
+    /// ADR 0010 — video/audio; `asset_path` is host cache file for `convertFileSrc`.
+    Media {
+        format: Format,
+        media_kind: MediaKind,
+        name: String,
+        #[serde(rename = "byte_len")]
+        byte_len: usize,
+        #[serde(default)]
+        asset_path: String,
+    },
+    /// PDF / media materialized to app cache (Android custom protocol workaround).
+    StreamFile {
+        asset_path: String,
+        mime: String,
+        name: String,
+        #[serde(rename = "byte_len")]
+        byte_len: usize,
+        stream_kind: StreamKind,
     },
     Unsupported {
         format: Format,
@@ -144,6 +184,9 @@ pub enum Document {
         slides: Vec<PptxSlide>,
         #[serde(rename = "byte_len")]
         byte_len: usize,
+        /// Materialized `.pptx` on disk for client-side `pptx-viewer` (Android SAF).
+        #[serde(default)]
+        asset_path: String,
     },
     /// Phase 3.1 — DOCX structured: paragraphs (with optional heading level),
     /// tables (rows × cells), and lazily-rendered text runs.

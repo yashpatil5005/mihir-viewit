@@ -1,3 +1,11 @@
+import {
+  OPEN_BYTES_CAP,
+  checkFileBeforeRead,
+  unsupportedDocument,
+  fileExtension,
+} from './filePolicy';
+import { displayNameFromUri } from './displayNameFromUri';
+
 // @viewit/platform — single seam between the Svelte frontend and the
 // backing implementation (Tauri Rust commands OR direct WASM calls).
 //
@@ -8,7 +16,9 @@
 // in Phase 1.6 of the scaffold work; until then, the web path falls back to
 // a JS-only text reader so the loop is exercisable immediately.
 
-export type DocumentKind = 'text' | 'image' | 'markdown' | 'json' | 'csv' | 'pdf' | 'epub' | 'archive' | 'pptx' | 'docx' | 'xlsx' | 'unsupported' | 'placeholder';
+export type DocumentKind =
+  | 'text' | 'image' | 'markdown' | 'json' | 'csv' | 'pdf' | 'epub' | 'archive'
+  | 'pptx' | 'docx' | 'xlsx' | 'media' | 'stream-file' | 'unsupported' | 'placeholder';
 export type Format =
   | 'plain-text' | 'markdown' | 'json' | 'csv' | 'code'
   | 'pdf' | 'image-png' | 'image-jpg' | 'image-webp' | 'image-gif'
@@ -56,6 +66,7 @@ const IS_TAURI =
   typeof window !== 'undefined' &&
   // Tauri v2 injects __TAURI_INTERNALS__ into the webview.
   '__TAURI_INTERNALS__' in (window ?? {});
+export { IS_TAURI };
 
 // ---------------------------------------------------------------------------
 // API surface
@@ -72,7 +83,11 @@ export async function openedFiles(): Promise<string[]> {
 export async function onOpenedFiles(cb: (urls: string[]) => void): Promise<() => void> {
   if (!IS_TAURI) return () => {};
   const { listen } = await import('@tauri-apps/api/event');
-  const unlisten = await listen<string[]>('opened', (e) => cb(e.payload));
+    const unlisten = await listen<string[] | string>('opened', (e) => {
+      const p = e.payload;
+      const urls = Array.isArray(p) ? p : [p];
+      cb(urls);
+    });
   return unlisten;
 }
 
@@ -89,25 +104,105 @@ export async function openFile(uri: string): Promise<Document> {
   if (IS_TAURI) {
     const { invoke } = await import('@tauri-apps/api/core');
     const blocked = await invoking(() =>
-      invoke<Document | null>('probe_uri', { uri, name: null }),
+      invoke<Document | null>('probe_uri', { uri, name: displayNameFromUri(uri) }),
     );
     if (blocked && typeof blocked === 'object' && (blocked as Document).kind === 'unsupported') {
       return blocked as Document;
     }
-    return await invokeOpenUri(uri);
+    const { debugLog } = await import('./debugLog');
+    debugLog(`openFile ${uri.slice(0, 80)}…`);
+    try {
+      const doc = await invokeOpenUri(uri, displayNameFromUri(uri));
+      debugLog(`ok kind=${(doc as Document).kind}`);
+      return doc;
+    } catch (e) {
+      debugLog(`openFile err: ${e instanceof Error ? e.message : String(e)}`);
+      throw e;
+    }
   }
   return await webOpenFile(uri);
 }
 
-export { OPEN_BYTES_CAP, checkFileBeforeRead, unsupportedDocument } from './filePolicy';
+export { OPEN_BYTES_CAP, checkFileBeforeRead, unsupportedDocument, fileExtension };
+export { assetUrlForPath } from './mediaUrl';
+export { readMaterializedBytes } from './readMaterialized';
+export { resolvePptxAssetPath } from './pptxAsset';
+export { displayNameFromUri } from './displayNameFromUri';
+export { pickSingleFile } from './pickFile';
+export { debugLog, debugLogLines, debugLogClear } from './debugLog';
 
 /** After `<input type="file">` — checks size/type first (no read for video/large). */
+const STREAM_PICKER_EXT = new Set([
+  'pdf', 'mp4', 'm4v', 'webm', 'mkv', 'mov', 'avi', 'mpg', 'mpeg', '3gp', 'wmv', 'flv', 'ts',
+  'mp3', 'm4a', 'aac', 'flac', 'ogg', 'wav', 'wma', 'opus',
+]);
+
+function pickerStreamDocument(file: File): Document | null {
+  const viewitUri = (file as File & { viewitUri?: string }).viewitUri;
+  if (viewitUri) return null;
+  const ext = fileExtension(file.name);
+  if (!STREAM_PICKER_EXT.has(ext)) return null;
+  if (IS_TAURI) {
+    return null;
+  }
+  if (file.size <= OPEN_BYTES_CAP) return null;
+  return streamDocFromFile(file, ext);
+}
+
+const VIDEO_AUDIO = new Set([
+  'mp4', 'm4v', 'webm', 'mkv', 'mov', 'avi', 'mpg', 'mpeg', '3gp', 'wmv', 'flv', 'ts',
+  'mp3', 'm4a', 'aac', 'flac', 'ogg', 'wav', 'wma', 'opus',
+]);
+
+function streamDocFromFile(file: File, ext: string): Document | null {
+  const name = file.name || 'file';
+  if (ext === 'pdf') {
+    return {
+      kind: 'pdf',
+      native: true,
+      pages: [],
+      page_count: 0,
+      byte_len: file.size,
+      name,
+    } as Document;
+  }
+  const audio = new Set(['mp3', 'm4a', 'aac', 'flac', 'ogg', 'wav', 'wma', 'opus']);
+  return {
+    kind: 'media',
+    media_kind: audio.has(ext) ? 'audio' : 'video',
+    format: audio.has(ext) ? 'audio' : 'video',
+    name,
+    byte_len: file.size,
+  } as Document;
+}
+
 export async function openFileFromPicker(file: File): Promise<Document> {
+  const viewitUri = (file as File & { viewitUri?: string }).viewitUri;
+  if (viewitUri) {
+    return openFile(viewitUri);
+  }
   const gate = checkFileBeforeRead(file);
   if (gate.reject) {
     return unsupportedDocument(gate.reason, gate.openWithExternal);
   }
+  const streamDoc = pickerStreamDocument(file);
+  if (streamDoc) return streamDoc;
   const name = file.name || 'file';
+  const ext = fileExtension(name);
+  if (IS_TAURI && ext === 'pdf') {
+    const { invoke } = await import('@tauri-apps/api/core');
+    const buf = new Uint8Array(await file.arrayBuffer());
+    if (buf.length <= OPEN_BYTES_CAP) {
+      let binary = '';
+      const chunk = 0x8000;
+      for (let i = 0; i < buf.length; i += chunk) {
+        binary += String.fromCharCode(...buf.subarray(i, i + chunk));
+      }
+      const b64 = btoa(binary);
+      const doc = await invoking(() => invoke<Document>('open_bytes_b64', { b64, name }));
+      if ((doc as { native?: boolean }).native) return doc;
+    }
+  }
   const buf = new Uint8Array(await file.arrayBuffer());
   if (IS_TAURI) {
     const { invoke } = await import('@tauri-apps/api/core');
@@ -143,10 +238,10 @@ export async function openWithExternal(uri: string): Promise<void> {
 // ---------------------------------------------------------------------------
 // Internal: Tauri invoke adapter
 // ---------------------------------------------------------------------------
-async function invokeOpenUri(uri: string): Promise<Document> {
+async function invokeOpenUri(uri: string, name?: string | null): Promise<Document> {
   const { invoke } = await import('@tauri-apps/api/core');
   return invoking(async () => {
-    const doc = await invoke<Document>('open_uri', { uri });
+    const doc = await invoke<Document>('open_uri', { uri, name: name ?? null });
     return doc;
   });
 }

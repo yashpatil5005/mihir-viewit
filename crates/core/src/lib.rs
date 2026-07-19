@@ -45,6 +45,40 @@ pub fn sniff(bytes: &[u8], ext: &str) -> Format {
     sniff_ext(ext)
 }
 
+/// Extension hint from magic only (content:// shares often lack a filename).
+pub fn ext_hint_from_magic(bytes: &[u8]) -> Option<&'static str> {
+    ext_from_sniff(bytes, "")
+}
+
+pub fn ext_from_sniff(bytes: &[u8], ext_hint: &str) -> Option<&'static str> {
+    if bytes.is_empty() {
+        return None;
+    }
+    let cap = bytes.len().min(256 * 1024);
+    let f = sniff(&bytes[..cap], ext_hint);
+    Some(match f {
+        Format::Pdf => "pdf",
+        Format::PlainText | Format::Code => "txt",
+        Format::Markdown => "md",
+        Format::Json => "json",
+        Format::Csv => "csv",
+        Format::Docx => "docx",
+        Format::Xlsx => "xlsx",
+        Format::Pptx => "pptx",
+        Format::Doc => "doc",
+        Format::Xls => "xls",
+        Format::Ppt => "ppt",
+        Format::ImagePng => "png",
+        Format::ImageJpg => "jpg",
+        Format::ImageGif => "gif",
+        Format::ImageWebp => "webp",
+        Format::Video => "mp4",
+        Format::Audio => "mp3",
+        Format::ArchiveZip => "zip",
+        _ => return None,
+    })
+}
+
 /// ZIP magic matches docx/xlsx/pptx/odt/ods/odp/epub/iWork — extension wins over ArchiveZip.
 fn sniff_zip_as_office_or_epub(bytes: &[u8], ext: &str) -> Format {
     match ext {
@@ -113,6 +147,9 @@ fn sniff_magic(bytes: &[u8], ext: &str) -> Option<Format> {
     if bytes.len() < 4 {
         return None;
     }
+    if bytes.len() >= 12 && bytes[4..8] == *b"ftyp" {
+        return Some(Format::Video);
+    }
     let p = &bytes[..bytes.len().min(16)];
     Some(match p {
         // PDF: %PDF-
@@ -135,6 +172,10 @@ fn sniff_magic(bytes: &[u8], ext: &str) -> Option<Format> {
         | [_, _, _, _, 0x66, 0x74, 0x79, 0x70, 0x6D, 0x69, 0x66, 0x31, ..] => Format::ImageHeic,
         // PSD: "8BPS"
         [0x38, 0x42, 0x50, 0x53, ..] => Format::ImagePsd,
+        // TIFF LE / BE
+        [0x49, 0x49, 0x2A, 0x00, ..] | [0x4D, 0x4D, 0x00, 0x2A, ..] => Format::ImageTiff,
+        // ICO
+        [0x00, 0x00, 0x01, 0x00, ..] => Format::ImagePng,
         // ZIP — extension + inner paths disambiguate Office / EPUB from plain zip.
         [0x50, 0x4B, 0x03, 0x04, ..] | [0x50, 0x4B, 0x05, 0x06, ..] => {
             return Some(sniff_zip_as_office_or_epub(bytes, ext));
@@ -149,19 +190,68 @@ fn sniff_magic(bytes: &[u8], ext: &str) -> Option<Format> {
     })
 }
 
-fn is_video_ext(ext: &str) -> bool {
+pub fn is_video_ext(ext: &str) -> bool {
     matches!(
         ext,
-        "mp4" | "m4v" | "webm" | "mkv" | "mov" | "avi" | "mpg" | "mpeg" | "3gp" | "wmv"
+        "mp4" | "m4v" | "webm" | "mkv" | "mov" | "avi" | "mpg" | "mpeg" | "3gp" | "wmv" | "flv"
     )
+}
+
+pub fn is_audio_ext(ext: &str) -> bool {
+    matches!(
+        ext,
+        "mp3" | "m4a" | "aac" | "flac" | "ogg" | "wav" | "wma" | "opus"
+    )
+}
+
+pub fn is_stream_ext(ext: &str) -> bool {
+    ext == "pdf" || is_video_ext(ext) || is_audio_ext(ext)
+}
+
+pub fn open_stream(ext: &str, name: &str) -> Result<Document, Error> {
+    if ext == "pdf" {
+        return Ok(Document::Pdf {
+            page_count: 0,
+            pages: vec![],
+            byte_len: 0,
+            native: true,
+            name: name.to_string(),
+        });
+    }
+    if is_video_ext(ext) {
+        return Ok(Document::Media {
+            format: Format::Video,
+            media_kind: viewit_core_types::MediaKind::Video,
+            name: name.to_string(),
+            byte_len: 0,
+            asset_path: String::new(),
+        });
+    }
+    if is_audio_ext(ext) {
+        return Ok(Document::Media {
+            format: Format::Audio,
+            media_kind: viewit_core_types::MediaKind::Audio,
+            name: name.to_string(),
+            byte_len: 0,
+            asset_path: String::new(),
+        });
+    }
+    Err(Error::Parse(format!("not a stream format: .{}", ext)))
 }
 
 fn sniff_ext(ext: &str) -> Format {
     match ext {
-        "txt" | "log" | "text" => Format::PlainText,
-        "md" | "markdown" | "mdown" | "mkdn" => Format::Markdown,
-        "json" => Format::Json,
+        "txt" | "log" | "text" | "readme" | "gitignore" | "gitattributes" | "editorconfig"
+        | "dockerignore" | "npmignore" | "nfo" | "srt" | "vtt" | "sub" | "rst" | "adoc"
+        | "asc" | "strings" => Format::PlainText,
+        "md" | "markdown" | "mdown" | "mkdn" | "mdx" => Format::Markdown,
+        "json" | "jsonc" | "json5" | "ipynb" | "jsonl" | "ndjson" | "lock" => Format::Json,
         "csv" | "tsv" => Format::Csv,
+        "yaml" | "yml" => Format::Code,
+        "xml" | "xsd" | "xsl" | "xslt" => Format::Code,
+        "html" | "htm" | "xhtml" => Format::Code,
+        "css" | "scss" | "sass" | "less" => Format::Code,
+        "ini" | "cfg" | "conf" | "config" | "env" | "toml" => Format::Code,
         "pdf" => Format::Pdf,
         "png" => Format::ImagePng,
         "jpg" | "jpeg" => Format::ImageJpg,
@@ -169,19 +259,20 @@ fn sniff_ext(ext: &str) -> Format {
         "gif" => Format::ImageGif,
         "bmp" => Format::ImageBmp,
         "tif" | "tiff" => Format::ImageTiff,
-        "svg" => Format::ImageSvg,
-        "heic" | "heif" => Format::ImageHeic,
+        "svg" | "svgz" => Format::ImageSvg,
+        "heic" | "heif" | "avif" => Format::ImageHeic,
         "psd" => Format::ImagePsd,
+        "ico" | "icns" | "jfif" => Format::ImagePng,
         "epub" => Format::Epub,
         "zip" => Format::ArchiveZip,
         "tar" => Format::ArchiveTar,
         "tgz" | "gz" => Format::ArchiveTarGz,
         "7z" => Format::Archive7z,
         "rar" => Format::ArchiveRar,
-        "docx" => Format::Docx,
-        "xlsx" => Format::Xlsx,
+        "docx" | "docm" | "dotx" | "dotm" => Format::Docx,
+        "xlsx" | "xlsm" | "xlsb" => Format::Xlsx,
         "xls" => Format::Xls,
-        "pptx" => Format::Pptx,
+        "pptx" | "pptm" | "potx" => Format::Pptx,
         "odt" => Format::Odt,
         "ods" => Format::Ods,
         "odp" => Format::Odp,
@@ -195,12 +286,16 @@ fn sniff_ext(ext: &str) -> Format {
         "ics" => Format::Ics,
         "vcf" => Format::Vcf,
         "desktop" => Format::Code,
-        "mp4" | "m4v" | "webm" | "mkv" | "mov" | "avi" | "mpg" | "mpeg" | "3gp" | "wmv" => {
-            Format::Unsupported
-        }
-        "rs" | "ts" | "js" | "py" | "go" | "c" | "cpp" | "h" | "hpp" | "java" | "kt"
-        | "swift" | "sh" | "sql" | "lua" | "php" | "rb" | "ex" | "exs" | "erl" | "hs"
-        | "ml" | "clj" | "cljs" | "scala" | "r" | "jl" | "vim" | "ps1" | "bat" => Format::Code,
+        "mp4" | "m4v" | "webm" | "mkv" | "mov" | "avi" | "mpg" | "mpeg" | "3gp" | "wmv" | "flv"
+        | "ts" => Format::Video,
+        "mp3" | "m4a" | "aac" | "flac" | "ogg" | "wav" | "wma" | "opus" => Format::Audio,
+        "rs" | "tsx" | "jsx" | "mjs" | "cjs" | "js" | "py" | "pyw" | "go" | "c" | "cc"
+        | "cpp" | "cxx" | "h" | "hpp" | "hh" | "java" | "kt" | "kts" | "swift" | "sh" | "bash"
+        | "zsh" | "fish" | "sql" | "lua" | "php" | "rb" | "ex" | "exs" | "erl" | "hrl" | "hs"
+        | "ml" | "mli" | "clj" | "cljs" | "scala" | "sc" | "r" | "jl" | "vim" | "ps1" | "bat"
+        | "cmd" | "cs" | "fs" | "fsx" | "dart" | "zig" | "nim" | "v" | "sv" | "vhd" | "vhdl"
+        | "asm" | "s" | "gradle" | "cmake" | "make" | "mk" | "dockerfile" | "proto" | "graphql"
+        | "gql" | "vue" | "svelte" | "astro" | "wasm" | "wat" | "patch" | "diff" => Format::Code,
         _ => Format::Unsupported,
     }
 }
@@ -223,7 +318,27 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
                 return viewit_fmt_pdf::parse(bytes, format, name).map_err(Error::from_parse);
             }
             #[cfg(not(feature = "fmt-pdf"))]
-            return Ok(Document::Placeholder { format, name: name.to_string(), byte_len: bytes.len() });
+            return Ok(Document::Pdf {
+                page_count: 0,
+                pages: vec![],
+                byte_len: bytes.len(),
+                native: true,
+                name: name.to_string(),
+            });
+        }
+        Format::Video | Format::Audio => {
+            let kind = if format == Format::Video {
+                viewit_core_types::MediaKind::Video
+            } else {
+                viewit_core_types::MediaKind::Audio
+            };
+            return Ok(Document::Media {
+                format,
+                media_kind: kind,
+                name: name.to_string(),
+                byte_len: bytes.len(),
+                asset_path: String::new(),
+            });
         }
         Format::ImagePng | Format::ImageJpg | Format::ImageWebp | Format::ImageGif
         | Format::ImageBmp | Format::ImageTiff | Format::ImageSvg | Format::ImageHeic
@@ -235,6 +350,7 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
                 format,
                 byte_len: bytes.len(),
                 name: name.to_string(),
+                asset_path: String::new(),
             });
         }
         Format::Epub => {
@@ -340,5 +456,13 @@ mod tests {
         assert_eq!(sniff(pk, "xlsx"), Format::Xlsx);
         assert_eq!(sniff(pk, "docx"), Format::Docx);
         assert_eq!(sniff(pk, "zip"), Format::ArchiveZip);
+    }
+
+    #[test]
+    fn textish_ext_sniff() {
+        assert_eq!(sniff(b"", "yaml"), Format::Code);
+        assert_eq!(sniff(b"", "toml"), Format::Code);
+        assert_eq!(sniff(b"", "ics"), Format::Ics);
+        assert_eq!(sniff(b"", "tsx"), Format::Code);
     }
 }

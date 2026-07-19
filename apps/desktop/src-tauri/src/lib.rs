@@ -4,7 +4,7 @@
 //! Phase 1.10: invoke `viewit_core::open(bytes, ext, name)` to dispatch.
 use std::sync::Mutex;
 use tauri::{Manager, Url};
-use viewit_core::{open, Document, Format, Suggestion, OPEN_BYTES_CAP};
+use viewit_core::{is_stream_ext, open, open_stream, Document, Format, Suggestion, OPEN_BYTES_CAP};
 
 #[cfg(feature = "fmt-pdf")]
 use viewit_fmt_pdf;
@@ -31,7 +31,6 @@ fn opened_urls(app: tauri::AppHandle) -> Vec<String> {
 #[tauri::command]
 async fn open_uri(uri: String, name: Option<String>) -> Result<Document, String> {
     let path = parse_file_uri(&uri).ok_or_else(|| format!("not a file:// URI: {}", uri))?;
-    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
     let ext = path
         .extension()
         .and_then(|s| s.to_str())
@@ -43,6 +42,10 @@ async fn open_uri(uri: String, name: Option<String>) -> Result<Document, String>
             .unwrap_or("file")
             .to_string()
     });
+    if is_stream_ext(&ext) {
+        return open_stream(&ext, &display_name).map_err(|e| e.to_string());
+    }
+    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
     if bytes.len() > OPEN_BYTES_CAP {
         return Err(format!("file exceeds {} MB cap", OPEN_BYTES_CAP / 1_048_576));
     }
@@ -67,15 +70,18 @@ fn pdf_page_render(bytes: &[u8], index: usize) -> Result<String, String> {
 
 #[tauri::command]
 fn open_bytes(bytes: Vec<u8>, name: String) -> Result<Document, String> {
-    if let Some(doc) = viewit_core::reject_if_too_large(bytes.len()) {
-        return Ok(doc);
-    }
     let ext = name
         .rsplit('.')
         .next()
         .unwrap_or("")
         .to_lowercase();
-    let display = if name.is_empty() { "file".to_string() } else { name };
+    let display = if name.is_empty() { "file".to_string() } else { name.clone() };
+    if is_stream_ext(&ext) && bytes.len() > OPEN_BYTES_CAP {
+        return open_stream(&ext, &display).map_err(|e| e.to_string());
+    }
+    if let Some(doc) = viewit_core::reject_if_too_large(bytes.len()) {
+        return Ok(doc);
+    }
     open(&bytes, &ext, &display).map_err(|e| e.to_string())
 }
 

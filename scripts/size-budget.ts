@@ -33,7 +33,7 @@ interface Budget {
 
 const ARTIFACT_DIRS_DEFAULT = {
   'android-aab-arm64-v8a': 'apps/mobile/src-tauri/gen/android/app/build/outputs/bundle/universalRelease',
-  'android-apk-arm64-v8a': 'apps/mobile/src-tauri/gen/android/app/build/outputs/apk/universal/release',
+  'android-apk-arm64-v8a': 'apps/mobile/src-tauri/gen/android/app/build/outputs/apk/arm64/release',
   'ios-ipa': 'apps/mobile/src-tauri/gen/apple/build/Build/Products/Release-iphoneos',
   'desktop-linux': 'apps/desktop/src-tauri/target/release/bundle',
   'windows-msi': 'apps/desktop/src-tauri/target/release/bundle/msi',

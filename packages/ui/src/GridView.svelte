@@ -1,16 +1,28 @@
 <script lang="ts">
-  // Phase 5.1 — Thumbnail / QuickLook-style grid.
-  // Uses <input webkitdirectory> for desktop/web. Mobile fallback: single-file picker.
-  // Image entries render <img> at 96px; non-image shows format icon + name.
+  import { pickSingleFile } from '@viewit/platform';
 
-  export let onPick: (file: File) => void = () => {};
+  let { onPick, root = 'desktop' }: { onPick: (file: File) => void; root?: string } = $props();
 
-  let entries: Array<{ name: string; size: number; url: string; isImage: boolean }> = [];
+  let entries: Array<{ name: string; size: number; url: string; isImage: boolean }> = $state([]);
 
-  function choose() {
+  function basename(p: string) {
+    const i = p.lastIndexOf('/');
+    return i >= 0 ? p.slice(i + 1) : p;
+  }
+  function extLabel(p: string) {
+    const i = p.lastIndexOf('.');
+    return i >= 0 ? p.slice(i + 1).toUpperCase() : '?';
+  }
+
+  async function choose() {
+    if (root === 'mobile' || root === 'desktop') {
+      const f = await pickSingleFile();
+      if (f) onPick(f);
+      return;
+    }
     const input = document.createElement('input');
     input.type = 'file';
-    (input as any).webkitdirectory = true;
+    (input as HTMLInputElement & { webkitdirectory?: boolean }).webkitdirectory = true;
     input.multiple = true;
     input.onchange = () => {
       const files = Array.from(input.files ?? []);
@@ -18,7 +30,7 @@
         const type = f.type || '';
         const isImage = type.startsWith('image/');
         return {
-          name: f.webkitRelativePath || f.name,
+          name: (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name,
           size: f.size,
           url: isImage ? URL.createObjectURL(f) : '',
           isImage,
@@ -28,28 +40,22 @@
     input.click();
   }
 
-  function open(entry: typeof entries[0]) {
-    // Re-read file from name match — for MVP just trigger file picker.
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.onchange = () => {
-      const f = input.files?.[0];
-      if (f) onPick(f);
-    };
-    input.click();
+  async function openEntry() {
+    const f = await pickSingleFile();
+    if (f) onPick(f);
   }
 </script>
 
 <div class="grid-view">
-  <button onclick={choose} aria-label="Browse directory">Browse…</button>
+  <button type="button" onclick={choose} aria-label="Choose file">Choose file…</button>
   {#if entries.length > 0}
     <div class="grid" role="grid">
       {#each entries as entry}
-        <button class="cell" onclick={() => open(entry)} role="gridcell" tabindex="0">
+        <button type="button" class="cell" onclick={openEntry} role="gridcell" tabindex="0">
           {#if entry.isImage}
             <img src={entry.url} alt={entry.name} loading="lazy" />
           {:else}
-            <div class="icon">{ext(entry.name)}</div>
+            <div class="icon">{extLabel(entry.name)}</div>
           {/if}
           <span class="label">{basename(entry.name)}</span>
         </button>
@@ -57,17 +63,6 @@
     </div>
   {/if}
 </div>
-
-<script context="module" lang="ts">
-  function basename(p: string) {
-    const i = p.lastIndexOf('/');
-    return i >= 0 ? p.slice(i + 1) : p;
-  }
-  function ext(p: string) {
-    const i = p.lastIndexOf('.');
-    return i >= 0 ? p.slice(i + 1).toUpperCase() : '?';
-  }
-</script>
 
 <style>
   .grid-view { padding: 1rem; }

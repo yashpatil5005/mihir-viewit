@@ -19,24 +19,16 @@ export type PickerReject =
   | { reject: false };
 
 export function checkFileBeforeRead(file: File): PickerReject {
+  const viewitUri = (file as File & { viewitUri?: string }).viewitUri;
+  if (viewitUri) return { reject: false };
   const ext = fileExtension(file.name);
   const mb = (file.size / 1_048_576).toFixed(1);
 
-  if (VIDEO_EXT.has(ext)) {
-    return {
-      reject: true,
-      openWithExternal: false,
-      reason:
-        `Video (.${ext}, ${mb} MB) — ViewIt doesn't play video. No load needed. Open it in your gallery/player app.`,
-    };
+  if (VIDEO_EXT.has(ext) || AUDIO_EXT.has(ext)) {
+    return { reject: false };
   }
-  if (AUDIO_EXT.has(ext)) {
-    return {
-      reject: true,
-      openWithExternal: false,
-      reason:
-        `Audio (.${ext}, ${mb} MB) — not supported in ViewIt. Use a music app.`,
-    };
+  if (ext === 'pdf') {
+    return { reject: false };
   }
   if (file.size > OPEN_BYTES_CAP) {
     return {
