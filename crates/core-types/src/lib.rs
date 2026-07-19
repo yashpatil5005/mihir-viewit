@@ -27,6 +27,7 @@ pub enum Format {
     ImageSvg,
     ImageHeic,
     ImagePsd,
+    ImageRaw,
     Epub,
     ArchiveZip,
     ArchiveTarGz,

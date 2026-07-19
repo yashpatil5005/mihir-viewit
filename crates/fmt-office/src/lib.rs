@@ -93,22 +93,33 @@ fn parse_legacy_binary(bytes: &[u8], format: Format) -> Result<Document, Error> 
     let mut cfb = cfb::CompoundFile::open(cursor)
         .map_err(|e| Error::Parse(format!("cfb open: {}", e)))?;
 
-    // Stream targets per format.
-    let primary_stream = match format {
-        Format::Doc => "WordDocument",
-        Format::Ppt => "PowerPoint Document",
+    // Stream targets per format — try primary then fallback streams.
+    let streams: Vec<&str> = match format {
+        Format::Doc => vec!["WordDocument", "1Table", "0Table"],
+        Format::Ppt => vec!["PowerPoint Document", "Current User"],
         _ => return Err(Error::UnsupportedFormat(format)),
     };
 
     let mut text = String::new();
-    if cfb.is_stream(primary_stream) {
-        use std::io::Read;
-        let mut stream = cfb.open_stream(primary_stream)
-            .map_err(|e| Error::Parse(format!("cfb open_stream {}: {}", primary_stream, e)))?;
-        let mut buf = Vec::new();
-        stream.read_to_end(&mut buf).map_err(|e| Error::Parse(format!("stream read: {}", e)))?;
-        text.push_str(&extract_utf16_le(&buf));
-        text.push_str(&extract_ascii(&buf));
+    for stream_name in &streams {
+        if cfb.is_stream(stream_name) {
+            use std::io::Read;
+            if let Ok(mut stream) = cfb.open_stream(stream_name) {
+                let mut buf = Vec::new();
+                if stream.read_to_end(&mut buf).is_ok() {
+                    let extracted = extract_utf16_le(&buf);
+                    if !extracted.trim().is_empty() {
+                        text.push_str(&extracted);
+                        text.push('\n');
+                    }
+                    let ascii = extract_ascii(&buf);
+                    if !ascii.trim().is_empty() {
+                        text.push_str(&ascii);
+                        text.push('\n');
+                    }
+                }
+            }
+        }
     }
     // Fallback: walk all streams and harvest ASCII prints if primary stream empty.
     if text.trim().is_empty() {

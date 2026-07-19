@@ -331,7 +331,7 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"]/g, (c) => ({ '&': '&', '<': '<', '>': '>', '"': '"' }[c] ?? c));
 }
 
-const IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'tif', 'tiff', 'svg', 'heic', 'heif', 'psd']);
+const IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'tif', 'tiff', 'svg', 'heic', 'heif', 'avif', 'psd', 'dng', 'cr2', 'cr3', 'nef', 'arw', 'orf', 'rw2', 'raf', 'srw', 'pef']);
 function isImageExt(ext: string): boolean {
   return IMAGE_EXT.has(ext);
 }
@@ -372,7 +372,18 @@ function extToFormat(ext: string): Format {
     case 'rtf': return 'rtf';
     case 'psd': return 'psd';
     case 'heic':
-    case 'heif': return 'image-heic';
+    case 'heif':
+    case 'avif': return 'image-heic';
+    case 'dng':
+    case 'cr2':
+    case 'cr3':
+    case 'nef':
+    case 'arw':
+    case 'orf':
+    case 'rw2':
+    case 'raf':
+    case 'srw':
+    case 'pef': return 'image-raw';
     case 'pages': return 'iwork-pages';
     case 'numbers': return 'iwork-numbers';
     case 'key': return 'iwork-key';

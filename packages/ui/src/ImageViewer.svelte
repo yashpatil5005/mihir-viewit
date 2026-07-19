@@ -16,7 +16,7 @@
   }: {
     uri: string;
     format: 'image-png' | 'image-jpg' | 'image-webp' | 'image-gif'
-          | 'image-bmp' | 'image-tiff' | 'image-svg' | 'image-heic' | 'image-psd';
+          | 'image-bmp' | 'image-tiff' | 'image-svg' | 'image-heic' | 'image-psd' | 'image-raw';
     name: string;
     byte_len: number;
     asset_path?: string;

@@ -26,13 +26,11 @@ pub fn parse_text(bytes: &[u8], format: Format, _name: &str) -> Result<Document,
 
     match format {
         Format::Rtf => {
-            let plain = rtf_to_text(&text);
-            let truncated = plain.len() > TEXT_EAGER_CAP;
-            Ok(Document::Text {
-                content: if truncated { plain[..TEXT_EAGER_CAP].to_string() } else { plain },
-                encoding: "ascii".into(),
+            let html = rtf_to_html(&text);
+            let truncated = html.len() > TEXT_EAGER_CAP;
+            Ok(Document::Markdown {
+                html: if truncated { html[..TEXT_EAGER_CAP].to_string() } else { html },
                 byte_len: bytes.len(),
-                truncated,
             })
         }
         Format::Markdown => {
@@ -161,6 +159,197 @@ fn rtf_to_text(rtf: &str) -> String {
         .replace("\n{3,}", "\n\n")
         .trim_matches('\n')
         .to_string()
+}
+
+// --- RTF → HTML conversion with formatting support ---------------------------
+
+fn rtf_to_html(rtf: &str) -> String {
+    let mut out = String::with_capacity(rtf.len() * 2);
+    let mut chars = rtf.chars().peekable();
+    let mut depth: i32 = 0;
+    let mut skip_group: i32 = -1;
+    let mut bold = false;
+    let mut italic = false;
+    let mut underline = false;
+    let mut font_size: Option<u32> = None;
+    let mut in_paragraph = false;
+
+    // Track nesting of formatting via stacks
+    let mut bold_stack: Vec<bool> = Vec::new();
+    let mut italic_stack: Vec<bool> = Vec::new();
+    let mut underline_stack: Vec<bool> = Vec::new();
+
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => {
+                let next = match chars.peek() {
+                    Some(&n) => n,
+                    None => break
+                };
+                if next == '\\' || next == '{' || next == '}' {
+                    push_escaped(&mut out, next, &mut in_paragraph);
+                    chars.next();
+                } else if next == '*' {
+                    if skip_group == -1 { skip_group = depth; }
+                    chars.next();
+                    while let Some(&w) = chars.peek() {
+                        if w.is_alphabetic() { chars.next(); } else { break; }
+                    }
+                } else if next.is_alphabetic() {
+                    let mut word = String::new();
+                    chars.next();
+                    while let Some(&w) = chars.peek() {
+                        if w.is_alphabetic() { word.push(w); chars.next(); } else { break; }
+                    }
+                    // optional numeric parameter
+                    let param = if let Some(&w) = chars.peek() {
+                        if w == '-' || w.is_ascii_digit() {
+                            let negative = w == '-';
+                            if negative { chars.next(); }
+                            let mut num = String::new();
+                            while let Some(&d) = chars.peek() {
+                                if d.is_ascii_digit() { num.push(d); chars.next(); } else { break; }
+                            }
+                            num.parse::<i32>().ok().map(|n| if negative { -n } else { n })
+                        } else { None }
+                    } else { None };
+                    // consume trailing space
+                    if let Some(&' ') = chars.peek() { chars.next(); }
+
+                    match word.as_str() {
+                        "par" | "pard" => {
+                            close_paragraph(&mut out, &mut in_paragraph);
+                            open_paragraph(&mut out, &mut in_paragraph);
+                        }
+                        "line" => {
+                            out.push_str("<br/>");
+                        }
+                        "tab" => {
+                            out.push_str("&nbsp;&nbsp;&nbsp;&nbsp;");
+                        }
+                        "b" | "b0" => {
+                            let new_val = word == "b";
+                            bold = if new_val {
+                                param.map_or(true, |p| p != 0)
+                            } else { false };
+                        }
+                        "i" | "i0" => {
+                            let new_val = word == "i";
+                            italic = if new_val {
+                                param.map_or(true, |p| p != 0)
+                            } else { false };
+                        }
+                        "ul" | "ul0" | "ulnone" => {
+                            underline = word == "ul";
+                        }
+                        "fs" => {
+                            if let Some(p) = param {
+                                font_size = if p > 0 { Some(p as u32 / 2) } else { None };
+                            }
+                        }
+                        "fs0" => { font_size = None; }
+                        _ => {}
+                    }
+                } else if next == '\'' {
+                    chars.next();
+                    let h1 = chars.next();
+                    let h2 = chars.next();
+                    if let (Some(a), Some(b)) = (h1, h2) {
+                        let s = format!("{}{}", a, b);
+                        if let Ok(byte_val) = u8::from_str_radix(&s, 16) {
+                            let ch = byte_val as char;
+                            if ch.is_control() { continue; }
+                            push_char_html(&mut out, ch, bold, italic, underline, font_size, &mut in_paragraph);
+                        }
+                    }
+                } else {
+                    chars.next();
+                }
+            }
+            '{' => {
+                depth += 1;
+                bold_stack.push(bold);
+                italic_stack.push(italic);
+                underline_stack.push(underline);
+            }
+            '}' => {
+                depth -= 1;
+                if skip_group != -1 && depth < skip_group {
+                    skip_group = -1;
+                }
+                bold = bold_stack.pop().unwrap_or(false);
+                italic = italic_stack.pop().unwrap_or(false);
+                underline = underline_stack.pop().unwrap_or(false);
+            }
+            c if skip_group == -1 && !c.is_control() => {
+                push_char_html(&mut out, c, bold, italic, underline, font_size, &mut in_paragraph);
+            }
+            _ => {}
+        }
+    }
+    close_paragraph(&mut out, &mut in_paragraph);
+
+    // Collapse 3+ consecutive <br/> into a paragraph break
+    let mut result = out.replace("<br/><br/><br/>", "</p><p>");
+    // Wrap in <p> if not already
+    if !result.starts_with('<') {
+        result = format!("<p>{}</p>", result);
+    }
+    result.trim().to_string()
+}
+
+fn push_escaped(out: &mut String, ch: char, in_paragraph: &mut bool) {
+    match ch {
+        '\\' => push_char_html(out, '\\', false, false, false, None, in_paragraph),
+        '{' => push_char_html(out, '{', false, false, false, None, in_paragraph),
+        '}' => push_char_html(out, '}', false, false, false, None, in_paragraph),
+        _ => {}
+    }
+}
+
+fn push_char_html(out: &mut String, ch: char, bold: bool, italic: bool, underline: bool, font_size: Option<u32>, in_paragraph: &mut bool) {
+    if !*in_paragraph {
+        out.push_str("<p>");
+        *in_paragraph = true;
+    }
+    let needs_open = bold || italic || underline || font_size.is_some();
+    if needs_open {
+        out.push('<');
+        if bold { out.push_str("strong"); }
+        if italic { out.push_str("em"); }
+        if underline { out.push_str("u"); }
+        out.push('>');
+    }
+    match ch {
+        '<' => out.push_str("&lt;"),
+        '>' => out.push_str("&gt;"),
+        '&' => out.push_str("&amp;"),
+        '"' => out.push_str("&quot;"),
+        '\n' => out.push_str("<br/>"),
+        c => out.push(c),
+    }
+    if needs_open {
+        out.push_str("</");
+        if underline { out.push_str("u"); }
+        if italic { out.push_str("em"); }
+        if bold { out.push_str("strong"); }
+        out.push('>');
+    }
+}
+
+fn open_paragraph(out: &mut String, in_paragraph: &mut bool) {
+    if *in_paragraph {
+        out.push_str("</p>");
+    }
+    out.push_str("<p>");
+    *in_paragraph = true;
+}
+
+fn close_paragraph(out: &mut String, in_paragraph: &mut bool) {
+    if *in_paragraph {
+        out.push_str("</p>");
+        *in_paragraph = false;
+    }
 }
 
 // --- Phase 2.3 — encoding detection ----------------------------------------

@@ -72,6 +72,7 @@ pub fn ext_from_sniff(bytes: &[u8], ext_hint: &str) -> Option<&'static str> {
         Format::ImageJpg => "jpg",
         Format::ImageGif => "gif",
         Format::ImageWebp => "webp",
+        Format::ImageRaw => "dng",
         Format::Video => "mp4",
         Format::Audio => "mp3",
         Format::ArchiveZip => "zip",
@@ -262,6 +263,7 @@ fn sniff_ext(ext: &str) -> Format {
         "svg" | "svgz" => Format::ImageSvg,
         "heic" | "heif" | "avif" => Format::ImageHeic,
         "psd" => Format::ImagePsd,
+        "dng" | "cr2" | "cr3" | "nef" | "arw" | "orf" | "rw2" | "raf" | "srw" | "pef" => Format::ImageRaw,
         "ico" | "icns" | "jfif" => Format::ImagePng,
         "epub" => Format::Epub,
         "zip" => Format::ArchiveZip,
@@ -342,7 +344,7 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
         }
         Format::ImagePng | Format::ImageJpg | Format::ImageWebp | Format::ImageGif
         | Format::ImageBmp | Format::ImageTiff | Format::ImageSvg | Format::ImageHeic
-        | Format::ImagePsd => {
+        | Format::ImagePsd | Format::ImageRaw => {
             // Per plan §5: native webview decoder. Rust emits the `Image`
             // variant; the frontend uses `<img src=...>` directly.
             // (Phase 2.1 — zero Rust deps added.)
