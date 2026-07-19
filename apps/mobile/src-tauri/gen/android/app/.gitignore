@@ -5,4 +5,4 @@
 /proguard-tauri.pro
 /tauri.properties
 # Generated frontend build output (synced during build)
-app/src/main/assets/
+/src/main/assets/

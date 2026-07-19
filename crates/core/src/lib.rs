@@ -377,8 +377,8 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
                 suggestion: Suggestion::OpenWithExternal,
             });
         }
-        Format::Docx | Format::Xlsx | Format::Pptx | Format::Odt | Format::Ods | Format::Odp
-        | Format::Doc | Format::Ppt => {
+        Format::Docx | Format::Xlsx | Format::Xls | Format::Pptx | Format::Odt | Format::Ods
+        | Format::Odp | Format::Doc | Format::Ppt => {
             #[cfg(feature = "fmt-office")]
             {
                 return viewit_fmt_office::parse(bytes, format, name).map_err(Error::from_parse);

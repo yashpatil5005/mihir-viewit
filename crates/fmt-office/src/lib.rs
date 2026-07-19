@@ -185,43 +185,42 @@ fn extract_ascii(bytes: &[u8]) -> String {
 }
 
 /// Phase 3.2 (XLSX) + 3.4 (ODS) — `calamine` reader.
-/// XLSX produces `Document::Xlsx` with multi-sheet metadata;
-/// ODS still falls through to `Document::Csv` (calamine single-sheet).
+/// Both produce `Document::Xlsx` with multi-sheet metadata.
 fn parse_xlsx_ods(bytes: &[u8], format: Format) -> Result<Document, Error> {
     use calamine::Reader;
+    use viewit_core_types::XlsxSheet;
 
-    // XLSX and ODS use different calamine readers but same sheet iteration.
     if format == Format::Xlsx {
         return parse_xlsx(bytes);
     }
-    // ODS path — single-sheet CSV (unchanged for backward compat)
+
+    // ODS path — multi-sheet via calamine Ods reader
     let cursor = Cursor::new(bytes.to_vec());
     let mut workbook = calamine::Ods::<Cursor<Vec<u8>>>::new(cursor)
         .map_err(|e| Error::Parse(format!("calamine ods: {}", e)))?;
 
-    let Some((_, range)) = workbook.worksheets().into_iter().next() else {
-        return Ok(Document::Csv {
-            header: vec![],
-            preview_rows: vec![],
-            total_rows_hint: Some(0),
-            byte_len: bytes.len(),
+    let sheets_meta = workbook.worksheets();
+    let mut sheets: Vec<XlsxSheet> = Vec::with_capacity(sheets_meta.len().min(8));
+    for (name, range) in sheets_meta.into_iter().take(8) {
+        let mut rows_iter = range.rows();
+        let header: Vec<String> = rows_iter
+            .next()
+            .map(|r| r.iter().map(|c| c.to_string()).collect())
+            .unwrap_or_default();
+        let preview_rows: Vec<Vec<String>> = rows_iter
+            .take(200)
+            .map(|r| r.iter().map(|c| c.to_string()).collect())
+            .collect();
+        sheets.push(XlsxSheet {
+            name,
+            header,
+            preview_rows,
+            total_rows_hint: Some(range.height()),
         });
-    };
+    }
 
-    let mut rows_iter = range.rows();
-    let header: Vec<String> = rows_iter
-        .next()
-        .map(|r| r.iter().map(|c| c.to_string()).collect())
-        .unwrap_or_default();
-    let preview_rows: Vec<Vec<String>> = rows_iter
-        .take(200)
-        .map(|r| r.iter().map(|c| c.to_string()).collect())
-        .collect();
-
-    Ok(Document::Csv {
-        header,
-        preview_rows,
-        total_rows_hint: Some(range.height()),
+    Ok(Document::Xlsx {
+        sheets,
         byte_len: bytes.len(),
     })
 }
