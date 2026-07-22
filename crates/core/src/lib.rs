@@ -224,6 +224,7 @@ pub fn open_stream(ext: &str, name: &str) -> Result<Document, Error> {
             byte_len: 0,
             native: true,
             name: name.to_string(),
+            stream_url: None,
         });
     }
     if is_video_ext(ext) {
@@ -234,6 +235,7 @@ pub fn open_stream(ext: &str, name: &str) -> Result<Document, Error> {
             byte_len: 0,
             asset_path: String::new(),
             ext: ext.to_string(),
+            stream_url: None,
         });
     }
     if is_audio_ext(ext) {
@@ -244,6 +246,7 @@ pub fn open_stream(ext: &str, name: &str) -> Result<Document, Error> {
             byte_len: 0,
             asset_path: String::new(),
             ext: ext.to_string(),
+            stream_url: None,
         });
     }
     Err(Error::Parse(format!("not a stream format: .{}", ext)))
@@ -354,6 +357,7 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
                 byte_len: bytes.len(),
                 native: true,
                 name: name.to_string(),
+                stream_url: None,
             });
         }
         Format::Video | Format::Audio => {
@@ -369,6 +373,7 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
                 byte_len: bytes.len(),
                 asset_path: String::new(),
                 ext: ext.to_string(),
+                stream_url: None,
             });
         }
         Format::ImagePng | Format::ImageJpg | Format::ImageWebp | Format::ImageGif
@@ -382,9 +387,10 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
                 byte_len: bytes.len(),
                 name: name.to_string(),
                 asset_path: String::new(),
+                stream_url: None,
             });
         }
-        Format::Epub => {
+        Format::Epub | Format::Mobi => {
             #[cfg(feature = "fmt-ebook")]
             {
                 return viewit_fmt_ebook::parse(bytes, format, name).map_err(Error::from_parse);
@@ -392,12 +398,16 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
             #[cfg(not(feature = "fmt-ebook"))]
             return Ok(Document::Placeholder { format, name: name.to_string(), byte_len: bytes.len() });
         }
-        Format::Mobi | Format::Azw3 | Format::FictionBook | Format::PalmDoc => {
-            // Non-EPUB ebooks — show placeholder with format info
+        Format::Azw3 | Format::FictionBook | Format::PalmDoc => {
+            // Non-EPUB/MOBI ebooks — show placeholder with format info
             return Ok(Document::Placeholder { format, name: name.to_string(), byte_len: bytes.len() });
         }
         Format::Font => {
-            // Fonts — show as a placeholder with metadata
+            #[cfg(feature = "fmt-font")]
+            {
+                return viewit_fmt_font::parse(bytes, format, name).map_err(Error::from_parse);
+            }
+            #[cfg(not(feature = "fmt-font"))]
             return Ok(Document::Placeholder { format, name: name.to_string(), byte_len: bytes.len() });
         }
         Format::ArchiveZip | Format::ArchiveTar | Format::ArchiveTarGz | Format::Archive7z => {

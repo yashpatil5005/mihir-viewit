@@ -1,0 +1,14 @@
+[package]
+name = "viewit-fmt-font"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "ViewIt font metadata parser (TTF/OTF/WOFF)"
+
+[dependencies]
+viewit-core-types = { path = "../core-types" }
+thiserror.workspace = true
+ttf-parser = "0.20"

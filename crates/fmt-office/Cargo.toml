@@ -23,8 +23,12 @@ docx-rust = "=0.1.11"
 # Phase 3.3 PPTX (zip reader)
 zip = "=8.6.0"
 # Phase 3.7 Encrypted Office
-office-crypto = "=0.2.0"
+office-crypto = { version = "=0.2.0", optional = true }
 
 # Phase 3.3 PPTX + 3.4 ODT/ODP — quick-xml for OOXML zip+XML parsing
 quick-xml = "0.36"
 cfb = "=0.7.3"
+
+[features]
+default = []
+support-encrypted = ["dep:office-crypto"]

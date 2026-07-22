@@ -9,7 +9,10 @@ pub fn parse(bytes: &[u8], format: Format, _name: &str) -> Result<Document, Erro
         Format::ArchiveZip => list_zip(bytes)?,
         Format::ArchiveTar => list_tar(bytes, false)?,
         Format::ArchiveTarGz => list_tar(bytes, true)?,
+        #[cfg(feature = "support-7z")]
         Format::Archive7z => list_7z(bytes)?,
+        #[cfg(not(feature = "support-7z"))]
+        Format::Archive7z => return Err(Error::Parse("7z support not enabled in this build".into())),
         _ => return Err(Error::UnsupportedFormat(format)),
     };
     Ok(Document::Archive {
@@ -60,6 +63,7 @@ fn list_tar(bytes: &[u8], gzipped: bool) -> Result<Vec<ArchiveEntry>, Error> {
 
 /// Phase 4.4 — 7z listing via `sevenz-rust`. Uses `archive().files` to
 /// read entry metadata without decompressing folder payloads.
+#[cfg(feature = "support-7z")]
 fn list_7z(bytes: &[u8]) -> Result<Vec<ArchiveEntry>, Error> {
     let cursor = std::io::Cursor::new(bytes.to_vec());
     let password = sevenz_rust::Password::empty();

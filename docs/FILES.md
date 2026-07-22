@@ -1,8 +1,15 @@
 # ViewIt Supported File Formats
 
-**Last Updated:** July 22, 2026
+**Last Updated:** July 22, 2026 (Session: size optimization + MOBI + fonts)
 
 ViewIt is a universal file viewer supporting 250+ file formats across text, code, images, documents, eBooks, archives, and media files.
+
+**Recent Changes:**
+- Added MOBI eBook text extraction (mobi 0.8)
+- Added font metadata extraction (TTF/OTF/WOFF via ttf-parser)
+- Made 7z support optional (feature-gated, excludes heavy sevenz-rust by default)
+- Made encrypted Office support optional (feature-gated, excludes office-crypto by default)
+- Removed dead fmt-opendoc crate (ODT/ODP handled in fmt-office)
 
 ## Platform Compatibility Matrix
 
@@ -304,7 +311,7 @@ ViewIt is a universal file viewer supporting 250+ file formats across text, code
 | Format | Extensions | Android | iOS | Desktop | Web | Notes |
 |--------|-----------|---------|-----|---------|-----|-------|
 | EPUB | `.epub` | 📦 | 🚧 | 🚧 | 🚧 | Available in release builds only |
-| MOBI | `.mobi` | 🔄 | 🚧 | 🚧 | 🚧 | Amazon Kindle format |
+| MOBI | `.mobi` | ✅ | 🚧 | 🚧 | 🚧 | Amazon Kindle format (text extraction) |
 | AZW3 | `.azw3` | 🔄 | 🚧 | 🚧 | 🚧 | Kindle Format 8 |
 | FictionBook | `.fb2` | 🔄 | 🚧 | 🚧 | 🚧 | Russian eBook standard |
 | PalmDoc | `.lrf`, `.pdb`, `.snb` | 🔄 | 🚧 | 🚧 | 🚧 | Legacy Palm formats |
@@ -315,10 +322,10 @@ ViewIt is a universal file viewer supporting 250+ file formats across text, code
 
 | Format | Extensions | Android | iOS | Desktop | Web | Notes |
 |--------|-----------|---------|-----|---------|-----|-------|
-| TrueType | `.ttf` | 📦 | 🚧 | 🚧 | 🚧 | Available in release builds |
-| OpenType | `.otf` | 📦 | 🚧 | 🚧 | 🚧 | Available in release builds |
-| WOFF | `.woff` | 📦 | 🚧 | 🚧 | 🚧 | Web Open Font Format |
-| WOFF2 | `.woff2` | 📦 | 🚧 | 🚧 | 🚧 | WOFF version 2 |
+| TrueType | `.ttf` | ✅ | 🚧 | 🚧 | 🚧 | Family name, weight, italic |
+| OpenType | `.otf` | ✅ | 🚧 | 🚧 | 🚧 | Family name, weight, italic |
+| WOFF | `.woff` | ✅ | 🚧 | 🚧 | 🚧 | Web Open Font Format |
+| WOFF2 | `.woff2` | ✅ | 🚧 | 🚧 | 🚧 | WOFF version 2 |
 | PostScript | `.pfb`, `.ps` | 📦 | 🚧 | 🚧 | 🚧 | Type 1 fonts |
 | CFF | `.cff` | 📦 | 🚧 | 🚧 | 🚧 | Compact Font Format |
 | dfont | `.dfont` | 📦 | 🚧 | 🚧 | 🚧 | macOS font suitcase |
@@ -334,7 +341,7 @@ ViewIt is a universal file viewer supporting 250+ file formats across text, code
 | TAR | `.tar` | 📦 | 🚧 | 🚧 | 🚧 | Unix tape archive |
 | TAR.GZ | `.tgz`, `.tar.gz` | 📦 | 🚧 | 🚧 | 🚧 | Gzip compressed tar |
 | GZ | `.gz` | 📦 | 🚧 | 🚧 | 🚧 | Gzip single-file compression |
-| 7-Zip | `.7z` | 📦 | 🚧 | 🚧 | 🚧 | High compression ratio |
+| 7-Zip | `.7z` | ⚠️ | 🚧 | 🚧 | 🚧 | Feature-gated (optional, heavy dep) |
 | RAR | `.rar` | ❌ | ❌ | ❌ | ❌ | Proprietary format - not supported |
 
 ---

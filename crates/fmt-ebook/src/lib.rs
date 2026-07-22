@@ -11,6 +11,14 @@ use viewit_core_types::{Document, Error, Format};
 use zip::ZipArchive;
 
 pub fn parse(bytes: &[u8], _format: Format, _name: &str) -> Result<Document, Error> {
+    match _format {
+        Format::Epub => parse_epub(bytes),
+        Format::Mobi => parse_mobi(bytes),
+        _ => Err(Error::UnsupportedFormat(_format)),
+    }
+}
+
+fn parse_epub(bytes: &[u8]) -> Result<Document, Error> {
     let reader = std::io::Cursor::new(bytes);
     let mut archive = ZipArchive::new(reader).map_err(|e| Error::Parse(format!("zip: {}", e)))?;
 
@@ -35,6 +43,37 @@ pub fn parse(bytes: &[u8], _format: Format, _name: &str) -> Result<Document, Err
         author,
         first_chapter_xhtml,
         spine_len,
+        byte_len: bytes.len(),
+    })
+}
+
+fn parse_mobi(bytes: &[u8]) -> Result<Document, Error> {
+    let mobi = mobi::Mobi::new(bytes.to_vec())
+        .map_err(|e| Error::Parse(format!("mobi parse: {}", e)))?;
+    
+    let title = mobi.title().to_string();
+    let author = mobi.author().map(|s| s.to_string());
+    
+    // Extract text content — MOBI uses PalmDOC compression
+    // The mobi crate handles decompression internally
+    let text = mobi.content_as_string()
+        .map_err(|e| Error::Parse(format!("mobi text extraction: {}", e)))?;
+    let html = if text.is_empty() {
+        "<p>(no text content)</p>".into()
+    } else {
+        // Convert to basic HTML for consistency with EPUB viewer
+        let escaped = text.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('\n', "<br>");
+        format!("<div>{}</div>", escaped)
+    };
+    
+    Ok(Document::Epub {
+        title,
+        author,
+        first_chapter_xhtml: html,
+        spine_len: 1, // MOBI is single-flow
         byte_len: bytes.len(),
     })
 }
@@ -142,9 +181,7 @@ fn parse_opf(xml: &str) -> Result<(String, Option<String>, Vec<String>), Error> 
             Ok(Event::Text(t)) => {
                 let s = t.unescape().map_err(|e| Error::Parse(format!("esc: {}", e)))?.into_owned();
                 if in_title_meta && title.is_empty() { title = s; }
-                else if in_author_meta {
-                    if author.is_none() { author = Some(s); }
-                }
+                else if in_author_meta && author.is_none() { author = Some(s); }
             }
             Ok(Event::Eof) => break,
             Err(e) => return Err(Error::Parse(format!("opf parse: {}", e))),

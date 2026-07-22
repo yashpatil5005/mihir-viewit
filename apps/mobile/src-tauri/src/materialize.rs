@@ -8,7 +8,7 @@ use std::str::FromStr;
 
 use tauri::{AppHandle, Manager};
 use tauri_plugin_fs::{FilePath, FsExt};
-use viewit_core_types::{Document, Format, MediaKind, StreamKind};
+use viewit_core_types::Document;
 
 pub const MAX_MATERIALIZE_BYTES: usize = 400 * 1024 * 1024;
 const MAX_CACHE_FILES: usize = 6;
@@ -100,85 +100,6 @@ pub fn path_to_file_url(path: &Path) -> Result<String, String> {
     url::Url::from_file_path(path).map_err(|_| "bad cache path".to_string()).map(|u| u.to_string())
 }
 
-pub fn mime_for_ext(ext: &str) -> &'static str {
-    match ext {
-        "pdf" => "application/pdf",
-        "mp4" | "m4v" => "video/mp4",
-        "webm" => "video/webm",
-        "mkv" => "video/x-matroska",
-        "mov" => "video/quicktime",
-        "3gp" => "video/3gpp",
-        "avi" => "video/x-msvideo",
-        "mp3" => "audio/mpeg",
-        "m4a" => "audio/mp4",
-        "wav" => "audio/wav",
-        "ogg" => "audio/ogg",
-        "opus" => "audio/opus",
-        _ => "application/octet-stream",
-    }
-}
-
-pub fn open_pdf_materialized(
-    app: &AppHandle,
-    uri: &str,
-    display_name: &str,
-    ext: &str,
-) -> Result<Document, String> {
-    let (path, size) = materialize_uri_to_cache(app, uri, ext)?;
-    let asset_path = path_to_file_url(&path)?;
-    Ok(Document::StreamFile {
-        asset_path,
-        mime: mime_for_ext("pdf").into(),
-        name: display_name.to_string(),
-        byte_len: size,
-        stream_kind: StreamKind::Pdf,
-    })
-}
-
-pub fn open_media_materialized(
-    app: &AppHandle,
-    uri: &str,
-    display_name: &str,
-    ext: &str,
-    kind: MediaKind,
-) -> Result<Document, String> {
-    let format = match kind {
-        MediaKind::Video => Format::Video,
-        MediaKind::Audio => Format::Audio,
-    };
-
-    let (path, size) = materialize_uri_to_cache(app, uri, ext)?;
-    let asset_path = path_to_file_url(&path)?;
-
-    eprintln!(
-        "[viewit] media materialized: ext={} kind={:?} size={} path={}",
-        ext, kind, size, asset_path
-    );
-    #[cfg(target_os = "android")]
-    unsafe {
-        use std::ffi::CString;
-        let tag = CString::new("viewit").unwrap_or_default();
-        let msg = CString::new(format!(
-            "[viewit] media materialized: ext={} kind={:?} size={} path={}",
-            ext, kind, size, asset_path
-        ))
-        .unwrap_or_default();
-        extern "C" {
-            fn __android_log_write(prio: i32, tag: *const i8, text: *const i8) -> i32;
-        }
-        __android_log_write(4, tag.as_ptr() as *const i8, msg.as_ptr() as *const i8);
-    }
-
-    Ok(Document::Media {
-        format,
-        media_kind: kind,
-        name: display_name.to_string(),
-        byte_len: size,
-        asset_path,
-        ext: ext.to_string(),
-    })
-}
-
 pub fn open_pptx_materialized(
     app: &AppHandle,
     uri: &str,
@@ -192,22 +113,6 @@ pub fn open_pptx_materialized(
         slides: vec![],
         byte_len: size,
         asset_path,
-    })
-}
-
-pub fn open_image_materialized(
-    app: &AppHandle,
-    uri: &str,
-    display_name: &str,
-    ext: &str,
-    format: Format,
-) -> Result<Document, String> {
-    let (path, size) = materialize_uri_to_cache(app, uri, ext)?;
-    let asset_path = path_to_file_url(&path)?;
-    Ok(Document::Image {
-        format,
-        byte_len: size,
-        name: display_name.to_string(),
-        asset_path,
+        stream_url: None,
     })
 }

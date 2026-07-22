@@ -13,6 +13,7 @@
     name,
     byte_len,
     asset_path = '',
+    stream_url = '',
   }: {
     uri: string;
     format: 'image-png' | 'image-jpg' | 'image-webp' | 'image-gif'
@@ -20,11 +21,17 @@
     name: string;
     byte_len: number;
     asset_path?: string;
+    stream_url?: string;
   } = $props();
 
   const isSvg = format === 'image-svg';
   let src = $state('');
   onMount(async () => {
+    // Priority 1: Direct stream URL (new architecture)
+    if (stream_url) {
+      src = stream_url;
+      return;
+    }
     src = await assetUrlForPath(uri, asset_path || undefined);
   });
 

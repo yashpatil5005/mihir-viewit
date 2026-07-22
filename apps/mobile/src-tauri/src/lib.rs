@@ -1,12 +1,17 @@
 //! ViewIt mobile Tauri backend. Mirrors desktop commands; Android uses
 //! `tauri-plugin-fs` for `content://` URIs (share / file picker).
+//!
+//! New streaming architecture:
+//! - `open_uri` returns Document with `stream_url` for all formats
+//! - Frontend fetches content via HTTP from localhost stream server
+//! - No full-file reads into memory, no base64 encoding
 
 #[cfg(target_os = "android")]
 mod android_pending;
 
 mod materialize;
 mod stream_protocol;
-mod http_serve;
+mod stream_server;
 mod uri_util;
 
 use std::io::Read;
@@ -127,6 +132,20 @@ fn media_stream_url(app: tauri::AppHandle, asset_path: String, ext: String) -> R
     }
     let slots = app.state::<stream_protocol::StreamSlots>();
     let id = stream_protocol::insert_cached(&slots, file_path, ext);
+    let port = app.state::<HttpPort>().0.load(std::sync::atomic::Ordering::Relaxed);
+    if port > 0 {
+        Ok(format!("http://127.0.0.1:{}/{}", port, id))
+    } else {
+        Err("HTTP server not running".into())
+    }
+}
+
+/// Register any URI (content:// or file://) with the new stream server
+/// and return a `http://127.0.0.1:{port}/{id}` URL.
+#[tauri::command]
+fn register_stream_uri(app: tauri::AppHandle, uri: String) -> Result<String, String> {
+    let registry = app.state::<stream_server::StreamRegistry>();
+    let id = stream_server::register_uri(&registry, uri);
     let port = app.state::<HttpPort>().0.load(std::sync::atomic::Ordering::Relaxed);
     if port > 0 {
         Ok(format!("http://127.0.0.1:{}/{}", port, id))
@@ -354,6 +373,7 @@ pub fn run() {
         .manage(OpenedUrls(Mutex::new(vec![])))
         .manage(HttpPort::default())
         .manage(stream_protocol::StreamSlots::default())
+        .manage(stream_server::StreamRegistry::default())
         .register_uri_scheme_protocol("viewit-stream", |ctx, request| {
             let app = ctx.app_handle();
             let slots = app.state::<stream_protocol::StreamSlots>();
@@ -372,6 +392,7 @@ pub fn run() {
             text_page,
             csv_page,
             media_stream_url,
+            register_stream_uri,
             epub_chapter,
             archive_extract,
             #[cfg(feature = "fmt-pdf")]
@@ -382,13 +403,14 @@ pub fn run() {
             {
                 let _ = materialize::prune_viewit_cache(app.handle());
                 android_pending::drain_into_opened_urls(app.handle());
-                match http_serve::start(app.handle().clone()) {
+                // Start the new unified stream server
+                match stream_server::start(app.handle().clone()) {
                     Ok(port) => {
                         app.state::<HttpPort>().0.store(port, std::sync::atomic::Ordering::Relaxed);
-                        android_log_write_info("viewit", &format!("[viewit] HTTP server on 127.0.0.1:{}", port));
+                        android_log_write_info("viewit", &format!("[viewit] HTTP stream server on 127.0.0.1:{}", port));
                     }
                     Err(e) => {
-                        android_log_write_info("viewit", &format!("[viewit] HTTP server FAILED: {}", e));
+                        android_log_write_info("viewit", &format!("[viewit] HTTP stream server FAILED: {}", e));
                     }
                 }
             }

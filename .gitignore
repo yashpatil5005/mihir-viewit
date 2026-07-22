@@ -76,3 +76,4 @@ xcuserdata/
 *.seed
 *.pids
 patches/pdfium-render/
+apps/mobile/gen/

@@ -92,6 +92,9 @@ pub enum Document {
         /// The frontend must request additional pages via `text_page` Tauri
         /// command (offset+len) when the user scrolls past the eager payload.
         truncated: bool,
+        /// Streaming URL for large text files. Frontend fetches via HTTP instead of IPC.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        stream_url: Option<String>,
     },
     /// Phase 2.1 — native webview pass-through. Rust emits the format + URI;
     /// the Svelte `ImageViewer.svelte` hands the URI to `<img>` /
@@ -104,6 +107,9 @@ pub enum Document {
         /// Materialized cache `file://` for Android WebView (`convertFileSrc`).
         #[serde(default)]
         asset_path: String,
+        /// Streaming URL for direct WebView access. Preferred over asset_path.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        stream_url: Option<String>,
     },
     /// Phase 2.4 — Markdown body (already converted to safe-ish HTML by
     /// `pulldown-cmark` on the Rust side).
@@ -159,6 +165,9 @@ pub enum Document {
         #[serde(default)]
         native: bool,
         name: String,
+        /// Streaming URL for direct WebView/pdf.js access.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        stream_url: Option<String>,
     },
     /// ADR 0010 — video/audio; `asset_path` is host cache file for `convertFileSrc`.
     Media {
@@ -171,8 +180,12 @@ pub enum Document {
         asset_path: String,
         #[serde(default)]
         ext: String,
+        /// Streaming URL for direct WebView access. Preferred over asset_path.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        stream_url: Option<String>,
     },
     /// PDF / media materialized to app cache (Android custom protocol workaround).
+    /// Deprecated: use `Pdf`/`Media` with `stream_url` instead.
     StreamFile {
         asset_path: String,
         mime: String,
@@ -180,6 +193,9 @@ pub enum Document {
         #[serde(rename = "byte_len")]
         byte_len: usize,
         stream_kind: StreamKind,
+        /// Streaming URL for direct WebView access.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        stream_url: Option<String>,
     },
     Unsupported {
         format: Format,
@@ -195,6 +211,9 @@ pub enum Document {
         /// Materialized `.pptx` on disk for client-side `pptx-viewer` (Android SAF).
         #[serde(default)]
         asset_path: String,
+        /// Streaming URL for direct client-side viewer access.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        stream_url: Option<String>,
     },
     /// Phase 3.1 — DOCX structured: paragraphs (with optional heading level),
     /// tables (rows × cells), and lazily-rendered text runs.
@@ -215,6 +234,15 @@ pub enum Document {
     Placeholder {
         format: Format,
         name: String,
+        #[serde(rename = "byte_len")]
+        byte_len: usize,
+    },
+    /// Font metadata — TTF/OTF/WOFF family, weight, style info.
+    Font {
+        family_name: String,
+        weight: u16,
+        is_italic: bool,
+        format: Format,
         #[serde(rename = "byte_len")]
         byte_len: usize,
     },

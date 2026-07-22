@@ -18,4 +18,8 @@ bytes.workspace = true
 zip.workspace = true
 flate2 = "1"
 tar = "0.4"
-sevenz-rust = "=0.6.1"
+sevenz-rust = { version = "=0.6.1", optional = true }
+
+[features]
+default = []
+support-7z = ["dep:sevenz-rust"]

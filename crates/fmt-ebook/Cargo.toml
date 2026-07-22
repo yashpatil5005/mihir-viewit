@@ -17,3 +17,4 @@ serde_json.workspace = true
 bytes.workspace = true
 zip.workspace = true
 quick-xml = "0.36"
+mobi = "0.8"

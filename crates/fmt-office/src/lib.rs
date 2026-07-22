@@ -38,6 +38,7 @@ pub fn parse(bytes: &[u8], format: Format, name: &str) -> Result<Document, Error
 
 /// Detect OLE2 encrypted Office (CFB header D0 CF 11 E0 A1 B1 1A E1).
 /// Try office-crypto with empty password. Returns None if not encrypted.
+#[cfg(feature = "support-encrypted")]
 fn try_decrypt_if_encrypted(bytes: &[u8]) -> Result<Option<Vec<u8>>, Error> {
     const OLE2_MAGIC: [u8; 8] = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
     if bytes.len() < 8 || bytes[..8] != OLE2_MAGIC {
@@ -56,6 +57,22 @@ fn try_decrypt_if_encrypted(bytes: &[u8]) -> Result<Option<Vec<u8>>, Error> {
             "Encrypted Office file — password required (not yet supported in UI)".into(),
         )),
     }
+}
+
+#[cfg(not(feature = "support-encrypted"))]
+fn try_decrypt_if_encrypted(bytes: &[u8]) -> Result<Option<Vec<u8>>, Error> {
+    const OLE2_MAGIC: [u8; 8] = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
+    if bytes.len() < 8 || bytes[..8] != OLE2_MAGIC {
+        return Ok(None);
+    }
+    // Without office-crypto, try opening with cfb directly
+    let cursor = std::io::Cursor::new(bytes);
+    if cfb::CompoundFile::open(cursor).is_ok() {
+        return Ok(None);
+    }
+    Err(Error::Parse(
+        "Encrypted Office file — office-crypto feature not enabled in this build".into(),
+    ))
 }
 
 /// Phase 3.6 — legacy binary `.xls` via calamine's Xls reader.
@@ -153,6 +170,7 @@ fn parse_legacy_binary(bytes: &[u8], format: Format) -> Result<Document, Error> 
         encoding: "utf-8".into(),
         byte_len: bytes.len(),
         truncated: text.len() > 256 * 1024,
+        stream_url: None,
     })
 }
 

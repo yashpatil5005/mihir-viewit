@@ -21,6 +21,7 @@ pub fn parse_odp(bytes: &[u8], _format: Format, _name: &str) -> Result<Document,
                 encoding: "utf-8".into(),
                 truncated: false,
                 byte_len: bytes.len(),
+                stream_url: None,
             })
         }
     };
@@ -32,6 +33,7 @@ pub fn parse_odp(bytes: &[u8], _format: Format, _name: &str) -> Result<Document,
         slides,
         byte_len: bytes.len(),
         asset_path: String::new(),
+        stream_url: None,
     })
 }
 

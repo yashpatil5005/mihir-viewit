@@ -52,9 +52,8 @@ class MainActivity : TauriActivity() {
     if (uris.isEmpty()) return
 
     try {
-      // Same dir as Tauri `app_data_dir()` (Context.getFilesDir).
       val f = File(applicationContext.filesDir, "viewit_pending_opens.txt")
-      f.appendText(uris.joinToString("\n") + "\n")
+      f.writeText(uris.joinToString("\n") + "\n")
     } catch (e: Exception) {
       android.util.Log.e("ViewIt", "pending opens write failed", e)
     }

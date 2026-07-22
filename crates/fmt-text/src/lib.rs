@@ -72,6 +72,7 @@ pub fn parse_text(bytes: &[u8], format: Format, _name: &str) -> Result<Document,
                 encoding: encoding_label,
                 byte_len: bytes.len(),
                 truncated,
+                stream_url: None,
             })
         }
     }

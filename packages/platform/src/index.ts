@@ -133,6 +133,13 @@ export { displayNameFromUri } from './displayNameFromUri';
 export { pickSingleFile } from './pickFile';
 export { debugLog, debugLogLines, debugLogClear } from './debugLog';
 
+/** Register a URI with the stream server and return a stream URL. */
+export async function registerStreamUri(uri: string): Promise<string> {
+  if (!IS_TAURI) return uri;
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoking(() => invoke<string>('register_stream_uri', { uri }));
+}
+
 /** After `<input type="file">` — checks size/type first (no read for video/large). */
 const STREAM_PICKER_EXT = new Set([
   'pdf',

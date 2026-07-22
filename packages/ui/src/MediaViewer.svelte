@@ -9,6 +9,7 @@
     name = 'media',
     format = 'video',
     ext = 'mp4',
+    stream_url = '',
   }: {
     uri: string;
     asset_path?: string;
@@ -16,6 +17,7 @@
     name?: string;
     format?: string;
     ext?: string;
+    stream_url?: string;
   } = $props();
 
   let src = $state('');
@@ -91,17 +93,28 @@
 
     log(`[media] uri=${uri?.slice(0, 80)}`);
     log(`[media] asset_path=${asset_path?.slice(0, 80)}`);
+    log(`[media] stream_url=${stream_url?.slice(0, 80)}`);
     log(`[media] kind=${media_kind} format=${format} ext=${ext}`);
+
+    loadStart = Date.now();
+
+    // Priority 1: Direct stream URL from backend (new architecture)
+    if (stream_url) {
+      log(`[media] using direct stream_url`);
+      src = stream_url;
+      currentStrategy = 'stream_url';
+      return;
+    }
 
     if (!asset_path) {
       errorMsg = 'No asset path — materialization may have failed';
       return;
     }
 
-    loadStart = Date.now();
     const IS_TAURI = '__TAURI_INTERNALS__' in window;
     if (!IS_TAURI) { await tryBlobUrl(); return; }
 
+    // Legacy fallbacks
     if (!(await tryStreamProtocol())) {
       if (!(await tryConvertFileSrc())) {
         await tryBlobUrl();

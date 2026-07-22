@@ -39,6 +39,7 @@ pub fn parse_pptx(bytes: &[u8], _format: Format, _name: &str) -> Result<Document
         slides,
         byte_len: bytes.len(),
         asset_path: String::new(),
+        stream_url: None,
     })
 }
 

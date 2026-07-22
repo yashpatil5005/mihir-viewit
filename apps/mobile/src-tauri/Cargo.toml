@@ -40,6 +40,7 @@ base64 = "0.22"
 http = "1"
 mime_guess = "2"
 url = "2"
+tiny_http = "0.12"
 viewit-fmt-pdf = { path = "../../../crates/fmt-pdf", optional = true }
 
 [target.'cfg(target_os = "android")'.dependencies]
@@ -51,6 +52,7 @@ default = ["fmt-text-only"]
 fmt-text-only = ["viewit-core/fmt-text"]
 # Phase 1.4 / 5 — umbrella for full Android build (all fmt-* parsers + iWork).
 # fmt-text is always on (text/markdown/json/csv/rtf) since it's tiny and core to the viewer experience.
+# Excludes: 7z (heavy sevenz-rust), encrypted Office (heavy office-crypto)
 fmt-everything-lite = [
   "fmt-text-only",
   "fmt-office",
@@ -58,10 +60,14 @@ fmt-everything-lite = [
   "fmt-image",
   "fmt-ebook",
   "fmt-iwork",
+  "fmt-font",
 ]
+# Full feature set including 7z and encrypted Office support
 fmt-everything = [
   "fmt-everything-lite",
   "fmt-pdf",
+  "viewit-core/archive-7z",
+  "viewit-core/office-encrypted",
 ]
 fmt-office = ["viewit-core/fmt-office"]
 fmt-pdf = ["viewit-core/fmt-pdf", "viewit-fmt-pdf"]
@@ -69,3 +75,4 @@ fmt-archive = ["viewit-core/fmt-archive"]
 fmt-image = ["viewit-core/fmt-image"]
 fmt-ebook = ["viewit-core/fmt-ebook"]
 fmt-iwork = ["viewit-core/fmt-iwork"]
+fmt-font = ["viewit-core/fmt-font"]

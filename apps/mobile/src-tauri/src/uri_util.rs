@@ -1,4 +1,9 @@
 //! URI reads via tauri-plugin-fs (content:// + file://).
+//!
+//! New streaming architecture:
+//! - Read only 256KB for format sniffing
+//! - Register URI with stream server for on-demand content access
+//! - Return Document with stream_url for frontend HTTP fetching
 
 use std::str::FromStr;
 
@@ -11,6 +16,7 @@ use viewit_core::{
 use viewit_core_types::MediaKind;
 
 use crate::materialize;
+use crate::stream_server;
 
 const SNIFF_READ_CAP: usize = 256 * 1024;
 
@@ -150,16 +156,29 @@ fn percent_decode_path(uri: &str) -> String {
     percent_decode_segment(path)
 }
 
+/// Read only the first SNIFF_READ_CAP bytes for format detection.
+pub fn read_uri_prefix(app: &AppHandle, uri: &str) -> Result<Vec<u8>, String> {
+    use std::io::Read;
+    let fp = FilePath::from_str(uri).map_err(|e| e.to_string())?;
+    let mut opts = tauri_plugin_fs::OpenOptions::new();
+    opts.read(true);
+    let reader = app
+        .fs()
+        .open(fp, opts)
+        .map_err(|e| format!("failed to open {}: {}", uri, e))?;
+    let mut buf = Vec::with_capacity(SNIFF_READ_CAP);
+    reader
+        .take(SNIFF_READ_CAP as u64)
+        .read_to_end(&mut buf)
+        .map_err(|e| e.to_string())?;
+    Ok(buf)
+}
+
+/// Read full URI bytes (for small files only).
 pub fn read_uri_bytes(app: &AppHandle, uri: &str) -> Result<Vec<u8>, String> {
     app.fs()
         .read(FilePath::from_str(uri).expect("infallible FilePath parse"))
         .map_err(|e| e.to_string())
-}
-
-fn read_uri_prefix(app: &AppHandle, uri: &str) -> Result<Vec<u8>, String> {
-    let bytes = read_uri_bytes(app, uri)?;
-    let cap = bytes.len().min(SNIFF_READ_CAP);
-    Ok(bytes[..cap].to_vec())
 }
 
 fn sniff_prefix(app: &AppHandle, uri: &str, ext: &str) -> Result<(String, Format), String> {
@@ -218,6 +237,18 @@ pub fn read_uri_meta(
     Ok((bytes, ext, display_name))
 }
 
+/// Build a stream URL for the given URI.
+fn build_stream_url(app: &AppHandle, uri: &str) -> Option<String> {
+    let registry = app.state::<stream_server::StreamRegistry>();
+    let id = stream_server::register_uri(&registry, uri.to_string());
+    let port = app.state::<crate::HttpPort>().0.load(std::sync::atomic::Ordering::Relaxed);
+    if port > 0 {
+        Some(format!("http://127.0.0.1:{}/{}", port, id))
+    } else {
+        None
+    }
+}
+
 pub fn open_from_uri(
     app: &AppHandle,
     uri: String,
@@ -226,29 +257,79 @@ pub fn open_from_uri(
     let (ext, display_name) = uri_display_name(app, &uri, name);
     let (ext, format) = sniff_prefix(app, &uri, &ext)?;
 
+    // PDF: register stream, return native Document with stream_url
     if format == Format::Pdf {
-        return materialize::open_pdf_materialized(app, &uri, &display_name, &ext);
+        let stream_url = build_stream_url(app, &uri);
+        return Ok(Document::Pdf {
+            page_count: 0,
+            pages: vec![],
+            byte_len: 0,
+            native: true,
+            name: display_name,
+            stream_url,
+        });
     }
+
+    // Video/Audio: register stream, return Media with stream_url
     if format == Format::Video || format == Format::Audio || is_video_ext(&ext) || is_audio_ext(&ext) || is_stream_ext(&ext) {
         let kind = if format == Format::Audio || is_audio_ext(&ext) {
             MediaKind::Audio
         } else {
             MediaKind::Video
         };
-        return materialize::open_media_materialized(app, &uri, &display_name, &ext, kind);
+        let stream_url = build_stream_url(app, &uri);
+        return Ok(Document::Media {
+            format,
+            media_kind: kind,
+            name: display_name,
+            byte_len: 0,
+            asset_path: String::new(),
+            ext: ext.clone(),
+            stream_url,
+        });
     }
+
+    // Images: register stream, return Image with stream_url
     if is_image_format(format) {
         if uri.starts_with("content://") || uri.starts_with("file://") {
-            return materialize::open_image_materialized(app, &uri, &display_name, &ext, format);
+            let stream_url = build_stream_url(app, &uri);
+            return Ok(Document::Image {
+                format,
+                byte_len: 0,
+                name: display_name,
+                asset_path: String::new(),
+                stream_url,
+            });
         }
     }
+
+    // PPTX: materialize (client-side viewer needs local file), then register stream
     let ext_l = ext.to_lowercase();
     if (format == Format::Pptx || ext_l == "pptx" || ext_l == "pptm" || ext_l == "potx")
         && (uri.starts_with("content://") || uri.starts_with("file://"))
     {
         let use_ext = if ext_l.is_empty() { "pptx" } else { ext_l.as_str() };
-        return materialize::open_pptx_materialized(app, &uri, &display_name, use_ext);
+        let doc = materialize::open_pptx_materialized(app, &uri, &display_name, use_ext)?;
+        if let Document::Pptx { asset_path, .. } = &doc {
+            if !asset_path.is_empty() {
+                // Also register for streaming
+                let stream_url = build_stream_url(app, &uri);
+                if let Document::Pptx { stream_url: ref mut _su, .. } = doc.clone() {
+                    // Reconstruct with stream_url
+                    return Ok(Document::Pptx {
+                        slide_count: 0,
+                        slides: vec![],
+                        byte_len: 0,
+                        asset_path: asset_path.clone(),
+                        stream_url,
+                    });
+                }
+            }
+        }
+        return Ok(doc);
     }
+
+    // Office files (non-PPTX): read full bytes (they need full content for parsing)
     if is_office_format(format) {
         let bytes = read_uri_bytes(app, &uri)?;
         if bytes.len() > OPEN_BYTES_CAP {
@@ -261,6 +342,7 @@ pub fn open_from_uri(
         return open(&bytes, &ext, &display_name).map_err(|e| e.to_string());
     }
 
+    // Text-like files: read full bytes for parsing (text is usually small)
     let bytes = read_uri_bytes(app, &uri)?;
     if bytes.len() > OPEN_BYTES_CAP {
         return Err(format!(
