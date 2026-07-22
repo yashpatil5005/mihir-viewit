@@ -37,6 +37,7 @@
   let PptxViewer = $state<any>(null);
   let DocxViewer = $state<any>(null);
   let XlsxViewer = $state<any>(null);
+  let FontViewer = $state<any>(null);
   let IcsViewer = $state<any>(null);
   let VcfViewer = $state<any>(null);
   let DesktopEntryViewer = $state<any>(null);
@@ -64,6 +65,7 @@
       'pptx':     () => import('./PptxViewer.svelte'),
       'docx':     () => import('./DocxViewer.svelte'),
       'xlsx':     () => import('./XlsxViewer.svelte'),
+      'font':     () => import('./FontViewer.svelte'),
     };
     let loader = loaders[k] as (() => Promise<Comp>) | undefined;
     if (k === 'text') {
@@ -83,6 +85,7 @@
       else if (k === 'pptx') PptxViewer = m.default;
       else if (k === 'docx') DocxViewer = m.default;
       else if (k === 'xlsx') XlsxViewer = m.default;
+      else if (k === 'font') FontViewer = m.default;
       else if (k === 'text' && isIcs) IcsViewer = m.default;
       else if (k === 'text' && isVcf) VcfViewer = m.default;
       else if (k === 'text' && isDesktop) DesktopEntryViewer = m.default;
@@ -299,6 +302,8 @@
         <XlsxViewer document={doc} />
       {:else if doc.kind === 'unsupported'}
         <UnsupportedViewer uri={docUri ?? undefined} document={doc} />
+      {:else if doc.kind === 'font' && FontViewer}
+        <FontViewer {...(doc as any)} />
       {:else if doc.kind === 'placeholder'}
         <PlaceholderViewer document={doc} />
       {:else}

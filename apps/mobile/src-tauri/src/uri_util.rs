@@ -79,6 +79,17 @@ pub fn uri_display_name(app: &AppHandle, uri: &str, name: Option<String>) -> (St
         let ext = sanitize_ext(n.rsplit('.').next().unwrap_or(""));
         return (ext, n);
     }
+
+    // Check if we have a display name from the Kotlin MediaStore query
+    #[cfg(target_os = "android")]
+    if let Some(pending) = app.try_state::<crate::PendingDisplayNames>() {
+        if let Some(display_name) = pending.0.lock().unwrap().get(uri) {
+            let dn = display_name.clone();
+            let ext = sanitize_ext(dn.rsplit('.').next().unwrap_or(""));
+            return (ext, dn);
+        }
+    }
+
     if let Some(plugin_name) = app.path().file_name(uri) {
         if !plugin_name.is_empty() && plugin_name != "file" {
             let ext = sanitize_ext(plugin_name.rsplit('.').next().unwrap_or(""));

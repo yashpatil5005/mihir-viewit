@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { debugLog } from '@viewit/platform';
+  import { debugLog, openWithExternal } from '@viewit/platform';
 
   let {
     uri,
@@ -22,6 +22,7 @@
 
   let src = $state('');
   let errorMsg = $state('');
+  let showExternalBtn = $state(false);
   let mediaEl = $state<HTMLVideoElement | HTMLAudioElement | null>(null);
   let loadStart = 0;
   let blobUrl = $state('');
@@ -143,6 +144,15 @@
 
     src = '';
 
+    if (code === 4) {
+      if (currentStrategy === 'stream_url' || currentStrategy === 'stream' || currentStrategy === 'convertFileSrc') {
+        debugLog(`[media] codec unsupported (${ext}), offering external player`);
+        errorMsg = `Format .${ext} isn't supported by the built-in player.`;
+        showExternalBtn = true;
+        return;
+      }
+    }
+
     if (currentStrategy === 'convertFileSrc' && code === 4) {
       debugLog(`[media] convertFileSrc failed, trying blob…`);
       if (await tryBlobUrl()) { loadStart = Date.now(); return; }
@@ -181,6 +191,11 @@
   <div class="frame">
     {#if errorMsg}
       <p class="err">{errorMsg}</p>
+      {#if showExternalBtn}
+        <button class="external-btn" onclick={() => openWithExternal(uri)}>
+          Open with another app…
+        </button>
+      {/if}
     {:else if !src}
       <p class="status">Loading…</p>
     {:else if media_kind === 'audio'}
@@ -205,4 +220,10 @@
   audio { width: min(100%, 32rem); }
   .status { color: var(--text-secondary); font-style: italic; }
   .err { color: var(--error); white-space: pre-wrap; text-align: center; padding: 1rem; font-size: 0.85rem; }
+  .external-btn {
+    margin-top: 0.75rem; padding: 0.5rem 1.2rem;
+    background: var(--link); color: #fff; border: none; border-radius: 0.4rem;
+    font-size: 0.85rem; cursor: pointer; font-weight: 500;
+  }
+  .external-btn:hover { opacity: 0.9; }
 </style>

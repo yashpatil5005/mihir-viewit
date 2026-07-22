@@ -1,9 +1,11 @@
 package ai.viewit.app
 
 import android.content.Intent
+import android.database.Cursor
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
 import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
 import java.io.File
@@ -33,33 +35,33 @@ class MainActivity : TauriActivity() {
       return
     }
 
-    val uris = mutableListOf<String>()
+    val lines = mutableListOf<String>()
 
     @Suppress("DEPRECATION")
     val stream = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
     if (stream != null) {
-      uris.add(grantAndString(stream))
+      lines.add(grantWithDisplayName(stream))
     }
 
     if (action == Intent.ACTION_SEND_MULTIPLE) {
       @Suppress("DEPRECATION")
       val list = intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)
-      list?.forEach { uris.add(grantAndString(it)) }
+      list?.forEach { lines.add(grantWithDisplayName(it)) }
     }
 
-    intent.data?.let { uris.add(grantAndString(it)) }
+    intent.data?.let { lines.add(grantWithDisplayName(it)) }
 
-    if (uris.isEmpty()) return
+    if (lines.isEmpty()) return
 
     try {
       val f = File(applicationContext.filesDir, "viewit_pending_opens.txt")
-      f.writeText(uris.joinToString("\n") + "\n")
+      f.writeText(lines.joinToString("\n") + "\n")
     } catch (e: Exception) {
       android.util.Log.e("ViewIt", "pending opens write failed", e)
     }
   }
 
-  private fun grantAndString(uri: Uri): String {
+  private fun grantWithDisplayName(uri: Uri): String {
     try {
       val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
@@ -70,6 +72,23 @@ class MainActivity : TauriActivity() {
       }
     } catch (_: Exception) {
     }
-    return uri.toString()
+    // Resolve the display name from MediaStore
+    val displayName = queryDisplayName(uri)
+    return if (displayName != null) {
+      "${uri}\t$displayName"
+    } else {
+      uri.toString()
+    }
+  }
+
+  private fun queryDisplayName(uri: Uri): String? {
+    val projection = arrayOf(MediaStore.MediaColumns.DISPLAY_NAME)
+    val cursor: Cursor? = contentResolver.query(uri, projection, null, null, null)
+    return cursor?.use {
+      if (it.moveToFirst()) {
+        val idx = it.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME)
+        if (idx >= 0) it.getString(idx) else null
+      } else null
+    }
   }
 }

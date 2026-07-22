@@ -24,12 +24,19 @@ use viewit_core::Document;
 struct OpenedUrls(Mutex<Vec<Url>>);
 
 #[derive(Default)]
+struct PendingDisplayNames(Mutex<std::collections::HashMap<String, String>>);
+
+#[derive(Default)]
 struct HttpPort(std::sync::atomic::AtomicU16);
 
 #[tauri::command]
 fn opened_urls(app: tauri::AppHandle) -> Vec<String> {
     #[cfg(target_os = "android")]
-    android_pending::drain_into_opened_urls(&app);
+    {
+        let entries = android_pending::drain_into_opened_urls(&app);
+        entries.iter().map(|(uri, _)| uri.clone()).collect()
+    }
+    #[cfg(not(target_os = "android"))]
     app.state::<OpenedUrls>()
         .0
         .lock()
@@ -402,7 +409,15 @@ pub fn run() {
             #[cfg(target_os = "android")]
             {
                 let _ = materialize::prune_viewit_cache(app.handle());
-                android_pending::drain_into_opened_urls(app.handle());
+                let entries = android_pending::drain_into_opened_urls(app.handle());
+                // Store display names for later lookup
+                if !entries.is_empty() {
+                    let state = app.state::<PendingDisplayNames>();
+                    let mut names_lock = state.0.lock().unwrap();
+                    for (uri, name) in entries {
+                        names_lock.insert(uri, name);
+                    }
+                }
                 // Start the new unified stream server
                 match stream_server::start(app.handle().clone()) {
                     Ok(port) => {

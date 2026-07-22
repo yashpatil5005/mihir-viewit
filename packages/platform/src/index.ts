@@ -23,11 +23,15 @@ export type DocumentKind =
 export type Format =
   | 'plain-text' | 'markdown' | 'json' | 'csv' | 'code'
   | 'pdf' | 'image-png' | 'image-jpg' | 'image-webp' | 'image-gif'
-  | 'image-bmp' | 'image-tiff' | 'image-svg' | 'image-raw' | 'image-heic'
+  | 'image-bmp' | 'image-tiff' | 'image-svg' | 'image-raw' | 'image-heic' | 'image-psd'
   | 'epub' | 'mobi' | 'azw3' | 'fictionbook' | 'palmdoc'
   | 'archive-zip' | 'archive-tar' | 'archive-tar-gz' | 'archive-7z' | 'archive-rar'
-  | 'docx' | 'xlsx' | 'xls' | 'pptx' | 'odt' | 'ods' | 'odp' | 'doc' | 'ppt' | 'rtf'
-  | 'psd'
+  | 'docx' | 'docm' | 'dotx' | 'dotm'
+  | 'xlsx' | 'xlsm' | 'xlsb' | 'xls'
+  | 'pptx' | 'pptm' | 'potx'
+  | 'odt' | 'ott' | 'ods' | 'odp' | 'doc' | 'ppt' | 'rtf'
+  | 'plist' | 'ics' | 'vcf'
+  | 'video' | 'audio'
   | 'iwork-pages' | 'iwork-numbers' | 'iwork-key'
   | 'font'
   | 'unsupported';
@@ -394,9 +398,16 @@ function extToFormat(ext: string): Format {
     case '7z': return 'archive-7z';
     case 'rar': return 'archive-rar';
     case 'docx': return 'docx';
+    case 'docm': return 'docm';
+    case 'dotx': return 'dotx';
+    case 'dotm': return 'dotm';
     case 'xlsx': return 'xlsx';
+    case 'xlsm': return 'xlsm';
+    case 'xlsb': return 'xlsb';
     case 'xls': return 'xls';
     case 'pptx': return 'pptx';
+    case 'pptm': return 'pptm';
+    case 'potx': return 'potx';
     case 'odt': return 'odt';
     case 'ott': return 'odt';
     case 'ods': return 'ods';
@@ -404,7 +415,7 @@ function extToFormat(ext: string): Format {
     case 'doc': return 'doc';
     case 'ppt': return 'ppt';
     case 'rtf': return 'rtf';
-    case 'psd': return 'psd';
+    case 'psd': return 'image-psd';
     case 'heic':
     case 'heif':
     case 'avif': return 'image-heic';

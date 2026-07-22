@@ -23,7 +23,7 @@ pub fn pending_file_path(app: &AppHandle) -> Option<PathBuf> {
     })
 }
 
-pub fn drain_into_opened_urls(app: &AppHandle) -> Vec<String> {
+pub fn drain_into_opened_urls(app: &AppHandle) -> Vec<(String, String)> {
     let Some(path) = pending_file_path(app) else {
         return vec![];
     };
@@ -42,18 +42,21 @@ pub fn drain_into_opened_urls(app: &AppHandle) -> Vec<String> {
         if line.is_empty() {
             continue;
         }
-        if let Ok(url) = Url::parse(line) {
+        // Line format: "uri\tdisplay_name"
+        let (uri_str, display_name) = line.split_once('\t').unwrap_or((line, ""));
+        if let Ok(url) = Url::parse(uri_str) {
             app.state::<OpenedUrls>()
                 .0
                 .lock()
                 .unwrap()
                 .push(url);
-            added.push(line.to_string());
+            added.push((uri_str.to_string(), display_name.to_string()));
         }
     }
     let _ = std::fs::remove_file(&path);
     if !added.is_empty() {
-        let _ = app.emit("opened", added.clone());
+        let uris: Vec<String> = added.iter().map(|(uri, _)| uri.clone()).collect();
+        let _ = app.emit("opened", uris);
     }
     added
 }
