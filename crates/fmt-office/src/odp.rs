@@ -51,12 +51,13 @@ fn extract_odp_slides(xml: &str) -> Vec<PptxSlide> {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(e)) => {
                 let name = e.name();
-                let tag = name.as_ref();
-                if tag == b"draw:page" {
+                let tag = name.local_name();
+                let tag = tag.as_ref();
+                if tag == b"page" {
                     in_page = true;
                     page_texts.clear();
                 }
-                if tag == b"text:p" && in_page {
+                if tag == b"p" && in_page {
                     in_text_p = true;
                     current_text.clear();
                 }
@@ -69,15 +70,16 @@ fn extract_odp_slides(xml: &str) -> Vec<PptxSlide> {
             }
             Ok(Event::End(e)) => {
                 let name = e.name();
-                let tag = name.as_ref();
-                if tag == b"text:p" && in_text_p {
+                let tag = name.local_name();
+                let tag = tag.as_ref();
+                if tag == b"p" && in_text_p {
                     in_text_p = false;
                     let text = current_text.concat();
                     if !text.trim().is_empty() {
                         page_texts.push(text);
                     }
                 }
-                if tag == b"draw:page" && in_page {
+                if tag == b"page" && in_page {
                     in_page = false;
                     // First text paragraph is typically the title; rest is body
                     let title = page_texts.first().cloned().unwrap_or_default();

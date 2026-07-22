@@ -43,7 +43,13 @@ fn try_decrypt_if_encrypted(bytes: &[u8]) -> Result<Option<Vec<u8>>, Error> {
     if bytes.len() < 8 || bytes[..8] != OLE2_MAGIC {
         return Ok(None);
     }
-    // Encrypted OLE2 file — try office-crypto with empty password.
+    // All OLE2 files share the same header — encrypted or not.
+    // First try to open with cfb directly; if it succeeds, the file is not encrypted.
+    let cursor = std::io::Cursor::new(bytes);
+    if cfb::CompoundFile::open(cursor).is_ok() {
+        return Ok(None);
+    }
+    // cfb failed — might be encrypted. Try office-crypto with empty password.
     match office_crypto::decrypt_from_bytes(bytes.to_vec(), "") {
         Ok(decrypted) => Ok(Some(decrypted)),
         Err(_) => Err(Error::Parse(

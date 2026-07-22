@@ -16,6 +16,7 @@
   let errorMsg = $state('');
   let idx = $state(0);
   let total = $state(0);
+  let preParsedSlides: Array<{ title: string; body: string }> = $state([]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let viewer: any = null;
@@ -24,6 +25,17 @@
     status = 'loading';
     errorMsg = '';
     try {
+      // If the Rust backend already parsed slides (ODP, ODP fallback, etc.),
+      // use them directly instead of re-parsing the raw file with pptx-parser.
+      if (docProp.slides && docProp.slides.length > 0) {
+        preParsedSlides = docProp.slides;
+        total = docProp.slides.length;
+        idx = 0;
+        status = 'ready';
+        debugLog(`pptx ok slides=${total} (pre-parsed)`);
+        return;
+      }
+
       const path = await resolvePptxAssetPath(
         docProp.asset_path,
         source_uri || undefined,
@@ -93,7 +105,16 @@
     </div>
   {/if}
   <div class="stage">
-    <canvas bind:this={canvasEl}></canvas>
+    {#if preParsedSlides.length > 0}
+      <div class="slide-text">
+        {#if preParsedSlides[idx]}
+          {#if preParsedSlides[idx].title}<h3>{preParsedSlides[idx].title}</h3>{/if}
+          <pre>{preParsedSlides[idx].body}</pre>
+        {/if}
+      </div>
+    {:else}
+      <canvas bind:this={canvasEl}></canvas>
+    {/if}
   </div>
   {#if status === 'ready'}
     <p class="muted">Offline · rendered via Canvas (no PowerPoint animations).</p>
@@ -111,6 +132,13 @@
     background: #111; display: flex; align-items: center; justify-content: center;
   }
   canvas { max-width: 100%; max-height: 100%; display: block; }
+  .slide-text {
+    width: 100%; height: 100%; padding: 1.5rem;
+    overflow: auto; color: var(--text-primary); background: var(--bg-primary);
+    font-size: 0.9rem; line-height: 1.6;
+  }
+  .slide-text h3 { margin: 0 0 0.5rem; font-size: 1.1rem; }
+  .slide-text pre { white-space: pre-wrap; word-break: break-word; margin: 0; font-family: inherit; }
   .muted { font-size: 0.75rem; color: var(--text-secondary); }
   .err { color: var(--error); white-space: pre-wrap; }
 </style>

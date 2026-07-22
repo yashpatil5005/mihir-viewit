@@ -79,6 +79,7 @@ pub fn parse_text(bytes: &[u8], format: Format, _name: &str) -> Result<Document,
 
 // --- Phase 3.5 — RTF plain-text extraction ----------------------------------
 
+#[allow(dead_code)]
 fn rtf_to_text(rtf: &str) -> String {
     let mut out = String::with_capacity(rtf.len());
     let mut chars = rtf.chars().peekable();

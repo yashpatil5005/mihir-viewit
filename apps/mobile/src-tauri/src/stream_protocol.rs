@@ -25,6 +25,7 @@ pub struct StreamEntry {
 #[derive(Default)]
 pub struct StreamSlots(pub Mutex<HashMap<u64, StreamEntry>>);
 
+#[allow(dead_code)]
 pub fn insert_uri(slots: &StreamSlots, uri: String) -> u64 {
     let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
     let ext = uri

@@ -44,7 +44,7 @@ fn extract_odt_blocks(xml: &str) -> Vec<DocxBlock> {
     let mut blocks: Vec<DocxBlock> = Vec::new();
     let mut in_text_p = false;
     let mut in_list_item = false;
-    let mut in_h = false;
+    let mut _in_h = false;
     let mut current_text: Vec<String> = Vec::new();
     let mut heading_level: Option<u8> = None;
     let mut in_office_text = false;
@@ -74,14 +74,14 @@ fn extract_odt_blocks(xml: &str) -> Vec<DocxBlock> {
                             if val.starts_with("Heading_20_") {
                                 if let Ok(level) = val.trim_start_matches("Heading_20_").parse::<u8>() {
                                     heading_level = Some(level);
-                                    in_h = true;
+                                    _in_h = true;
                                 }
                             } else if val.starts_with("Heading") {
                                 // Fallback: "Heading1", "Heading2", etc.
                                 let rest = val.trim_start_matches("Heading");
                                 if let Ok(level) = rest.parse::<u8>() {
                                     heading_level = Some(level);
-                                    in_h = true;
+                                    _in_h = true;
                                 }
                             }
                         }
@@ -128,7 +128,7 @@ fn extract_odt_blocks(xml: &str) -> Vec<DocxBlock> {
                         });
                     }
                     heading_level = None;
-                    in_h = false;
+                    _in_h = false;
                 }
                 if tag_ref == b"text:list-item" && in_list_item {
                     in_list_item = false;
