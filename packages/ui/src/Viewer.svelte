@@ -1,4 +1,14 @@
 <script lang="ts">
+  // Polyfill Promise.withResolvers for older WebView versions (ES2024 feature)
+  if (typeof Promise.withResolvers !== 'function') {
+    Promise.withResolvers = function <T>() {
+      let resolve!: (value: T | PromiseLike<T>) => void;
+      let reject!: (reason?: any) => void;
+      const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+      return { promise, resolve, reject };
+    };
+  }
+
   // Top-level dispatcher: given a Document variant, render the right viewer.
   // Per plan §2: "Svelte viewer components" consume "Structured JSON over IPC".
   //
@@ -46,6 +56,10 @@
       'pdf':      () => import('./PdfViewer.svelte'),
       'stream-file': () => import('./PdfViewer.svelte'),
       'epub':     () => import('./EpubViewer.svelte'),
+      'mobi':     () => import('./EpubViewer.svelte'),
+      'azw3':     () => import('./EpubViewer.svelte'),
+      'fictionbook': () => import('./EpubViewer.svelte'),
+      'palmdoc':  () => import('./EpubViewer.svelte'),
       'archive':  () => import('./ArchiveViewer.svelte'),
       'pptx':     () => import('./PptxViewer.svelte'),
       'docx':     () => import('./DocxViewer.svelte'),
@@ -64,7 +78,7 @@
       else if (k === 'json') JsonViewer = m.default;
       else if (k === 'csv') CsvViewer = m.default;
       else if (k === 'pdf' || k === 'stream-file') PdfViewer = m.default;
-      else if (k === 'epub') EpubViewer = m.default;
+      else if (k === 'epub' || k === 'mobi' || k === 'azw3' || k === 'fictionbook' || k === 'palmdoc') EpubViewer = m.default;
       else if (k === 'archive') ArchiveViewer = m.default;
       else if (k === 'pptx') PptxViewer = m.default;
       else if (k === 'docx') DocxViewer = m.default;
@@ -273,7 +287,7 @@
         <MediaViewer uri={docUri ?? ''} {...(doc as any)} />
       {:else if doc.kind === 'pdf' && PdfViewer}
         <PdfViewer document={doc} source_uri={docUri ?? ''} />
-      {:else if doc.kind === 'epub' && EpubViewer}
+      {:else if (doc.kind === 'epub' || doc.kind === 'mobi' || doc.kind === 'azw3' || doc.kind === 'fictionbook' || doc.kind === 'palmdoc') && EpubViewer}
         <EpubViewer {...(doc as any)} />
       {:else if doc.kind === 'archive' && ArchiveViewer}
         <ArchiveViewer {...(doc as any)} />

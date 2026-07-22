@@ -164,9 +164,9 @@ pub fn open_media_materialized(
         ))
         .unwrap_or_default();
         extern "C" {
-            fn __android_log_write(prio: i32, tag: *const u8, text: *const u8) -> i32;
+            fn __android_log_write(prio: i32, tag: *const i8, text: *const i8) -> i32;
         }
-        __android_log_write(4, tag.as_ptr(), msg.as_ptr());
+        __android_log_write(4, tag.as_ptr() as *const i8, msg.as_ptr() as *const i8);
     }
 
     Ok(Document::Media {
@@ -175,6 +175,7 @@ pub fn open_media_materialized(
         name: display_name.to_string(),
         byte_len: size,
         asset_path,
+        ext: ext.to_string(),
     })
 }
 

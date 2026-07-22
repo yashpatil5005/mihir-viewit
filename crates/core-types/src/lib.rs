@@ -29,6 +29,11 @@ pub enum Format {
     ImagePsd,
     ImageRaw,
     Epub,
+    Mobi,
+    Azw3,
+    FictionBook,
+    PalmDoc,
+    Font,
     ArchiveZip,
     ArchiveTarGz,
     ArchiveTar,
@@ -164,6 +169,8 @@ pub enum Document {
         byte_len: usize,
         #[serde(default)]
         asset_path: String,
+        #[serde(default)]
+        ext: String,
     },
     /// PDF / media materialized to app cache (Android custom protocol workaround).
     StreamFile {

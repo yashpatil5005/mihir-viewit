@@ -6,6 +6,7 @@ mod android_pending;
 
 mod materialize;
 mod stream_protocol;
+mod http_serve;
 mod uri_util;
 
 use std::io::Read;
@@ -16,6 +17,9 @@ use viewit_core::Document;
 
 #[derive(Default, serde::Serialize)]
 struct OpenedUrls(Mutex<Vec<Url>>);
+
+#[derive(Default)]
+struct HttpPort(std::sync::atomic::AtomicU16);
 
 #[tauri::command]
 fn opened_urls(app: tauri::AppHandle) -> Vec<String> {
@@ -103,6 +107,32 @@ fn open_bytes_b64(b64: String, name: String) -> Result<Document, String> {
         .decode(b64.trim())
         .map_err(|e| format!("base64 decode: {}", e))?;
     uri_util::open_from_bytes(bytes, name)
+}
+
+/// Register a materialized cache file with the stream protocol and return
+/// a `http://127.0.0.1:{port}/{id}` URL. The WebView's `<video>` / `<audio>`
+/// can seek natively via HTTP Range requests — no base64 IPC needed.
+#[tauri::command]
+fn media_stream_url(app: tauri::AppHandle, asset_path: String, ext: String) -> Result<String, String> {
+    let file_path = if asset_path.starts_with("file://") {
+        url::Url::parse(&asset_path)
+            .map_err(|e| e.to_string())?
+            .to_file_path()
+            .map_err(|_| "bad file url".to_string())?
+    } else {
+        std::path::PathBuf::from(&asset_path)
+    };
+    if !file_path.exists() {
+        return Err(format!("file not found: {}", file_path.display()));
+    }
+    let slots = app.state::<stream_protocol::StreamSlots>();
+    let id = stream_protocol::insert_cached(&slots, file_path, ext);
+    let port = app.state::<HttpPort>().0.load(std::sync::atomic::Ordering::Relaxed);
+    if port > 0 {
+        Ok(format!("http://127.0.0.1:{}/{}", port, id))
+    } else {
+        Err("HTTP server not running".into())
+    }
 }
 
 #[cfg(feature = "fmt-pdf")]
@@ -322,6 +352,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .manage(OpenedUrls(Mutex::new(vec![])))
+        .manage(HttpPort::default())
         .manage(stream_protocol::StreamSlots::default())
         .register_uri_scheme_protocol("viewit-stream", |ctx, request| {
             let app = ctx.app_handle();
@@ -340,6 +371,7 @@ pub fn run() {
             open_bytes_b64,
             text_page,
             csv_page,
+            media_stream_url,
             epub_chapter,
             archive_extract,
             #[cfg(feature = "fmt-pdf")]
@@ -350,6 +382,15 @@ pub fn run() {
             {
                 let _ = materialize::prune_viewit_cache(app.handle());
                 android_pending::drain_into_opened_urls(app.handle());
+                match http_serve::start(app.handle().clone()) {
+                    Ok(port) => {
+                        app.state::<HttpPort>().0.store(port, std::sync::atomic::Ordering::Relaxed);
+                        android_log_write_info("viewit", &format!("[viewit] HTTP server on 127.0.0.1:{}", port));
+                    }
+                    Err(e) => {
+                        android_log_write_info("viewit", &format!("[viewit] HTTP server FAILED: {}", e));
+                    }
+                }
             }
             #[cfg(not(target_os = "android"))]
             let _ = app;
@@ -383,10 +424,10 @@ fn android_log_write_info(tag: &str, msg: &str) {
         let tag_c = CString::new(tag).unwrap_or_default();
         let msg_c = CString::new(msg).unwrap_or_default();
         extern "C" {
-            fn __android_log_write(prio: i32, tag: *const u8, text: *const u8) -> i32;
+            fn __android_log_write(prio: i32, tag: *const i8, text: *const i8) -> i32;
         }
         const ANDROID_LOG_INFO: i32 = 4;
-        let r = __android_log_write(ANDROID_LOG_INFO, tag_c.as_ptr(), msg_c.as_ptr());
+        let r = __android_log_write(ANDROID_LOG_INFO, tag_c.as_ptr() as *const i8, msg_c.as_ptr() as *const i8);
         // sink the return value so LTO doesn't drop the call.
         std::hint::black_box(r);
     }

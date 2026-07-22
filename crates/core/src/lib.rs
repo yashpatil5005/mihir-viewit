@@ -195,13 +195,20 @@ pub fn is_video_ext(ext: &str) -> bool {
     matches!(
         ext,
         "mp4" | "m4v" | "webm" | "mkv" | "mov" | "avi" | "mpg" | "mpeg" | "3gp" | "wmv" | "flv"
+        | "ts" | "asf" | "f4v" | "hevc" | "m2ts" | "m2v" | "mjpeg" | "mts" | "mxf" | "ogv"
+        | "rm" | "swf" | "vob" | "wtv"
     )
 }
 
 pub fn is_audio_ext(ext: &str) -> bool {
     matches!(
         ext,
-        "mp3" | "m4a" | "aac" | "flac" | "ogg" | "wav" | "wma" | "opus"
+        "mp3" | "m4a" | "aac" | "flac" | "ogg" | "wav" | "wma" | "opus" | "8svx" | "ac3"
+        | "aiff" | "amb" | "au" | "avr" | "caf" | "cdda" | "cvs" | "cvsd" | "cvu" | "dts"
+        | "dvms" | "fap" | "fssd" | "gsrt" | "hcom" | "htk" | "ima" | "ircam" | "m4r" | "maud"
+        | "mp2" | "nist" | "oga" | "paf" | "prc" | "pvf" | "ra" | "sd2" | "sln" | "smp"
+        | "snd" | "sndr" | "sndt" | "sou" | "sph" | "spx" | "tta" | "txw" | "vms" | "voc"
+        | "vox" | "w64" | "wv" | "wve"
     )
 }
 
@@ -226,6 +233,7 @@ pub fn open_stream(ext: &str, name: &str) -> Result<Document, Error> {
             name: name.to_string(),
             byte_len: 0,
             asset_path: String::new(),
+            ext: ext.to_string(),
         });
     }
     if is_audio_ext(ext) {
@@ -235,6 +243,7 @@ pub fn open_stream(ext: &str, name: &str) -> Result<Document, Error> {
             name: name.to_string(),
             byte_len: 0,
             asset_path: String::new(),
+            ext: ext.to_string(),
         });
     }
     Err(Error::Parse(format!("not a stream format: .{}", ext)))
@@ -265,7 +274,18 @@ fn sniff_ext(ext: &str) -> Format {
         "psd" => Format::ImagePsd,
         "dng" | "cr2" | "cr3" | "nef" | "arw" | "orf" | "rw2" | "raf" | "srw" | "pef" => Format::ImageRaw,
         "ico" | "icns" | "jfif" => Format::ImagePng,
+        // Additional image formats — mapped to ImageRaw for webview best-effort
+        "cur" | "dds" | "erf" | "exr" | "fts" | "hdr" | "jp2" | "jpe" | "jps" | "mng" | "nrw"
+        | "pam" | "pbm" | "pcd" | "pcx" | "pes" | "pfm" | "pgm" | "picon" | "pict" | "pnm" | "ppm"
+        | "ras" | "sfw" | "sgi" | "tga" | "wbmp" | "wpg" | "x3f" | "xbm" | "xcf" | "xpm"
+        | "xwd" => Format::ImageRaw,
         "epub" => Format::Epub,
+        "mobi" => Format::Mobi,
+        "azw3" => Format::Azw3,
+        "fb2" => Format::FictionBook,
+        "lrf" | "pdb" | "snb" => Format::PalmDoc,
+        // Fonts
+        "ttf" | "otf" | "woff" | "woff2" | "pfb" | "cff" | "dfont" | "sfd" | "ps" => Format::Font,
         "zip" => Format::ArchiveZip,
         "tar" => Format::ArchiveTar,
         "tgz" | "gz" => Format::ArchiveTarGz,
@@ -275,9 +295,10 @@ fn sniff_ext(ext: &str) -> Format {
         "xlsx" | "xlsm" | "xlsb" => Format::Xlsx,
         "xls" => Format::Xls,
         "pptx" | "pptm" | "potx" => Format::Pptx,
-        "odt" => Format::Odt,
+        "odt" | "ott" => Format::Odt,
         "ods" => Format::Ods,
         "odp" => Format::Odp,
+        "djvu" | "djv" => Format::ImageRaw, // DjVu — treat as image-like
         "doc" => Format::Doc,
         "ppt" => Format::Ppt,
         "rtf" => Format::Rtf,
@@ -289,15 +310,22 @@ fn sniff_ext(ext: &str) -> Format {
         "vcf" => Format::Vcf,
         "desktop" => Format::Code,
         "mp4" | "m4v" | "webm" | "mkv" | "mov" | "avi" | "mpg" | "mpeg" | "3gp" | "wmv" | "flv"
-        | "ts" => Format::Video,
-        "mp3" | "m4a" | "aac" | "flac" | "ogg" | "wav" | "wma" | "opus" => Format::Audio,
+        | "ts" | "asf" | "f4v" | "hevc" | "m2ts" | "m2v" | "mjpeg" | "mts" | "mxf" | "ogv"
+        | "rm" | "swf" | "vob" | "wtv" => Format::Video,
+        "mp3" | "m4a" | "aac" | "flac" | "ogg" | "wav" | "wma" | "opus" | "8svx" | "ac3"
+        | "aiff" | "amb" | "au" | "avr" | "caf" | "cdda" | "cvs" | "cvsd" | "cvu" | "dts"
+        | "dvms" | "fap" | "fssd" | "gsrt" | "hcom" | "htk" | "ima" | "ircam" | "m4r" | "maud"
+        | "mp2" | "nist" | "oga" | "paf" | "prc" | "pvf" | "ra" | "sd2" | "sln" | "smp"
+        | "snd" | "sndr" | "sndt" | "sou" | "sph" | "spx" | "tta" | "txw" | "vms" | "voc"
+        | "vox" | "w64" | "wv" | "wve" => Format::Audio,
         "rs" | "tsx" | "jsx" | "mjs" | "cjs" | "js" | "py" | "pyw" | "go" | "c" | "cc"
         | "cpp" | "cxx" | "h" | "hpp" | "hh" | "java" | "kt" | "kts" | "swift" | "sh" | "bash"
         | "zsh" | "fish" | "sql" | "lua" | "php" | "rb" | "ex" | "exs" | "erl" | "hrl" | "hs"
         | "ml" | "mli" | "clj" | "cljs" | "scala" | "sc" | "r" | "jl" | "vim" | "ps1" | "bat"
         | "cmd" | "cs" | "fs" | "fsx" | "dart" | "zig" | "nim" | "v" | "sv" | "vhd" | "vhdl"
         | "asm" | "s" | "gradle" | "cmake" | "make" | "mk" | "dockerfile" | "proto" | "graphql"
-        | "gql" | "vue" | "svelte" | "astro" | "wasm" | "wat" | "patch" | "diff" => Format::Code,
+        | "gql" | "vue" | "svelte" | "astro" | "wasm" | "wat" | "patch" | "diff" | "class"
+        | "htaccess" | "kml" | "kmz" => Format::Code,
         _ => Format::Unsupported,
     }
 }
@@ -340,6 +368,7 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
                 name: name.to_string(),
                 byte_len: bytes.len(),
                 asset_path: String::new(),
+                ext: ext.to_string(),
             });
         }
         Format::ImagePng | Format::ImageJpg | Format::ImageWebp | Format::ImageGif
@@ -361,6 +390,14 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
                 return viewit_fmt_ebook::parse(bytes, format, name).map_err(Error::from_parse);
             }
             #[cfg(not(feature = "fmt-ebook"))]
+            return Ok(Document::Placeholder { format, name: name.to_string(), byte_len: bytes.len() });
+        }
+        Format::Mobi | Format::Azw3 | Format::FictionBook | Format::PalmDoc => {
+            // Non-EPUB ebooks — show placeholder with format info
+            return Ok(Document::Placeholder { format, name: name.to_string(), byte_len: bytes.len() });
+        }
+        Format::Font => {
+            // Fonts — show as a placeholder with metadata
             return Ok(Document::Placeholder { format, name: name.to_string(), byte_len: bytes.len() });
         }
         Format::ArchiveZip | Format::ArchiveTar | Format::ArchiveTarGz | Format::Archive7z => {

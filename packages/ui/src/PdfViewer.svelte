@@ -2,6 +2,17 @@
   import { onMount, onDestroy } from 'svelte';
   import { pdfPage, debugLog } from '@viewit/platform';
 
+  // Polyfill Promise.withResolvers for older WebView versions (ES2024 feature)
+  // pdfjs-dist v4 uses this internally, so we must polyfill before importing it.
+  if (typeof Promise.withResolvers !== 'function') {
+    Promise.withResolvers = function <T>() {
+      let resolve!: (value: T | PromiseLike<T>) => void;
+      let reject!: (reason?: any) => void;
+      const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+      return { promise, resolve, reject };
+    };
+  }
+
   let {
     document: docProp = {},
     source_uri = '',
@@ -73,10 +84,25 @@
 
       // Set up the worker. pdfjs-dist v4+ requires a worker — cannot disable.
       // The ?url import resolves to a local asset URL that the WebView can load.
+      // We wrap the worker to inject a Promise.withResolvers polyfill for older WebViews.
       try {
-        const worker = await import('pdfjs-dist/build/pdf.worker.mjs?url');
-        pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
-        debugLog(`[pdf] worker src set: ${String(worker.default).slice(0, 80)}`);
+        const workerUrl = await import('pdfjs-dist/build/pdf.worker.mjs?url').then(m => m.default);
+        debugLog(`[pdf] worker src set: ${String(workerUrl).slice(0, 80)}`);
+
+        // Fetch the worker source and prepend the polyfill
+        const workerResp = await fetch(workerUrl);
+        const workerCode = await workerResp.text();
+        const polyfill = `
+          if (typeof Promise.withResolvers !== 'function') {
+            Promise.withResolvers = function() {
+              var resolve, reject;
+              var promise = new Promise(function(res, rej) { resolve = res; reject = rej; });
+              return { promise: promise, resolve: resolve, reject: reject };
+            };
+          }
+        `;
+        const wrappedBlob = new Blob([polyfill + workerCode], { type: 'application/javascript' });
+        pdfjs.GlobalWorkerOptions.workerSrc = URL.createObjectURL(wrappedBlob);
       } catch (e) {
         debugLog(`[pdf] worker import failed: ${e instanceof Error ? e.message : e}, falling back to null`);
         pdfjs.GlobalWorkerOptions.workerSrc = '';

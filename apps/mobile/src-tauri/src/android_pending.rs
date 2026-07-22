@@ -8,7 +8,19 @@ use tauri::{AppHandle, Emitter, Manager, Url};
 use crate::OpenedUrls;
 
 pub fn pending_file_path(app: &AppHandle) -> Option<PathBuf> {
-    app.path().app_data_dir().ok().map(|p| p.join("viewit_pending_opens.txt"))
+    // On Android, `app_data_dir()` returns the app's data directory.
+    // The Android MainActivity writes to `Context.getFilesDir()` which is
+    // typically `<app_data_dir>/files/`. We check both locations for compatibility.
+    app.path().app_data_dir().ok().map(|p| {
+        // Try the `files/` subdirectory first (where Android writes)
+        let files_dir = p.join("files");
+        let direct_path = files_dir.join("viewit_pending_opens.txt");
+        if direct_path.exists() {
+            direct_path
+        } else {
+            p.join("viewit_pending_opens.txt")
+        }
+    })
 }
 
 pub fn drain_into_opened_urls(app: &AppHandle) -> Vec<String> {

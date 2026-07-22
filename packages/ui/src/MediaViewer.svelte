@@ -8,12 +8,14 @@
     media_kind = 'video',
     name = 'media',
     format = 'video',
+    ext = 'mp4',
   }: {
     uri: string;
     asset_path?: string;
     media_kind?: 'video' | 'audio';
     name?: string;
     format?: string;
+    ext?: string;
   } = $props();
 
   let src = $state('');
@@ -21,60 +23,125 @@
   let mediaEl = $state<HTMLVideoElement | HTMLAudioElement | null>(null);
   let loadStart = 0;
   let blobUrl = $state('');
+  let currentStrategy = $state('');
+
+  const MIME_MAP: Record<string, string> = {
+    mp4: 'video/mp4', m4v: 'video/mp4', webm: 'video/webm', mkv: 'video/x-matroska',
+    mov: 'video/quicktime', '3gp': 'video/3gpp', avi: 'video/x-msvideo',
+    mpg: 'video/mpeg', mpeg: 'video/mpeg', wmv: 'video/x-ms-wmv', flv: 'video/x-flv',
+    ts: 'video/mp2t', m2ts: 'video/mp2t', mts: 'video/mp2t',
+    ogv: 'video/ogg', f4v: 'video/mp4', asf: 'video/x-ms-wmv',
+    mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac', flac: 'audio/flac',
+    ogg: 'audio/ogg', wav: 'audio/wav', wma: 'audio/x-ms-wma', opus: 'audio/opus',
+  };
+
+  function mimeForExt(e: string): string {
+    return MIME_MAP[e.toLowerCase()] ?? (media_kind === 'video' ? 'video/mp4' : 'audio/mpeg');
+  }
+
+  async function tryStreamProtocol(): Promise<boolean> {
+    const { debugLog: log } = await import('@viewit/platform');
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const streamUrl = await invoke<string>('media_stream_url', { assetPath: asset_path, ext: ext || 'mp4' });
+      log(`[media] stream URL: ${streamUrl}`);
+      if (streamUrl) { src = streamUrl; currentStrategy = 'stream'; return true; }
+    } catch (e) {
+      log(`[media] stream protocol failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    return false;
+  }
+
+  async function tryConvertFileSrc(): Promise<boolean> {
+    const { debugLog: log } = await import('@viewit/platform');
+    try {
+      const { convertFileSrc } = await import('@tauri-apps/api/core');
+      const filePath = asset_path.startsWith('file://') ? asset_path.slice(7) : asset_path;
+      const converted = convertFileSrc(filePath);
+      log(`[media] convertFileSrc → ${converted?.slice(0, 120)}`);
+      if (converted) { src = converted; currentStrategy = 'convertFileSrc'; return true; }
+    } catch (e) {
+      log(`[media] convertFileSrc failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    return false;
+  }
+
+  async function tryBlobUrl(): Promise<boolean> {
+    const { debugLog: log } = await import('@viewit/platform');
+    try {
+      log(`[media] reading bytes via IPC…`);
+      const { readMaterializedBytes } = await import('@viewit/platform');
+      const uint8 = await readMaterializedBytes(asset_path);
+      log(`[media] got ${uint8.length} bytes`);
+      const mime = mimeForExt(ext);
+      const blob = new Blob([uint8], { type: mime });
+      blobUrl = URL.createObjectURL(blob);
+      src = blobUrl;
+      currentStrategy = 'blob';
+      log(`[media] blob URL created, size=${blob.size}`);
+      return true;
+    } catch (e) {
+      log(`[media] blob fallback failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    return false;
+  }
 
   onMount(async () => {
     const { debugLog: log } = await import('@viewit/platform');
 
     log(`[media] uri=${uri?.slice(0, 80)}`);
     log(`[media] asset_path=${asset_path?.slice(0, 80)}`);
-    log(`[media] kind=${media_kind} format=${format}`);
+    log(`[media] kind=${media_kind} format=${format} ext=${ext}`);
 
     if (!asset_path) {
       errorMsg = 'No asset path — materialization may have failed';
-      log(`[media] ABORT: no asset_path`);
       return;
     }
 
-    try {
-      log(`[media] reading bytes via IPC…`);
-      const { readMaterializedBytes } = await import('@viewit/platform');
-      const uint8 = await readMaterializedBytes(asset_path);
-      log(`[media] got ${uint8.length} bytes`);
+    loadStart = Date.now();
+    const IS_TAURI = '__TAURI_INTERNALS__' in window;
+    if (!IS_TAURI) { await tryBlobUrl(); return; }
 
-      const mime = media_kind === 'video' ? 'video/mp4' : 'audio/mpeg';
-      const blob = new Blob([uint8], { type: mime });
-      blobUrl = URL.createObjectURL(blob);
-      src = blobUrl;
-      log(`[media] blob URL created, size=${blob.size}`);
-
-      loadStart = Date.now();
-      log(`[media] src set, waiting for load…`);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      log(`[media] error: ${msg}`);
-      errorMsg = msg;
+    if (!(await tryStreamProtocol())) {
+      if (!(await tryConvertFileSrc())) {
+        await tryBlobUrl();
+      }
     }
+    log(`[media] src set via ${currentStrategy}, waiting for load…`);
   });
 
   onDestroy(() => {
-    if (blobUrl) {
-      URL.revokeObjectURL(blobUrl);
-    }
+    if (blobUrl) URL.revokeObjectURL(blobUrl);
   });
 
   function onLoad() {
     const elapsed = Date.now() - loadStart;
-    debugLog(`[media] loaded in ${elapsed}ms`);
+    debugLog(`[media] loaded in ${elapsed}ms via ${currentStrategy}`);
   }
 
-  function onError() {
+  async function onError() {
     const el = mediaEl;
     if (!el) return;
     const err = (el as HTMLVideoElement).error;
     const code = err?.code ?? 0;
     const NAMES: Record<number, string> = { 1: 'ABORTED', 2: 'NETWORK', 3: 'DECODE', 4: 'SRC_NOT_SUPPORTED' };
     const msg = err?.message || NAMES[code] || `code ${code}`;
-    debugLog(`[media] ERROR code=${code} (${NAMES[code] ?? '?'}): ${msg}`);
+    debugLog(`[media] ERROR code=${code} (${NAMES[code] ?? '?'}): ${msg} strategy=${currentStrategy}`);
+
+    src = '';
+
+    if (currentStrategy === 'convertFileSrc' && code === 4) {
+      debugLog(`[media] convertFileSrc failed, trying blob…`);
+      if (await tryBlobUrl()) { loadStart = Date.now(); return; }
+    }
+
+    if (currentStrategy === 'stream' && code === 4) {
+      debugLog(`[media] stream failed, trying convertFileSrc…`);
+      if (await tryConvertFileSrc()) { loadStart = Date.now(); return; }
+      debugLog(`[media] convertFileSrc failed, trying blob…`);
+      if (await tryBlobUrl()) { loadStart = Date.now(); return; }
+    }
+
     errorMsg = `Playback error: ${msg}`;
   }
 
@@ -86,21 +153,17 @@
       debugLog(`[media] buffered 0-${buf.end(buf.length - 1).toFixed(1)}s`);
     }
   }
-
-  function onWaiting() {
-    debugLog(`[media] WAITING`);
-  }
-
-  function onEnded() {
-    debugLog(`[media] ENDED`);
-  }
+  function onWaiting() { debugLog(`[media] WAITING`); }
+  function onEnded() { debugLog(`[media] ENDED`); }
 </script>
 
 <article class="media-viewer">
   <aside class="meta">
     <strong>{name}</strong>
     <span class="tag">{format}</span>
-    <span class="hint">Offline — loaded via IPC blob URL</span>
+    {#if currentStrategy}
+      <span class="hint">{currentStrategy}</span>
+    {/if}
   </aside>
   <div class="frame">
     {#if errorMsg}
@@ -108,25 +171,11 @@
     {:else if !src}
       <p class="status">Loading…</p>
     {:else if media_kind === 'audio'}
-      <audio
-        bind:this={mediaEl}
-        controls
-        src={src}
-        onerror={onError}
-        onload={onLoad}
-      ></audio>
+      <audio bind:this={mediaEl} controls src={src} onerror={onError} onload={onLoad}></audio>
     {:else}
-      <video
-        bind:this={mediaEl}
-        controls
-        playsinline
-        preload="auto"
-        src={src}
-        onerror={onError}
-        onload={onLoad}
-        onprogress={onProgress}
-        onwaiting={onWaiting}
-        onended={onEnded}
+      <video bind:this={mediaEl} controls playsinline preload="auto" src={src}
+        onerror={onError} onload={onLoad} onprogress={onProgress}
+        onwaiting={onWaiting} onended={onEnded}
       ></video>
     {/if}
   </div>

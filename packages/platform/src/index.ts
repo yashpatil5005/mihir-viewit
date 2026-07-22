@@ -17,17 +17,19 @@ import { displayNameFromUri } from './displayNameFromUri';
 // a JS-only text reader so the loop is exercisable immediately.
 
 export type DocumentKind =
-  | 'text' | 'image' | 'markdown' | 'json' | 'csv' | 'pdf' | 'epub' | 'archive'
-  | 'pptx' | 'docx' | 'xlsx' | 'media' | 'stream-file' | 'unsupported' | 'placeholder';
+  | 'text' | 'image' | 'markdown' | 'json' | 'csv' | 'pdf' | 'epub' | 'mobi' | 'azw3'
+  | 'fictionbook' | 'palmdoc' | 'archive' | 'pptx' | 'docx' | 'xlsx'
+  | 'media' | 'stream-file' | 'unsupported' | 'placeholder' | 'font';
 export type Format =
   | 'plain-text' | 'markdown' | 'json' | 'csv' | 'code'
   | 'pdf' | 'image-png' | 'image-jpg' | 'image-webp' | 'image-gif'
-  | 'image-bmp' | 'image-tiff' | 'image-svg'
-  | 'epub'
+  | 'image-bmp' | 'image-tiff' | 'image-svg' | 'image-raw' | 'image-heic'
+  | 'epub' | 'mobi' | 'azw3' | 'fictionbook' | 'palmdoc'
   | 'archive-zip' | 'archive-tar' | 'archive-tar-gz' | 'archive-7z' | 'archive-rar'
   | 'docx' | 'xlsx' | 'xls' | 'pptx' | 'odt' | 'ods' | 'odp' | 'doc' | 'ppt' | 'rtf'
-  | 'psd' | 'image-heic'
+  | 'psd'
   | 'iwork-pages' | 'iwork-numbers' | 'iwork-key'
+  | 'font'
   | 'unsupported';
 
 export type Suggestion = 'open-with-external' | 'none';
@@ -133,8 +135,16 @@ export { debugLog, debugLogLines, debugLogClear } from './debugLog';
 
 /** After `<input type="file">` — checks size/type first (no read for video/large). */
 const STREAM_PICKER_EXT = new Set([
-  'pdf', 'mp4', 'm4v', 'webm', 'mkv', 'mov', 'avi', 'mpg', 'mpeg', '3gp', 'wmv', 'flv', 'ts',
+  'pdf',
+  // video
+  'mp4', 'm4v', 'webm', 'mkv', 'mov', 'avi', 'mpg', 'mpeg', '3gp', 'wmv', 'flv', 'ts',
+  'asf', 'f4v', 'hevc', 'm2ts', 'm2v', 'mjpeg', 'mts', 'mxf', 'ogv', 'rm', 'swf', 'vob', 'wtv',
+  // audio
   'mp3', 'm4a', 'aac', 'flac', 'ogg', 'wav', 'wma', 'opus',
+  '8svx', 'ac3', 'aiff', 'amb', 'au', 'avr', 'caf', 'cdda', 'cvs', 'cvsd', 'cvu', 'dts',
+  'dvms', 'fap', 'fssd', 'gsrt', 'hcom', 'htk', 'ima', 'ircam', 'm4r', 'maud', 'mp2', 'nist',
+  'oga', 'paf', 'prc', 'pvf', 'ra', 'sd2', 'sln', 'smp', 'snd', 'sndr', 'sndt', 'sou', 'sph',
+  'spx', 'tta', 'txw', 'vms', 'voc', 'vox', 'w64', 'wv', 'wve',
 ]);
 
 function pickerStreamDocument(file: File): Document | null {
@@ -150,8 +160,23 @@ function pickerStreamDocument(file: File): Document | null {
 }
 
 const VIDEO_AUDIO = new Set([
+  // video
   'mp4', 'm4v', 'webm', 'mkv', 'mov', 'avi', 'mpg', 'mpeg', '3gp', 'wmv', 'flv', 'ts',
+  'asf', 'f4v', 'hevc', 'm2ts', 'm2v', 'mjpeg', 'mts', 'mxf', 'ogv', 'rm', 'swf', 'vob', 'wtv',
+  // audio
   'mp3', 'm4a', 'aac', 'flac', 'ogg', 'wav', 'wma', 'opus',
+  '8svx', 'ac3', 'aiff', 'amb', 'au', 'avr', 'caf', 'cdda', 'cvs', 'cvsd', 'cvu', 'dts',
+  'dvms', 'fap', 'fssd', 'gsrt', 'hcom', 'htk', 'ima', 'ircam', 'm4r', 'maud', 'mp2', 'nist',
+  'oga', 'paf', 'prc', 'pvf', 'ra', 'sd2', 'sln', 'smp', 'snd', 'sndr', 'sndt', 'sou', 'sph',
+  'spx', 'tta', 'txw', 'vms', 'voc', 'vox', 'w64', 'wv', 'wve',
+]);
+
+const AUDIO_ONLY = new Set([
+  'mp3', 'm4a', 'aac', 'flac', 'ogg', 'wav', 'wma', 'opus',
+  '8svx', 'ac3', 'aiff', 'amb', 'au', 'avr', 'caf', 'cdda', 'cvs', 'cvsd', 'cvu', 'dts',
+  'dvms', 'fap', 'fssd', 'gsrt', 'hcom', 'htk', 'ima', 'ircam', 'm4r', 'maud', 'mp2', 'nist',
+  'oga', 'paf', 'prc', 'pvf', 'ra', 'sd2', 'sln', 'smp', 'snd', 'sndr', 'sndt', 'sou', 'sph',
+  'spx', 'tta', 'txw', 'vms', 'voc', 'vox', 'w64', 'wv', 'wve',
 ]);
 
 function streamDocFromFile(file: File, ext: string): Document | null {
@@ -166,11 +191,10 @@ function streamDocFromFile(file: File, ext: string): Document | null {
       name,
     } as Document;
   }
-  const audio = new Set(['mp3', 'm4a', 'aac', 'flac', 'ogg', 'wav', 'wma', 'opus']);
   return {
     kind: 'media',
-    media_kind: audio.has(ext) ? 'audio' : 'video',
-    format: audio.has(ext) ? 'audio' : 'video',
+    media_kind: AUDIO_ONLY.has(ext) ? 'audio' : 'video',
+    format: AUDIO_ONLY.has(ext) ? 'audio' : 'video',
     name,
     byte_len: file.size,
   } as Document;
@@ -331,7 +355,7 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"]/g, (c) => ({ '&': '&', '<': '<', '>': '>', '"': '"' }[c] ?? c));
 }
 
-const IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'tif', 'tiff', 'svg', 'heic', 'heif', 'avif', 'psd', 'dng', 'cr2', 'cr3', 'nef', 'arw', 'orf', 'rw2', 'raf', 'srw', 'pef']);
+const IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'tif', 'tiff', 'svg', 'heic', 'heif', 'avif', 'psd', 'dng', 'cr2', 'cr3', 'nef', 'arw', 'orf', 'rw2', 'raf', 'srw', 'pef', 'cur', 'dds', 'erf', 'exr', 'fts', 'hdr', 'jp2', 'jpe', 'jps', 'mng', 'nrw', 'pam', 'pbm', 'pcd', 'pcx', 'pes', 'pfm', 'pgm', 'picon', 'pict', 'pnm', 'ppm', 'ras', 'sfw', 'sgi', 'tga', 'wbmp', 'wpg', 'x3f', 'xbm', 'xcf', 'xpm', 'xwd', 'djvu', 'djv']);
 function isImageExt(ext: string): boolean {
   return IMAGE_EXT.has(ext);
 }
@@ -349,6 +373,8 @@ function extToFormat(ext: string): Format {
     case 'webp': return 'image-webp';
     case 'gif': return 'image-gif';
     case 'bmp': return 'image-bmp';
+    case 'ico':
+    case 'jfif': return 'image-png';
     case 'tif':
     case 'tiff': return 'image-tiff';
     case 'svg': return 'image-svg';
@@ -365,6 +391,7 @@ function extToFormat(ext: string): Format {
     case 'xls': return 'xls';
     case 'pptx': return 'pptx';
     case 'odt': return 'odt';
+    case 'ott': return 'odt';
     case 'ods': return 'ods';
     case 'odp': return 'odp';
     case 'doc': return 'doc';
@@ -374,6 +401,8 @@ function extToFormat(ext: string): Format {
     case 'heic':
     case 'heif':
     case 'avif': return 'image-heic';
+    case 'djvu':
+    case 'djv': return 'image-raw';
     case 'dng':
     case 'cr2':
     case 'cr3':
@@ -383,7 +412,55 @@ function extToFormat(ext: string): Format {
     case 'rw2':
     case 'raf':
     case 'srw':
-    case 'pef': return 'image-raw';
+    case 'pef':
+    case 'cur':
+    case 'dds':
+    case 'erf':
+    case 'exr':
+    case 'fts':
+    case 'hdr':
+    case 'jp2':
+    case 'jpe':
+    case 'jps':
+    case 'mng':
+    case 'nrw':
+    case 'pam':
+    case 'pbm':
+    case 'pcd':
+    case 'pcx':
+    case 'pes':
+    case 'pfm':
+    case 'pgm':
+    case 'picon':
+    case 'pict':
+    case 'pnm':
+    case 'ppm':
+    case 'ras':
+    case 'sfw':
+    case 'sgi':
+    case 'tga':
+    case 'wbmp':
+    case 'wpg':
+    case 'x3f':
+    case 'xbm':
+    case 'xcf':
+    case 'xpm':
+    case 'xwd': return 'image-raw';
+    case 'mobi': return 'mobi';
+    case 'azw3': return 'azw3';
+    case 'fb2': return 'fictionbook';
+    case 'lrf':
+    case 'pdb':
+    case 'snb': return 'palmdoc';
+    case 'ttf':
+    case 'otf':
+    case 'woff':
+    case 'woff2':
+    case 'pfb':
+    case 'cff':
+    case 'dfont':
+    case 'sfd':
+    case 'ps': return 'font';
     case 'pages': return 'iwork-pages';
     case 'numbers': return 'iwork-numbers';
     case 'key': return 'iwork-key';

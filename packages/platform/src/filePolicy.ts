@@ -4,9 +4,16 @@ export const OPEN_BYTES_CAP = 32 * 1024 * 1024;
 
 const VIDEO_EXT = new Set([
   'mp4', 'm4v', 'webm', 'mkv', 'mov', 'avi', 'mpg', 'mpeg', '3gp', 'wmv', 'flv', 'ts',
+  'asf', 'f4v', 'hevc', 'm2ts', 'm2v', 'mjpeg', 'mts', 'mxf', 'ogv', 'rm', 'swf', 'vob', 'wtv',
 ]);
 
-const AUDIO_EXT = new Set(['mp3', 'm4a', 'aac', 'flac', 'ogg', 'wav', 'wma']);
+const AUDIO_EXT = new Set([
+  'mp3', 'm4a', 'aac', 'flac', 'ogg', 'wav', 'wma', 'opus',
+  '8svx', 'ac3', 'aiff', 'amb', 'au', 'avr', 'caf', 'cdda', 'cvs', 'cvsd', 'cvu', 'dts',
+  'dvms', 'fap', 'fssd', 'gsrt', 'hcom', 'htk', 'ima', 'ircam', 'm4r', 'maud', 'mp2', 'nist',
+  'oga', 'paf', 'prc', 'pvf', 'ra', 'sd2', 'sln', 'smp', 'snd', 'sndr', 'sndt', 'sou', 'sph',
+  'spx', 'tta', 'txw', 'vms', 'voc', 'vox', 'w64', 'wv', 'wve',
+]);
 
 export function fileExtension(name: string): string {
   const base = name.split(/[/\\]/).pop() ?? name;

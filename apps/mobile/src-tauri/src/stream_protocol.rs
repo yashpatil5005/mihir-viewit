@@ -58,6 +58,22 @@ pub fn insert_uri(slots: &StreamSlots, uri: String) -> u64 {
     id
 }
 
+/// Register an already-materialized file (in cache) with the stream protocol.
+/// `cache_path` is the on-disk file; `ext_hint` sets the MIME type.
+/// Returns the stream ID.
+pub fn insert_cached(slots: &StreamSlots, cache_path: PathBuf, ext_hint: String) -> u64 {
+    let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+    slots.0.lock().unwrap().insert(
+        id,
+        StreamEntry {
+            source_uri: cache_path.to_string_lossy().to_string(),
+            cache_path: Some(cache_path),
+            ext_hint,
+        },
+    );
+    id
+}
+
 pub fn guess_mime(uri: &str, ext_hint: &str) -> String {
     if !ext_hint.is_empty() {
         if let Some(m) = from_path(format!("file.{}", ext_hint)).first() {
