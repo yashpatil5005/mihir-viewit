@@ -461,7 +461,7 @@ ViewIt is a universal file viewer supporting 250+ file formats across text, code
 
 ### Platform Testing Status
 
-- **Android (API 34)**: Primary platform, 46 test files validated
+- **Android (API 34)**: Primary platform, 46+ test files validated. Release build with `fmt-everything-lite` verified: text, markdown, JSON, CSV, EPUB, ZIP archives all working
 - **iOS**: Not yet tested
 - **Desktop** (Windows/Linux/macOS): Not yet tested
 - **Web**: Future expansion planned
