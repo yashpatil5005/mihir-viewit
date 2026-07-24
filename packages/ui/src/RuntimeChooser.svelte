@@ -26,8 +26,8 @@
     ext: string;
     builtInLabel?: string;
     onClose: () => void;
-    onUseBuiltIn: () => void;
-    onUseInstalledPlugin?: (plugin: PluginInfo) => void;
+    onUseBuiltIn: () => void | Promise<void>;
+    onUseInstalledPlugin?: (plugin: PluginInfo) => void | Promise<void>;
   } = $props();
 
   let loading = $state(false);
@@ -71,8 +71,13 @@
     }
   }
 
-  function chooseInstalled(plugin: PluginInfo) {
-    onUseInstalledPlugin?.(plugin);
+  async function chooseInstalled(plugin: PluginInfo) {
+    await onUseInstalledPlugin?.(plugin);
+    onClose();
+  }
+
+  async function chooseBuiltIn() {
+    await onUseBuiltIn();
     onClose();
   }
 
@@ -101,7 +106,7 @@
 
       <p class="summary">Choose how ViewIt should handle <code>.{ext}</code>. Plugin sizes are optional downloads, not part of the base app.</p>
 
-      <button class="option primary" type="button" onclick={() => { onUseBuiltIn(); onClose(); }}>
+      <button class="option primary" type="button" onclick={chooseBuiltIn}>
         <strong>{builtInLabel}</strong>
         <span>Smallest path. Uses ViewIt's built-in runtime first.</span>
       </button>

@@ -317,6 +317,26 @@
       busyHint = '';
     }
   }
+
+  async function chooseBuiltInOfficeRuntime() {
+    const uri = docUri ?? pendingUri;
+    if (!uri) return;
+    busy = true;
+    busyHint = 'Opening with built-in lightweight viewer…';
+    error = null;
+    selectedOfficePlugin = null;
+    officePluginNotice = '';
+    try {
+      doc = await openFile(uri);
+      officePluginNotice = 'Rendered by built-in lightweight viewer.';
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e);
+      doc = null;
+    } finally {
+      busy = false;
+      busyHint = '';
+    }
+  }
 </script>
 
 <div class="viewit-root" data-root={root}>
@@ -428,7 +448,7 @@
     ext={officeExt()}
     builtInLabel="Built-in lightweight Office viewer"
     onClose={() => officeRuntimeChooserOpen = false}
-    onUseBuiltIn={() => { selectedOfficePlugin = null; officePluginNotice = ''; }}
+    onUseBuiltIn={chooseBuiltInOfficeRuntime}
     onUseInstalledPlugin={chooseOfficePlugin}
   />
 </div>

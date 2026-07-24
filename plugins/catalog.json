@@ -9,11 +9,11 @@
       "capabilities": ["view", "inspect", "edit-planned"],
       "runtime": "android-dex-rust-sidecar",
       "abi": "arm64-v8a",
-      "sizeBytes": 9042470,
-      "installedSizeBytes": 25163074,
+      "sizeBytes": 9055350,
+      "installedSizeBytes": 25195042,
       "supportedFormats": ["docx", "xlsx", "pptx", "docm", "xlsm", "pptm"],
       "downloadUrl": "http://127.0.0.1:8888/office-ooxml-0.1.0-arm64-v8a.zip",
-      "checksum": "1741b4ff4e1a333dfa6c1d926bf88e63f89cdfeb80e2488b0fff30d162c429b9",
+      "checksum": "f33fdea42cfeeb87a22ac02b3c5f5b087d8b84dcc7698d8cbeb1385e4feef314",
       "minAppVersion": 1
     },
     {
@@ -25,11 +25,11 @@
       "capabilities": ["view", "inspect", "edit-planned"],
       "runtime": "android-dex-rust-sidecar",
       "abi": "x86_64",
-      "sizeBytes": 9810180,
-      "installedSizeBytes": 28727234,
+      "sizeBytes": 9825290,
+      "installedSizeBytes": 28762186,
       "supportedFormats": ["docx", "xlsx", "pptx", "docm", "xlsm", "pptm"],
       "downloadUrl": "http://127.0.0.1:8888/office-ooxml-0.1.0-x86_64.zip",
-      "checksum": "95dc0d8089c77e762e0338e19bcb7fda4b3997a5fd695a287cfb02a30cec52d4",
+      "checksum": "c3b342b8e7a454a239dc536d6dac95471c745c31e298aedc41954a849ee91b02",
       "minAppVersion": 1
     }
   ]

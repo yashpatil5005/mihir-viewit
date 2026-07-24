@@ -6,9 +6,28 @@
     document: docProp = {},
     source_uri = '',
   }: {
-    document?: { asset_path?: string; slides?: Array<{ title: string; body: string }> };
+    document?: { asset_path?: string; slides?: PptxSlide[] };
     source_uri?: string;
   } = $props();
+
+  type PptxElement = {
+    kind: 'text' | 'image';
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    text?: string;
+    src?: string;
+    font_size?: number;
+  };
+
+  type PptxSlide = {
+    title: string;
+    body: string;
+    width?: number;
+    height?: number;
+    elements?: PptxElement[];
+  };
 
   let canvasEl: HTMLCanvasElement | null = $state(null);
   let rootEl: HTMLDivElement | null = $state(null);
@@ -16,7 +35,7 @@
   let errorMsg = $state('');
   let idx = $state(0);
   let total = $state(0);
-  let preParsedSlides: Array<{ title: string; body: string }> = $state([]);
+  let preParsedSlides: PptxSlide[] = $state([]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let viewer: any = null;
@@ -24,6 +43,7 @@
   async function loadDeck() {
     status = 'loading';
     errorMsg = '';
+    preParsedSlides = [];
     try {
       // If the Rust backend already parsed slides (ODP, ODP fallback, etc.),
       // use them directly instead of re-parsing the raw file with pptx-parser.
@@ -70,12 +90,13 @@
   $effect(() => {
     const uri = source_uri;
     const ap = docProp.asset_path;
-    if (!uri && !ap) {
+    const slides = docProp.slides ?? [];
+    if (slides.length === 0 && !uri && !ap) {
       status = 'error';
       errorMsg = 'Open a .pptx with Open with or Open file…';
       return;
     }
-    if (!canvasEl) return;
+    if (slides.length === 0 && !canvasEl) return;
     void loadDeck();
   });
 
@@ -85,12 +106,26 @@
   });
 
   function nav(d: number) {
-    if (!viewer) return;
     const n = Math.max(0, Math.min(total - 1, idx + d));
     if (n !== idx) {
       idx = n;
-      viewer.goToSlide(n);
+      viewer?.goToSlide?.(n);
     }
+  }
+
+  function hasLayout(slide: PptxSlide | undefined): boolean {
+    return (slide?.elements?.length ?? 0) > 0;
+  }
+
+  function elementStyle(element: PptxElement, slide: PptxSlide): string {
+    const width = slide.width || 9144000;
+    const height = slide.height || 5143500;
+    const left = (element.x / width) * 100;
+    const top = (element.y / height) * 100;
+    const w = (element.w / width) * 100;
+    const h = (element.h / height) * 100;
+    const fontSize = element.font_size ? `font-size:${element.font_size / 12}vw;` : '';
+    return `left:${left}%;top:${top}%;width:${w}%;height:${h}%;${fontSize}`;
   }
 </script>
 
@@ -106,8 +141,16 @@
   {/if}
   <div class="stage">
     {#if preParsedSlides.length > 0}
-      <div class="slide-text">
-        {#if preParsedSlides[idx]}
+      <div class:slide-layout={hasLayout(preParsedSlides[idx])} class:slide-text={!hasLayout(preParsedSlides[idx])}>
+        {#if preParsedSlides[idx] && hasLayout(preParsedSlides[idx])}
+          {#each preParsedSlides[idx].elements ?? [] as element}
+            {#if element.kind === 'text'}
+              <div class="slide-element text-box" style={elementStyle(element, preParsedSlides[idx])}>{element.text}</div>
+            {:else if element.kind === 'image' && element.src}
+              <img class="slide-element image-box" style={elementStyle(element, preParsedSlides[idx])} src={element.src} alt="" />
+            {/if}
+          {/each}
+        {:else if preParsedSlides[idx]}
           {#if preParsedSlides[idx].title}<h3>{preParsedSlides[idx].title}</h3>{/if}
           <pre>{preParsedSlides[idx].body}</pre>
         {/if}
@@ -117,7 +160,7 @@
     {/if}
   </div>
   {#if status === 'ready'}
-    <p class="muted">Offline · rendered via Canvas (no PowerPoint animations).</p>
+    <p class="muted">Offline · {hasLayout(preParsedSlides[idx]) ? 'rendered via enhanced Office layout extraction' : preParsedSlides.length > 0 ? 'rendered via enhanced Office text extraction' : 'rendered via Canvas'} (no PowerPoint animations).</p>
   {/if}
 </div>
 
@@ -137,6 +180,22 @@
     overflow: auto; color: var(--text-primary); background: var(--bg-primary);
     font-size: 0.9rem; line-height: 1.6;
   }
+  .slide-layout {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: white;
+    color: #111;
+  }
+  .slide-element { position: absolute; overflow: hidden; }
+  .text-box {
+    white-space: pre-wrap;
+    line-height: 1.2;
+    padding: 0.2rem;
+    color: #111;
+  }
+  .image-box { object-fit: contain; }
   .slide-text h3 { margin: 0 0 0.5rem; font-size: 1.1rem; }
   .slide-text pre { white-space: pre-wrap; word-break: break-word; margin: 0; font-family: inherit; }
   .muted { font-size: 0.75rem; color: var(--text-secondary); }

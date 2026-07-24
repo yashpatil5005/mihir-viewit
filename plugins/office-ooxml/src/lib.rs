@@ -6,6 +6,7 @@
 
 use std::io::{Cursor, Read};
 
+use base64::Engine;
 use jni::objects::{JByteArray, JClass, JString};
 use jni::sys::jstring;
 use jni::JNIEnv;
@@ -18,6 +19,9 @@ use quick_xml::Reader;
 use serde::Serialize;
 use serde_json::json;
 use zip::ZipArchive;
+
+const DEFAULT_SLIDE_W: i64 = 9_144_000;
+const DEFAULT_SLIDE_H: i64 = 5_143_500;
 
 #[derive(Debug, Serialize)]
 pub struct OoxmlInspection {
@@ -138,13 +142,32 @@ fn render_pptx(bytes: &[u8]) -> Result<String, String> {
     });
     drop(archive);
 
+    let (slide_w, slide_h) = parse_presentation_size(bytes).unwrap_or((DEFAULT_SLIDE_W, DEFAULT_SLIDE_H));
+
     let mut slides = Vec::new();
     for name in slide_names {
         let xml = zip_entry_string(bytes, &name)?;
-        let texts = parse_drawing_texts(&xml)?;
+        let rels_path = slide_relationships_path(&name);
+        let rels = zip_entry_string(bytes, &rels_path)
+            .ok()
+            .map(|xml| parse_relationships(&xml))
+            .transpose()?
+            .unwrap_or_default();
+        let parsed = parse_pptx_slide_layout(bytes, &xml, &rels, slide_w, slide_h)?;
+        let texts = if parsed.texts.is_empty() {
+            parse_drawing_texts(&xml)?
+        } else {
+            parsed.texts
+        };
         let title = texts.first().cloned().unwrap_or_default();
         let body = texts.iter().skip(1).cloned().collect::<Vec<_>>().join("\n");
-        slides.push(json!({ "title": title, "body": body }));
+        slides.push(json!({
+            "title": title,
+            "body": body,
+            "width": slide_w,
+            "height": slide_h,
+            "elements": parsed.elements,
+        }));
     }
 
     Ok(json!({
@@ -155,6 +178,267 @@ fn render_pptx(bytes: &[u8]) -> Result<String, String> {
         "asset_path": ""
     })
     .to_string())
+}
+
+struct ParsedSlideLayout {
+    texts: Vec<String>,
+    elements: Vec<serde_json::Value>,
+}
+
+#[derive(Default)]
+struct PptxElementBuilder {
+    kind: &'static str,
+    name: String,
+    x: i64,
+    y: i64,
+    w: i64,
+    h: i64,
+    text: String,
+    rel_id: String,
+    font_size: Option<f64>,
+}
+
+fn parse_presentation_size(bytes: &[u8]) -> Result<(i64, i64), String> {
+    let xml = zip_entry_string(bytes, "ppt/presentation.xml")?;
+    let mut reader = Reader::from_str(&xml);
+    reader.config_mut().trim_text(true);
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e)) if e.name() == QName(b"p:sldSz") => {
+                let w = attr_value(&e, b"cx")
+                    .and_then(|v| v.parse::<i64>().ok())
+                    .unwrap_or(DEFAULT_SLIDE_W);
+                let h = attr_value(&e, b"cy")
+                    .and_then(|v| v.parse::<i64>().ok())
+                    .unwrap_or(DEFAULT_SLIDE_H);
+                return Ok((w, h));
+            }
+            Ok(Event::Eof) => break,
+            Err(e) => return Err(format!("presentation size parse: {e}")),
+            _ => {}
+        }
+    }
+    Ok((DEFAULT_SLIDE_W, DEFAULT_SLIDE_H))
+}
+
+fn slide_relationships_path(slide_path: &str) -> String {
+    let file = slide_path.rsplit('/').next().unwrap_or(slide_path);
+    format!("ppt/slides/_rels/{file}.rels")
+}
+
+fn parse_pptx_slide_layout(
+    bytes: &[u8],
+    xml: &str,
+    rels: &std::collections::HashMap<String, String>,
+    slide_w: i64,
+    slide_h: i64,
+) -> Result<ParsedSlideLayout, String> {
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(false);
+    let mut elements = Vec::new();
+    let mut texts = Vec::new();
+    let mut current: Option<PptxElementBuilder> = None;
+    let mut in_text = false;
+
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) if e.name() == QName(b"p:sp") => {
+                current = Some(PptxElementBuilder { kind: "text", ..Default::default() });
+            }
+            Ok(Event::Start(e)) if e.name() == QName(b"p:pic") => {
+                current = Some(PptxElementBuilder { kind: "image", ..Default::default() });
+            }
+            Ok(Event::Start(e)) | Ok(Event::Empty(e)) if e.name() == QName(b"p:cNvPr") => {
+                if let Some(item) = &mut current {
+                    item.name = attr_value(&e, b"name").unwrap_or_default();
+                }
+            }
+            Ok(Event::Empty(e)) if e.name() == QName(b"a:off") => {
+                if let Some(item) = &mut current {
+                    item.x = attr_value(&e, b"x").and_then(|v| v.parse().ok()).unwrap_or(0);
+                    item.y = attr_value(&e, b"y").and_then(|v| v.parse().ok()).unwrap_or(0);
+                }
+            }
+            Ok(Event::Empty(e)) if e.name() == QName(b"a:ext") => {
+                if let Some(item) = &mut current {
+                    item.w = attr_value(&e, b"cx").and_then(|v| v.parse().ok()).unwrap_or(0);
+                    item.h = attr_value(&e, b"cy").and_then(|v| v.parse().ok()).unwrap_or(0);
+                }
+            }
+            Ok(Event::Empty(e)) if e.name() == QName(b"a:rPr") => {
+                if let Some(item) = &mut current {
+                    if item.font_size.is_none() {
+                        item.font_size = attr_value(&e, b"sz")
+                            .and_then(|v| v.parse::<f64>().ok())
+                            .map(|v| v / 100.0);
+                    }
+                }
+            }
+            Ok(Event::Start(e)) if e.name() == QName(b"a:rPr") => {
+                if let Some(item) = &mut current {
+                    if item.font_size.is_none() {
+                        item.font_size = attr_value(&e, b"sz")
+                            .and_then(|v| v.parse::<f64>().ok())
+                            .map(|v| v / 100.0);
+                    }
+                }
+            }
+            Ok(Event::Empty(e)) if e.name() == QName(b"a:blip") => {
+                if let Some(item) = &mut current {
+                    item.rel_id = attr_value(&e, b"r:embed").unwrap_or_default();
+                }
+            }
+            Ok(Event::Start(e)) if e.name() == QName(b"a:t") => in_text = true,
+            Ok(Event::Text(e)) if in_text => {
+                if let Some(item) = &mut current {
+                    item.text.push_str(&e.decode().map_err(|e| format!("slide text decode: {e}"))?);
+                }
+            }
+            Ok(Event::End(e)) if e.name() == QName(b"a:t") => in_text = false,
+            Ok(Event::End(e)) if e.name() == QName(b"p:sp") || e.name() == QName(b"p:pic") => {
+                if let Some(item) = current.take() {
+                    if let Some(element) = finish_pptx_element(bytes, item, rels, slide_w, slide_h)? {
+                        if element.get("kind").and_then(|v| v.as_str()) == Some("text") {
+                            if let Some(text) = element.get("text").and_then(|v| v.as_str()) {
+                                texts.push(text.to_string());
+                            }
+                        }
+                        elements.push(element);
+                    }
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(e) => return Err(format!("slide layout parse: {e}")),
+            _ => {}
+        }
+    }
+
+    Ok(ParsedSlideLayout { texts, elements })
+}
+
+fn finish_pptx_element(
+    bytes: &[u8],
+    item: PptxElementBuilder,
+    rels: &std::collections::HashMap<String, String>,
+    slide_w: i64,
+    slide_h: i64,
+) -> Result<Option<serde_json::Value>, String> {
+    if item.kind == "text" {
+        let text = item.text.trim().to_string();
+        if text.is_empty() {
+            return Ok(None);
+        }
+        let (x, y, w, h) = element_box(&item, &text, slide_w, slide_h);
+        if w == 0 || h == 0 {
+            return Ok(None);
+        }
+        return Ok(Some(json!({
+            "kind": "text",
+            "text": text,
+            "x": x,
+            "y": y,
+            "w": w,
+            "h": h,
+            "font_size": item.font_size.unwrap_or_else(|| fallback_font_size(&item.name, &text)),
+        })));
+    }
+
+    if item.kind == "image" && !item.rel_id.is_empty() {
+        let x = item.x.max(0).min(slide_w);
+        let y = item.y.max(0).min(slide_h);
+        let w = item.w.max(0).min(slide_w.saturating_sub(x));
+        let h = item.h.max(0).min(slide_h.saturating_sub(y));
+        if w == 0 || h == 0 {
+            return Ok(None);
+        }
+        if let Some(target) = rels.get(&item.rel_id) {
+            let path = normalize_pptx_target(target);
+            if let Ok(data) = zip_entry_bytes(bytes, &path) {
+                let mime = image_mime(&path);
+                let encoded = base64::engine::general_purpose::STANDARD.encode(data);
+                return Ok(Some(json!({
+                    "kind": "image",
+                    "src": format!("data:{mime};base64,{encoded}"),
+                    "x": x,
+                    "y": y,
+                    "w": w,
+                    "h": h,
+                })));
+            }
+        }
+    }
+
+    Ok(None)
+}
+
+fn element_box(item: &PptxElementBuilder, text: &str, slide_w: i64, slide_h: i64) -> (i64, i64, i64, i64) {
+    let x = item.x.max(0).min(slide_w);
+    let y = item.y.max(0).min(slide_h);
+    let w = item.w.max(0).min(slide_w.saturating_sub(x));
+    let h = item.h.max(0).min(slide_h.saturating_sub(y));
+    if w > 0 && h > 0 {
+        return (x, y, w, h);
+    }
+    fallback_text_box(&item.name, text, slide_w, slide_h)
+}
+
+fn fallback_text_box(name: &str, text: &str, slide_w: i64, slide_h: i64) -> (i64, i64, i64, i64) {
+    let lower = name.to_ascii_lowercase();
+    if lower.contains("title") || text.len() <= 80 {
+        return (
+            slide_w * 7 / 100,
+            slide_h * 8 / 100,
+            slide_w * 86 / 100,
+            slide_h * 18 / 100,
+        );
+    }
+    (
+        slide_w * 9 / 100,
+        slide_h * 30 / 100,
+        slide_w * 82 / 100,
+        slide_h * 58 / 100,
+    )
+}
+
+fn fallback_font_size(name: &str, text: &str) -> f64 {
+    let lower = name.to_ascii_lowercase();
+    if lower.contains("title") || text.len() <= 80 {
+        40.0
+    } else {
+        24.0
+    }
+}
+
+fn normalize_pptx_target(target: &str) -> String {
+    let clean = target.trim_start_matches('/');
+    if clean.starts_with("ppt/") {
+        clean.to_string()
+    } else if clean.starts_with("../") {
+        format!("ppt/{}", clean.trim_start_matches("../"))
+    } else {
+        format!("ppt/slides/{clean}")
+    }
+}
+
+fn image_mime(path: &str) -> &'static str {
+    match path.rsplit('.').next().unwrap_or_default().to_ascii_lowercase().as_str() {
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        _ => "image/png",
+    }
+}
+
+fn zip_entry_bytes(bytes: &[u8], name: &str) -> Result<Vec<u8>, String> {
+    let mut archive = ZipArchive::new(Cursor::new(bytes)).map_err(|e| format!("zip open: {e}"))?;
+    let mut data = Vec::new();
+    archive
+        .by_name(name)
+        .map_err(|e| format!("{name}: {e}"))?
+        .read_to_end(&mut data)
+        .map_err(|e| format!("{name} read: {e}"))?;
+    Ok(data)
 }
 
 fn zip_entry_string(bytes: &[u8], name: &str) -> Result<String, String> {

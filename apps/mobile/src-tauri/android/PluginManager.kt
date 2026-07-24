@@ -91,6 +91,7 @@ class PluginManager(private val context: Context) {
                 if (existing != null) {
                     return Result.success(existing)
                 }
+                dir.deleteRecursively()
             }
             dir.mkdirs()
 
