@@ -8,9 +8,9 @@
     uri?: string;
   } = $props();
 
-  const format = docProp.format ?? 'unsupported';
-  const reason = docProp.reason ?? '';
-  const suggestion = (docProp.suggestion as 'open-with-external' | 'none' | undefined) ?? 'none';
+  let format = $derived(docProp.format ?? 'unsupported');
+  let reason = $derived(docProp.reason ?? '');
+  let suggestion = $derived((docProp.suggestion as 'open-with-external' | 'none' | undefined) ?? 'none');
 </script>
 
 <article class="unsupported">

@@ -247,6 +247,7 @@
     {:else if media_kind === 'audio'}
       <audio bind:this={mediaEl} controls src={src} onerror={onError} onload={onLoad}></audio>
     {:else}
+      <!-- svelte-ignore a11y_media_has_caption -->
       <video bind:this={mediaEl} controls playsinline preload="auto" src={src}
         onerror={onError} onload={onLoad} onprogress={onProgress}
         onwaiting={onWaiting} onended={onEnded}

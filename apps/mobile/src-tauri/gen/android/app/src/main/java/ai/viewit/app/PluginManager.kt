@@ -20,7 +20,7 @@ class PluginManager(private val context: Context) {
 
         fun fetchManifestFromJson(obj: JSONObject): PluginManifest {
             val formats = mutableListOf<String>()
-            val arr = obj.optJSONArray("supportedFormats")
+            val arr = obj.optJSONArray("supportedFormats") ?: obj.optJSONArray("formats")
             if (arr != null) {
                 for (i in 0 until arr.length()) formats.add(arr.getString(i))
             }
@@ -36,7 +36,16 @@ class PluginManager(private val context: Context) {
                 sizeBytes = obj.optLong("sizeBytes", 0),
                 installedSizeBytes = obj.optLong("installedSizeBytes", 0),
                 checksum = obj.optString("checksum", ""),
+                abi = obj.optString("abi", ""),
             )
+        }
+
+        fun runtimeAbi(): String {
+            return when (System.getProperty("os.arch")?.lowercase()) {
+                "aarch64", "arm64" -> "arm64-v8a"
+                "x86_64", "amd64" -> "x86_64"
+                else -> android.os.Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a"
+            }
         }
     }
 
@@ -102,11 +111,12 @@ class PluginManager(private val context: Context) {
 
             val plugin = loadPluginFromDir(dir)
                 ?: return Result.failure(Exception("Failed to load plugin"))
+            val installedPlugin = plugin.copy(manifest = manifest)
 
             saveManifest(dir, manifest)
-            installed[manifest.id] = plugin
+            installed[manifest.id] = installedPlugin
             Log.i(TAG, "Installed plugin: ${manifest.id}")
-            Result.success(plugin)
+            Result.success(installedPlugin)
         } catch (e: Throwable) {
             Log.e(TAG, "Install failed: ${manifest.id}", e)
             Result.failure(Exception(e.message ?: e.javaClass.simpleName, e))
@@ -140,7 +150,10 @@ class PluginManager(private val context: Context) {
             val arr = obj.getJSONArray("plugins")
             val list = mutableListOf<PluginManifest>()
             for (i in 0 until arr.length()) {
-                list.add(parseManifest(arr.getJSONObject(i)))
+                val manifest = parseManifest(arr.getJSONObject(i))
+                if (manifest.abi.isEmpty() || manifest.abi == runtimeAbi()) {
+                    list.add(manifest)
+                }
             }
             Result.success(list)
         } catch (e: Exception) {
@@ -207,7 +220,7 @@ class PluginManager(private val context: Context) {
         optimizedDir.mkdirs()
 
         // Prefer device ABI native lib dir as library search path
-        val abi = android.os.Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a"
+        val abi = runtimeAbi()
         val libPath = listOf(
             File(pluginDir, "lib/$abi"),
             File(pluginDir, abi),
@@ -242,7 +255,7 @@ class PluginManager(private val context: Context) {
     }
 
     private fun loadNativeLibs(libDir: File) {
-        val abi = android.os.Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a"
+        val abi = runtimeAbi()
         val candidates = listOf(
             File(libDir, abi),
             File(libDir, "lib/$abi"),
@@ -350,6 +363,7 @@ class PluginManager(private val context: Context) {
             put("sizeBytes", manifest.sizeBytes)
             put("installedSizeBytes", manifest.installedSizeBytes)
             put("checksum", manifest.checksum)
+            put("abi", manifest.abi)
         }
         File(dir, "plugin.json").writeText(obj.toString(2))
     }

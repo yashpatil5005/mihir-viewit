@@ -78,7 +78,13 @@
 
 {#if open}
 <div class="overlay" onclick={onClose} role="presentation">
-  <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog">
+  <div
+    class="modal"
+    onclick={(e) => e.stopPropagation()}
+    onkeydown={(e) => e.stopPropagation()}
+    role="dialog"
+    tabindex="-1"
+  >
     <header>
       <h2>Plugin Store</h2>
       <button class="close-btn" onclick={onClose}>&times;</button>

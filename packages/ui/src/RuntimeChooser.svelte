@@ -83,7 +83,14 @@
 
 {#if open}
   <div class="overlay" onclick={onClose} role="presentation">
-    <section class="chooser" role="dialog" aria-modal="true" tabindex="-1" onclick={(e) => e.stopPropagation()}>
+    <section
+      class="chooser"
+      role="dialog"
+      aria-modal="true"
+      tabindex="-1"
+      onclick={(e) => e.stopPropagation()}
+      onkeydown={(e) => e.stopPropagation()}
+    >
       <header>
         <div>
           <p class="eyebrow">Runtime</p>

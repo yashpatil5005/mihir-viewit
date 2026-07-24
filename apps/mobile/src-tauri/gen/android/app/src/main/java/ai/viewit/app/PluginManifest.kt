@@ -12,4 +12,5 @@ data class PluginManifest(
     val sizeBytes: Long,
     val installedSizeBytes: Long,
     val checksum: String,
+    val abi: String,
 )

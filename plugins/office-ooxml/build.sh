@@ -18,7 +18,7 @@ echo "Plugin dir: $PLUGIN_DIR"
 echo "Build dir: $BUILD_DIR"
 
 rm -rf "$BUILD_DIR"
-mkdir -p "$BUILD_DIR/classes" "$BUILD_DIR/native/dex" "$BUILD_DIR/native/lib/arm64-v8a" "$BUILD_DIR/native/lib/x86_64"
+mkdir -p "$BUILD_DIR/classes" "$BUILD_DIR/native/dex" "$BUILD_DIR/native/lib/arm64-v8a" "$BUILD_DIR/native/lib/x86_64" "$BUILD_DIR/packages"
 
 cargo build \
     --manifest-path "$PLUGIN_DIR/Cargo.toml" \
@@ -50,11 +50,26 @@ cp "$TARGET_DIR/x86_64-linux-android/release/libviewit_plugin_office_ooxml.so" \
 
 cp "$PLUGIN_DIR/plugin.json" "$BUILD_DIR/native/plugin.json"
 
-cd "$BUILD_DIR/native"
-zip -r "$BUILD_DIR/office-ooxml-0.1.0.zip" .
+package_abi() {
+    local abi="$1"
+    local out="$BUILD_DIR/office-ooxml-0.1.0-$abi.zip"
+    local pkg="$BUILD_DIR/packages/$abi"
+    rm -rf "$pkg"
+    mkdir -p "$pkg/dex" "$pkg/lib/$abi"
+    cp "$BUILD_DIR/native/dex/classes.dex" "$pkg/dex/classes.dex"
+    cp "$BUILD_DIR/native/lib/$abi/libviewit_plugin_office_ooxml.so" "$pkg/lib/$abi/libviewit_plugin_office_ooxml.so"
+    cp "$PLUGIN_DIR/plugin.json" "$pkg/plugin.json"
+    (cd "$pkg" && zip -r "$out" .)
+    cp "$out" "$PLUGIN_DIR/../office-ooxml-0.1.0-$abi.zip"
+}
+
+package_abi arm64-v8a
+package_abi x86_64
+
+(cd "$BUILD_DIR/native" && zip -r "$BUILD_DIR/office-ooxml-0.1.0.zip" .)
 cp "$BUILD_DIR/office-ooxml-0.1.0.zip" "$PLUGIN_DIR/../office-ooxml-0.1.0.zip"
 
 echo ""
 echo "=== Build Complete ==="
-echo "Output: $BUILD_DIR/office-ooxml-0.1.0.zip"
-ls -lh "$BUILD_DIR/office-ooxml-0.1.0.zip"
+echo "Outputs:"
+ls -lh "$BUILD_DIR"/office-ooxml-0.1.0*.zip

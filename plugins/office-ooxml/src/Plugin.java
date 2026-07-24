@@ -26,9 +26,13 @@ public class Plugin implements ai.viewit.app.ViewItDocumentPlugin {
         this.context = context.getApplicationContext();
         File libRoot = new File(this.context.getFilesDir(), "plugins/office-ooxml/lib");
         java.util.List<String> candidates = new java.util.ArrayList<>();
+        String arch = System.getProperty("os.arch", "").toLowerCase();
+        if (arch.equals("aarch64") || arch.equals("arm64")) {
+            candidates.add("arm64-v8a");
+        } else if (arch.equals("x86_64") || arch.equals("amd64")) {
+            candidates.add("x86_64");
+        }
         for (String abi : android.os.Build.SUPPORTED_ABIS) candidates.add(abi);
-        candidates.add("arm64-v8a");
-        candidates.add("x86_64");
 
         UnsatisfiedLinkError lastError = null;
         for (String abi : candidates) {

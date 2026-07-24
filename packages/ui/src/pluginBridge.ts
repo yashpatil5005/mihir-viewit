@@ -8,6 +8,7 @@ export interface PluginInfo {
   sizeBytes?: number;
   installedSizeBytes?: number;
   checksum?: string;
+  abi?: string;
   entryClass?: string;
   installed?: boolean;
 }
@@ -70,6 +71,7 @@ export async function installPlugin(plugin: PluginInfo): Promise<void> {
     installedSizeBytes: plugin.installedSizeBytes ?? 0,
     minAppVersion: 1,
     checksum: plugin.checksum ?? '',
+    abi: plugin.abi ?? '',
   });
   (window as any).AndroidBridge.installPlugin(manifest, plugin.id);
 }

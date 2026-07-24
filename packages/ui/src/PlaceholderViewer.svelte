@@ -1,8 +1,8 @@
 <script lang="ts">
   let { document: docProp = {} }: { document?: { format?: string; name?: string; byte_len?: number } } = $props();
-  const format = docProp.format ?? 'unsupported';
-  const name = docProp.name ?? 'file';
-  const byte_len = docProp.byte_len ?? 0;
+  let format = $derived(docProp.format ?? 'unsupported');
+  let name = $derived(docProp.name ?? 'file');
+  let byte_len = $derived(docProp.byte_len ?? 0);
 </script>
 
 <article class="placeholder">

@@ -15,7 +15,7 @@
     byte_len?: number;
   } = $props();
 
-  let knownTotal = total_rows_hint ?? preview_rows.length;
+  let knownTotal = $derived(total_rows_hint ?? preview_rows.length);
 </script>
 
 <article class="csv-viewer">

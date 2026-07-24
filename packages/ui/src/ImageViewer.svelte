@@ -24,7 +24,7 @@
     stream_url?: string;
   } = $props();
 
-  const isSvg = format === 'image-svg';
+  let isSvg = $derived(format === 'image-svg');
   let src = $state('');
   onMount(async () => {
     // Priority 1: Direct stream URL (new architecture)

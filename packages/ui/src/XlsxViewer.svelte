@@ -66,11 +66,11 @@
 <article class="xlsx-viewer">
   <SearchBar onSearch={(q, cs) => { query = q; caseSensitive = cs; }} />
   {#if sheets.length > 1}
-    <nav class="tabs" role="tablist">
+    <div class="tabs" role="tablist">
       {#each sheets as s, i}
         <button class:active={i === activeSheet} onclick={() => activeSheet = i} role="tab">{s.name}</button>
       {/each}
-    </nav>
+    </div>
   {/if}
   {#if sheet}
     <aside class="meta">

@@ -101,9 +101,14 @@ Every plugin card must show:
 - ABI coverage, such as `arm64-v8a only` or `universal`
 - optional dependency size
 
-The FFmpeg transcoder plugin was reduced from about 34 MB compressed / 72.4 MB installed to about 18 MB compressed / 38.4 MB installed by shipping only the ABI matching the arm64 APK.
+The Office OOXML runtime is published as ABI-specific ZIPs so users do not download native code their process cannot load:
 
-Future plugin catalog generation should publish per-ABI artifacts instead of universal ZIPs:
+- `office-ooxml-0.1.0-arm64-v8a.zip`: about 9.0 MB compressed / 25.2 MB installed
+- `office-ooxml-0.1.0-x86_64.zip`: about 9.8 MB compressed / 28.7 MB installed
+
+The catalog may contain multiple entries with the same plugin id and different `abi` values. Android filters catalog entries to the current process ABI before presenting runtimes. This matters on emulators because the device can advertise `x86_64` while an arm64-only APK runs translated as an `aarch64` process.
+
+Plugin catalog generation should publish per-ABI artifacts instead of universal ZIPs:
 
 - `ffmpeg-transcoder-android-arm64-v8a.zip`
 - `ffmpeg-transcoder-android-armeabi-v7a.zip`
@@ -133,7 +138,20 @@ interface ViewItDocumentPlugin {
 
 `render` returns ViewIt-owned `Document` JSON. Future iterations can add `inspect`, streaming extracted assets, render options, and safe write/export methods. Editing must use separate explicit methods such as `exportCopy` or `saveAs`, never silent in-place mutation.
 
-The first optional Office package is `plugins/office-ooxml`, which keeps `ooxmlsdk` isolated outside the base workspace. Its current Android ZIP is a small document-plugin proof of life that renders DOCX paragraphs through the new ABI; richer `ooxmlsdk`-backed parsing remains plugin-side work.
+The first optional Office package is `plugins/office-ooxml`, which keeps `ooxmlsdk` isolated outside the base workspace. It renders DOCX, XLSX, and PPTX into ViewIt-owned `Document` JSON through the document plugin ABI. The catalog ships ABI-specific ZIPs and pins SHA-256 checksums externally, because a ZIP cannot contain a stable checksum of itself.
+
+## FFmpeg Direction
+
+The in-process FFmpegKit Dex/JNI plugin is intentionally not published in the default catalog. It remains in `plugins/ffmpeg-transcoder` as a failed/prototype spike, but users should not be offered it until the runtime model changes.
+
+The safe direction is a host-owned external media runtime, not arbitrary JNI inside a downloaded Dex plugin:
+
+- Desktop: spawn a bundled or user-configured `ffmpeg` executable through a tightly scoped transcoding command.
+- Android: prefer platform decoders/native player first; for unsupported formats, use an out-of-process bound service or app-extension package that owns its native libraries at install time.
+- Downloadable media packages should provide codecs/assets/configuration to a host-owned loader only when Android can load them deterministically for the current process ABI.
+- The UI should continue to expose `Open with another app` for unsupported legacy media until a safe runtime is available.
+
+This avoids the observed FFmpegKit failure mode where Java code loads through `DexClassLoader`, but native class lookup from FFmpegKit resolves through boot/system classloaders and crashes or fails with `NoClassDefFoundError`.
 
 ### Excel Reader
 

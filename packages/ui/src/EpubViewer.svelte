@@ -17,7 +17,7 @@
   } = $props();
 
   let currentChapter = $state(0);
-  let currentXhtml = $state(first_chapter_xhtml);
+  let currentXhtml = $state('');
   let loading = $state(false);
 
   async function loadChapter(idx: number) {
@@ -42,6 +42,10 @@
       loading = false;
     }
   }
+
+  $effect(() => {
+    if (currentChapter === 0) currentXhtml = first_chapter_xhtml;
+  });
 </script>
 
 <article class="epub-viewer">

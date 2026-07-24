@@ -35,7 +35,7 @@
   let page_count = $derived(docProp.page_count ?? 0);
   let byte_len = $derived(docProp.byte_len ?? 0);
 
-  let pages = $state<string[]>([...(docProp.pages ?? [])]);
+  let pages = $state<string[]>([]);
   let loadingPage = $state<number | null>(null);
   let pdfjsPages = $state<{ canvas: HTMLCanvasElement; num: number }[]>([]);
   let pdfjsStatus = $state<'idle' | 'loading' | 'error' | 'ready'>('idle');

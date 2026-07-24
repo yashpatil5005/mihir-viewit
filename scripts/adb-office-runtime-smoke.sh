@@ -6,7 +6,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APK="${APK:-$ROOT/dist/viewit-android-universal-debug.apk}"
 PKG="ai.viewit.app"
 CATALOG_PORT="${CATALOG_PORT:-8888}"
-CATALOG_URL="http://127.0.0.1:$CATALOG_PORT/catalog.json"
+RESET_APP_DATA="${RESET_APP_DATA:-1}"
 
 DOCX="${DOCX:-/sdcard/Download/viewit-sample.docx}"
 XLSX="${XLSX:-/sdcard/Download/viewit-sample.xlsx}"
@@ -19,10 +19,24 @@ require() {
   fi
 }
 
+forward_webview() {
+  local pid
+  for _ in {1..30}; do
+    pid="$(adb shell pidof "$PKG" | tr -d '\r' || true)"
+    if [[ -n "$pid" ]]; then
+      adb forward --remove tcp:9222 >/dev/null 2>&1 || true
+      adb forward tcp:9222 "localabstract:webview_devtools_remote_$pid" >/dev/null
+      return 0
+    fi
+    sleep 1
+  done
+  echo "app process did not start: $PKG" >&2
+  return 1
+}
+
 launch_file() {
   local path="$1"
   local mime="$2"
-  echo "[office-smoke] opening $path"
   adb shell am start \
     -a android.intent.action.VIEW \
     -d "file://$path" \
@@ -30,7 +44,23 @@ launch_file() {
     -n "$PKG/.MainActivity" >/dev/null
 }
 
+assert_ui_runtime() {
+  local ext="$1"
+  BU_CDP_URL=http://127.0.0.1:9222 browser-use <<PY
+import time
+for _ in range(20):
+    text = js('document.body.innerText')
+    if 'Runtime: Enhanced Office OOXML' in text and 'Rendered by Enhanced Office OOXML.' in text:
+        print('$ext UI runtime OK')
+        break
+    time.sleep(1)
+else:
+    raise SystemExit('$ext UI runtime banner not found')
+PY
+}
+
 require adb
+require browser-use
 require python3
 
 if [[ ! -f "$APK" ]]; then
@@ -39,29 +69,104 @@ if [[ ! -f "$APK" ]]; then
   exit 2
 fi
 
+for sample in "$DOCX" "$XLSX" "$PPTX"; do
+  adb shell ls "$sample" >/dev/null
+done
+
 echo "[office-smoke] installing $APK"
 adb install -r "$APK" >/dev/null
+if [[ "$RESET_APP_DATA" == "1" ]]; then
+  adb shell pm clear "$PKG" >/dev/null
+fi
 adb reverse "tcp:$CATALOG_PORT" "tcp:$CATALOG_PORT" >/dev/null
 
-echo "[office-smoke] serving plugin catalog at $CATALOG_URL"
+echo "[office-smoke] serving plugin catalog on 127.0.0.1:$CATALOG_PORT"
 (cd "$ROOT/plugins" && python3 -m http.server "$CATALOG_PORT" --bind 127.0.0.1 >/tmp/viewit-plugin-catalog.log 2>&1) &
 server_pid=$!
 trap 'kill "$server_pid" >/dev/null 2>&1 || true' EXIT
 
 adb shell am force-stop "$PKG" >/dev/null
 adb shell am start -n "$PKG/.MainActivity" >/dev/null
+sleep 2
+forward_webview
 
-echo "[office-smoke] install office-ooxml from Runtime Chooser using catalog: $CATALOG_URL"
-echo "[office-smoke] expected for each Office file: Runtime: Enhanced Office OOXML"
-read -r -p "Press Enter after office-ooxml is installed on the emulator... "
+echo "[office-smoke] installing ABI-compatible office-ooxml runtime"
+BU_CDP_URL=http://127.0.0.1:9222 browser-use <<'PY'
+import json, time
 
+catalog = js('''
+(async () => await new Promise((resolve) => {
+  const id = `smoke_cat_${Date.now()}`;
+  window._catalogCallback = (cbId, data) => {
+    if (cbId !== id) return;
+    delete window._catalogCallback;
+    resolve(JSON.parse(data));
+  };
+  window.AndroidBridge.fetchPluginCatalog(id);
+}))()
+''')
+manifest = next((p for p in catalog if p['id'] == 'office-ooxml'), None)
+if not manifest:
+    raise SystemExit(f'office-ooxml missing from ABI-filtered catalog: {catalog}')
+print('selected', manifest.get('downloadUrl'), manifest.get('abi'), manifest.get('checksum'))
+
+js('''
+window._pluginEvents = [];
+window._pluginCallback = (msg) => { window._pluginEvents.push(msg); };
+window.AndroidBridge.installPlugin(%s, 'smoke_office_install');
+''' % json.dumps(json.dumps(manifest)))
+
+for _ in range(180):
+    time.sleep(1)
+    installed = json.loads(js('window.AndroidBridge.listPlugins()'))
+    match = next((p for p in installed if p['id'] == 'office-ooxml'), None)
+    if match:
+        print('installed', match.get('abi'), match.get('sizeBytes'), match.get('checksum'))
+        break
+else:
+    raise SystemExit(f'office-ooxml install timed out: {js("window._pluginEvents.slice(-5)")}')
+
+cases = [
+    ('docx', 'file:///sdcard/Download/viewit-sample.docx'),
+    ('xlsx', 'file:///sdcard/Download/viewit-sample.xlsx'),
+    ('pptx', 'file:///sdcard/Download/viewit-sample.pptx'),
+]
+for ext, uri in cases:
+    cb = f'smoke_{ext}'
+    js('''
+window._docResults = window._docResults || {};
+window._documentPluginCallback = (msg) => { window._docResults[msg.id] = msg; };
+window.AndroidBridge.renderDocumentWithPlugin('office-ooxml', %s, %s, %s);
+''' % (json.dumps(uri), json.dumps(ext), json.dumps(cb)))
+    for _ in range(30):
+        time.sleep(1)
+        result = js('window._docResults[%s]' % json.dumps(cb))
+        if result:
+            if result.get('error'):
+                raise SystemExit(f'{ext} render failed: {result}')
+            kind = result.get('document', {}).get('kind')
+            if kind != ext:
+                raise SystemExit(f'{ext} render returned kind={kind}')
+            print(ext, 'render OK')
+            break
+    else:
+        raise SystemExit(f'{ext} render timed out')
+PY
+
+echo "[office-smoke] checking default-open UI runtime banners"
 launch_file "$DOCX" "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-read -r -p "Verify DOCX shows Enhanced Office OOXML, then press Enter... "
+sleep 2
+forward_webview
+assert_ui_runtime docx
 
 launch_file "$XLSX" "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-read -r -p "Verify XLSX shows Enhanced Office OOXML, then press Enter... "
+sleep 2
+forward_webview
+assert_ui_runtime xlsx
 
 launch_file "$PPTX" "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-read -r -p "Verify PPTX shows Enhanced Office OOXML, then press Enter... "
+sleep 2
+forward_webview
+assert_ui_runtime pptx
 
 echo "[office-smoke] complete"

@@ -6,7 +6,7 @@
 
   let query = $state('');
   let caseSensitive = $state(false);
-  let matches: Match[] = [];
+  let matches: Match[] = $state([]);
   let currentIdx = $state(0);
   let contentEl: HTMLElement | null = $state(null);
 

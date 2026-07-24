@@ -112,8 +112,8 @@
   } = $props();
 
   let doc: Document | null = $state(null);
-  let docUri: string | null = $state(initialFile ?? null);
-  let pendingUri: string | null = $state(initialFile ?? null);
+  let docUri: string | null = $state(null);
+  let pendingUri: string | null = $state(null);
   let busy = $state(false);
   let busyHint = $state('');
   let error: string | null = $state(null);
@@ -152,6 +152,8 @@
 
   onMount(async () => {
     applyTheme();
+    docUri = initialFile ?? null;
+    pendingUri = initialFile ?? null;
     const { debugLog } = await import('@viewit/platform');
     debugLog('ViewIt ready');
     if (!(await drainOpenedQueue())) {
@@ -461,7 +463,6 @@
   }
   header h1 { font-size: 1.2rem; margin: 0; letter-spacing: -0.01em; color: var(--text-primary); }
   .header-actions { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
-  .hint { font-size: 0.65rem; color: var(--text-secondary); opacity: 0.85; }
   .hint-btn { font-size: 0.65rem; padding: 0.25rem 0.45rem; }
   header button { cursor: pointer; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border); border-radius: 0.3rem; padding: 0.3rem 0.7rem; font-size: 0.85rem; }
   header button:hover { background: var(--border); }

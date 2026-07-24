@@ -128,6 +128,7 @@ class MainActivity : TauriActivity() {
           put("sizeBytes", p.manifest.sizeBytes)
           put("installedSizeBytes", p.manifest.installedSizeBytes)
           put("checksum", p.manifest.checksum)
+          put("abi", p.manifest.abi)
         })
       }
       return arr.toString()
@@ -189,6 +190,7 @@ class MainActivity : TauriActivity() {
               put("sizeBytes", m.sizeBytes)
               put("installedSizeBytes", m.installedSizeBytes)
               put("checksum", m.checksum)
+              put("abi", m.abi)
             })
           }
           arr.toString()
