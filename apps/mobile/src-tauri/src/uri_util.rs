@@ -47,6 +47,40 @@ fn ext_hint_from_android_uri(uri: &str) -> Option<String> {
     None
 }
 
+fn ext_from_mime(mime: &str) -> Option<&'static str> {
+    let m = mime.trim().to_lowercase();
+    if m.starts_with("video/") {
+        return Some(match m.as_str() {
+            "video/mp4" | "video/x-m4v" | "video/quicktime" => "mp4",
+            "video/x-flv" => "flv",
+            "video/x-msvideo" | "video/avi" => "avi",
+            "video/x-matroska" => "mkv",
+            "video/webm" => "webm",
+            "video/mpeg" => "mpeg",
+            "video/mp2t" | "video/mp2ts" => "ts",
+            "video/3gpp" => "3gp",
+            "video/x-ms-asf" => "asf",
+            "video/ogg" => "ogv",
+            "video/x-ms-wmv" => "wmv",
+            "video/x-f4v" => "f4v",
+            _ => "mp4",
+        });
+    }
+    if m.starts_with("audio/") {
+        return Some(match m.as_str() {
+            "audio/mpeg" | "audio/mp3" => "mp3",
+            "audio/x-wav" | "audio/wav" => "wav",
+            "audio/ogg" => "ogg",
+            "audio/flac" => "flac",
+            "audio/aac" => "aac",
+            "audio/x-m4a" | "audio/mp4" => "m4a",
+            "audio/webm" => "opus",
+            _ => "mp3",
+        });
+    }
+    None
+}
+
 fn is_office_format(format: Format) -> bool {
     matches!(
         format,
@@ -194,6 +228,19 @@ pub fn read_uri_bytes(app: &AppHandle, uri: &str) -> Result<Vec<u8>, String> {
 
 fn sniff_prefix(app: &AppHandle, uri: &str, ext: &str) -> Result<(String, Format), String> {
     let mut ext_hint = sanitize_ext(ext);
+
+    // Check for MIME type hint from Android intent (warm-start path)
+    #[cfg(target_os = "android")]
+    if ext_hint.is_empty() || ext_hint.len() > 8 {
+        if let Some(mime_state) = app.try_state::<crate::android_pending::PendingUrisWithMime>() {
+            if let Some(mime) = mime_state.get_mime(uri) {
+                if let Some(h) = ext_from_mime(&mime) {
+                    ext_hint = h.to_string();
+                }
+            }
+        }
+    }
+
     if ext_hint.is_empty() {
         if let Some(h) = ext_hint_from_android_uri(uri) {
             ext_hint = h;

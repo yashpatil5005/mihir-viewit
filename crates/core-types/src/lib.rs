@@ -284,6 +284,8 @@ pub struct XlsxSheet {
     pub header: Vec<String>,
     pub preview_rows: Vec<Vec<String>>,
     pub total_rows_hint: Option<usize>,
+    #[serde(default)]
+    pub total_cols_hint: Option<usize>,
 }
 
 /// Errors that any fmt-* crate may return. Uniform so the frontend can rely

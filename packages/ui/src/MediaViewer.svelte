@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { debugLog, openWithExternal } from '@viewit/platform';
+  import RuntimeChooser from './RuntimeChooser.svelte';
+  import type { PluginInfo } from './pluginBridge';
 
   let {
     uri,
@@ -27,6 +29,9 @@
   let loadStart = 0;
   let blobUrl = $state('');
   let currentStrategy = $state('');
+  let nativePlayerLaunched = $state(false);
+  let isAndroidTauri = $state(false);
+  let runtimeChooserOpen = $state(false);
 
   const MIME_MAP: Record<string, string> = {
     mp4: 'video/mp4', m4v: 'video/mp4', webm: 'video/webm', mkv: 'video/x-matroska',
@@ -89,17 +94,37 @@
     return false;
   }
 
-  onMount(async () => {
+  async function launchNativePlayer() {
     const { debugLog: log } = await import('@viewit/platform');
+    try {
+      const videoUri = stream_url || uri;
+      log(`[media] launching native player: ${videoUri?.slice(0, 80)}`);
+      if ('AndroidBridge' in window) {
+        (window as any).AndroidBridge.launchVideoPlayer(videoUri, name, ext || '');
+        nativePlayerLaunched = true;
+      } else {
+        log(`[media] AndroidBridge not available`);
+      }
+    } catch (e) {
+      log(`[media] native player failed: ${e instanceof Error ? e.message : String(e)}`);
+      nativePlayerLaunched = false;
+    }
+  }
 
-    log(`[media] uri=${uri?.slice(0, 80)}`);
-    log(`[media] asset_path=${asset_path?.slice(0, 80)}`);
-    log(`[media] stream_url=${stream_url?.slice(0, 80)}`);
-    log(`[media] kind=${media_kind} format=${format} ext=${ext}`);
+  async function useBuiltInRuntime() {
+    if (isAndroidTauri && media_kind === 'video') {
+      await launchNativePlayer();
+      return;
+    }
+    await useWebRuntime();
+  }
 
-    loadStart = Date.now();
+  async function useInstalledPlugin(_plugin: PluginInfo) {
+    await launchNativePlayer();
+  }
 
-    // Priority 1: Direct stream URL from backend (new architecture)
+  async function useWebRuntime() {
+    const { debugLog: log } = await import('@viewit/platform');
     if (stream_url) {
       log(`[media] using direct stream_url`);
       src = stream_url;
@@ -115,13 +140,32 @@
     const IS_TAURI = '__TAURI_INTERNALS__' in window;
     if (!IS_TAURI) { await tryBlobUrl(); return; }
 
-    // Legacy fallbacks
     if (!(await tryStreamProtocol())) {
       if (!(await tryConvertFileSrc())) {
         await tryBlobUrl();
       }
     }
     log(`[media] src set via ${currentStrategy}, waiting for load…`);
+  }
+
+  onMount(async () => {
+    const { debugLog: log } = await import('@viewit/platform');
+
+    isAndroidTauri = '__TAURI_INTERNALS__' in window;
+
+    log(`[media] uri=${uri?.slice(0, 80)}`);
+    log(`[media] asset_path=${asset_path?.slice(0, 80)}`);
+    log(`[media] stream_url=${stream_url?.slice(0, 80)}`);
+    log(`[media] kind=${media_kind} format=${format} ext=${ext}`);
+
+    loadStart = Date.now();
+
+    // On Android/Tauri: let the user choose built-in/native/plugin/external.
+    if (isAndroidTauri && media_kind === 'video') {
+      runtimeChooserOpen = true;
+      return;
+    }
+    await useWebRuntime();
   });
 
   onDestroy(() => {
@@ -189,7 +233,9 @@
     {/if}
   </aside>
   <div class="frame">
-    {#if errorMsg}
+    {#if nativePlayerLaunched}
+      <p class="status">Playing in native player — press back to return</p>
+    {:else if errorMsg}
       <p class="err">{errorMsg}</p>
       {#if showExternalBtn}
         <button class="external-btn" onclick={() => openWithExternal(uri)}>
@@ -208,6 +254,17 @@
     {/if}
   </div>
 </article>
+
+<RuntimeChooser
+  open={runtimeChooserOpen}
+  uri={stream_url || uri}
+  {name}
+  {ext}
+  builtInLabel="Native Android player"
+  onClose={() => runtimeChooserOpen = false}
+  onUseBuiltIn={useBuiltInRuntime}
+  onUseInstalledPlugin={useInstalledPlugin}
+/>
 
 <style>
   .media-viewer { display: flex; flex-direction: column; height: 100%; min-height: 40vh; }

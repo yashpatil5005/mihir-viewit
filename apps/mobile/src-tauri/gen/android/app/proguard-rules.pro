@@ -19,3 +19,17 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Plugin system: these names are a runtime ABI for dynamically loaded DEX plugins.
+-keep,allowoptimization interface ai.viewit.app.ViewItPlugin { *; }
+-keep,allowoptimization interface ai.viewit.app.ViewItDocumentPlugin { *; }
+-keep,allowoptimization interface ai.viewit.app.PluginProgress { *; }
+-keep class * implements ai.viewit.app.ViewItPlugin { *; }
+-keep class * implements ai.viewit.app.ViewItDocumentPlugin { *; }
+-keep class ai.viewit.app.PluginManifest { *; }
+-keep class ai.viewit.app.InstalledPlugin { *; }
+
+# WebView JS bridge
+-keepclassmembers class ai.viewit.app.MainActivity$AndroidBridge {
+    @android.webkit.JavascriptInterface <methods>;
+}

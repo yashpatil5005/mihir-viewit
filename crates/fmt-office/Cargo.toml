@@ -18,7 +18,7 @@ bytes.workspace = true
 
 # Phase 3.2 XLSX + 3.4 ODS
 calamine = "=0.36.0"
-# Phase 3.1 DOCX (reader)
+# Phase 3.1 DOCX (lightweight built-in reader)
 docx-rust = "=0.1.11"
 # Phase 3.3 PPTX (zip reader)
 zip = "=8.6.0"

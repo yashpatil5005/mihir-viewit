@@ -71,6 +71,7 @@ pub fn parse(bytes: &[u8], format: Format, _name: &str) -> Result<Document, Erro
         encoding: "utf-8".into(),
         byte_len: bytes.len(),
         truncated: false,
+        stream_url: None,
     })
 }
 

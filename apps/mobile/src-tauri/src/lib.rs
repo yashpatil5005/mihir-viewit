@@ -33,6 +33,19 @@ struct HttpPort(std::sync::atomic::AtomicU16);
 fn opened_urls(app: tauri::AppHandle) -> Vec<String> {
     #[cfg(target_os = "android")]
     {
+        // Check if setup() already drained the pending file into OpenedUrls state.
+        let cached: Vec<String> = app
+            .state::<OpenedUrls>()
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|u| u.to_string())
+            .collect();
+        if !cached.is_empty() {
+            return cached;
+        }
+        // Warm-start: file may still exist (onNewIntent wrote it after setup).
         let entries = android_pending::drain_into_opened_urls(&app);
         entries.iter().map(|(uri, _)| uri.clone()).collect()
     }
@@ -52,6 +65,11 @@ async fn open_uri(
     uri: String,
     name: Option<String>,
 ) -> Result<Document, String> {
+    #[cfg(target_os = "android")]
+    {
+        // Read pending file for warm-start (app already running, onNewIntent fired)
+        android_pending::read_pending_mimes(&app);
+    }
     uri_util::open_from_uri(&app, uri, name)
 }
 
@@ -379,8 +397,10 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(OpenedUrls(Mutex::new(vec![])))
         .manage(HttpPort::default())
+        .manage(PendingDisplayNames::default())
         .manage(stream_protocol::StreamSlots::default())
         .manage(stream_server::StreamRegistry::default())
+        .manage(android_pending::PendingUrisWithMime::new())
         .register_uri_scheme_protocol("viewit-stream", |ctx, request| {
             let app = ctx.app_handle();
             let slots = app.state::<stream_protocol::StreamSlots>();

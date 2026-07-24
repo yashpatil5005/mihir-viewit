@@ -24,6 +24,15 @@
   import GridView from './GridView.svelte';
   import Onboarding from './Onboarding.svelte';
   import DebugPanel from './DebugPanel.svelte';
+  import PluginStore from './PluginStore.svelte';
+  import RuntimeChooser from './RuntimeChooser.svelte';
+  import {
+    hasAndroidBridge,
+    listInstalledPlugins,
+    pluginSupports,
+    renderDocumentWithPlugin,
+    type PluginInfo,
+  } from './pluginBridge';
 
   // Phase 3.8 — per-format lazy code-split. Heavy viewers load on demand via
   // dynamic import() so opening a .txt never pulls in the PDF/Office chunks.
@@ -109,6 +118,10 @@
   let busyHint = $state('');
   let error: string | null = $state(null);
   let debugOpen = $state(false);
+  let pluginStoreOpen = $state(false);
+  let officeRuntimeChooserOpen = $state(false);
+  let selectedOfficePlugin: PluginInfo | null = $state(null);
+  let officePluginNotice = $state('');
 
   import { onMount } from 'svelte';
   import {
@@ -163,7 +176,7 @@
     docUri = pendingUri;
     busyHint = 'Opening…';
     try {
-      doc = await openFile(pendingUri);
+      doc = await openWithDefaultRuntime(pendingUri);
     } catch (e: any) {
       error = e?.toString?.() ?? String(e);
     } finally {
@@ -190,7 +203,7 @@
       docUri = viewitUri;
       busyHint = 'Opening…';
       try {
-        doc = await openFile(viewitUri);
+        doc = await openWithDefaultRuntime(viewitUri);
       } catch (e: unknown) {
         error = e instanceof Error ? e.message : String(e);
         doc = null;
@@ -216,6 +229,8 @@
       }
       busyHint = `Reading ${f.name} (${mb} MB)…`;
       doc = await openFileFromPicker(f);
+      selectedOfficePlugin = null;
+      officePluginNotice = '';
       if (doc.kind === 'image') {
         imagePreviewUrl = URL.createObjectURL(f);
         docUri = imagePreviewUrl;
@@ -223,6 +238,78 @@
     } catch (e: unknown) {
       error = e instanceof Error ? e.message : String(e);
       doc = null;
+    } finally {
+      busy = false;
+      busyHint = '';
+    }
+  }
+
+  function officeExt(): string {
+    const kind = (doc as any)?.kind;
+    if (kind === 'docx' || kind === 'xlsx' || kind === 'pptx') return kind;
+    const uri = docUri ?? pendingUri ?? '';
+    return uri.split(/[?#]/, 1)[0].split('.').pop()?.toLowerCase() ?? '';
+  }
+
+  function extFromUri(uri: string): string {
+    return uri.split(/[?#]/, 1)[0].split('.').pop()?.toLowerCase() ?? '';
+  }
+
+  async function openWithDefaultRuntime(uri: string): Promise<Document> {
+    selectedOfficePlugin = null;
+    officePluginNotice = '';
+    const ext = extFromUri(uri);
+    let failedPluginId = '';
+    if (hasAndroidBridge() && (ext === 'docx' || ext === 'xlsx' || ext === 'pptx')) {
+      const plugin = (await listInstalledPlugins()).find((candidate) => pluginSupports(candidate, ext));
+      if (plugin) {
+        try {
+          busyHint = `Opening with ${plugin.name}…`;
+          const rendered = await renderDocumentWithPlugin(plugin, uri, ext) as Document;
+          selectedOfficePlugin = plugin;
+          officePluginNotice = `Rendered by ${plugin.name}.`;
+          return rendered;
+        } catch (e) {
+          officePluginNotice = `${plugin.name} could not render this file: ${e instanceof Error ? e.message : String(e)}. Using the built-in lightweight viewer.`;
+          selectedOfficePlugin = null;
+          failedPluginId = plugin.id;
+        }
+      }
+    }
+    const builtIn = await openFile(uri);
+    const detectedKind = builtIn.kind;
+    if (hasAndroidBridge() && (detectedKind === 'docx' || detectedKind === 'xlsx' || detectedKind === 'pptx')) {
+      const plugin = (await listInstalledPlugins()).find((candidate) => candidate.id !== failedPluginId && pluginSupports(candidate, detectedKind));
+      if (plugin) {
+        try {
+          busyHint = `Opening with ${plugin.name}…`;
+          const rendered = await renderDocumentWithPlugin(plugin, uri, detectedKind) as Document;
+          selectedOfficePlugin = plugin;
+          officePluginNotice = `Rendered by ${plugin.name}.`;
+          return rendered;
+        } catch (e) {
+          officePluginNotice = `${plugin.name} could not render this file: ${e instanceof Error ? e.message : String(e)}. Using the built-in lightweight viewer.`;
+          selectedOfficePlugin = null;
+        }
+      }
+    }
+    return builtIn;
+  }
+
+  async function chooseOfficePlugin(plugin: PluginInfo) {
+    if (!docUri) return;
+    busy = true;
+    busyHint = `Opening with ${plugin.name}…`;
+    error = null;
+    selectedOfficePlugin = plugin;
+    officePluginNotice = '';
+    try {
+      doc = await renderDocumentWithPlugin(plugin, docUri, officeExt()) as Document;
+      officePluginNotice = `Rendered by ${plugin.name}.`;
+    } catch (e) {
+      officePluginNotice = `${plugin.name} could not render this file: ${e instanceof Error ? e.message : String(e)}. Using the built-in lightweight viewer.`;
+      if (pendingUri) doc = await openFile(pendingUri);
+      selectedOfficePlugin = null;
     } finally {
       busy = false;
       busyHint = '';
@@ -237,6 +324,11 @@
       <button class="theme-toggle" onclick={toggleTheme} aria-label="Toggle dark mode" title="Toggle theme">
         {theme.mode === 'dark' ? '☀' : '☾'}
       </button>
+      {#if root === 'mobile'}
+        <button class="plugin-btn" onclick={() => pluginStoreOpen = true} aria-label="Plugin store" title="Plugin store">
+          ⚡
+        </button>
+      {/if}
       <button onclick={pick}>Open file…</button>
       <button
         type="button"
@@ -295,10 +387,22 @@
       {:else if doc.kind === 'archive' && ArchiveViewer}
         <ArchiveViewer {...(doc as any)} />
       {:else if doc.kind === 'pptx' && PptxViewer}
+        <div class="runtime-bar">
+          <button type="button" onclick={() => officeRuntimeChooserOpen = true}>Runtime: {selectedOfficePlugin?.name ?? 'Built-in lightweight viewer'}</button>
+          {#if officePluginNotice}<span>{officePluginNotice}</span>{/if}
+        </div>
         <PptxViewer document={doc} source_uri={docUri ?? ''} />
       {:else if doc.kind === 'docx' && DocxViewer}
+        <div class="runtime-bar">
+          <button type="button" onclick={() => officeRuntimeChooserOpen = true}>Runtime: {selectedOfficePlugin?.name ?? 'Built-in lightweight viewer'}</button>
+          {#if officePluginNotice}<span>{officePluginNotice}</span>{/if}
+        </div>
         <DocxViewer document={doc} />
       {:else if doc.kind === 'xlsx' && XlsxViewer}
+        <div class="runtime-bar">
+          <button type="button" onclick={() => officeRuntimeChooserOpen = true}>Runtime: {selectedOfficePlugin?.name ?? 'Built-in lightweight viewer'}</button>
+          {#if officePluginNotice}<span>{officePluginNotice}</span>{/if}
+        </div>
         <XlsxViewer document={doc} />
       {:else if doc.kind === 'unsupported'}
         <UnsupportedViewer uri={docUri ?? undefined} document={doc} />
@@ -314,6 +418,17 @@
     {/if}
   </main>
   <DebugPanel bind:open={debugOpen} />
+  <PluginStore open={pluginStoreOpen} onClose={() => pluginStoreOpen = false} />
+  <RuntimeChooser
+    open={officeRuntimeChooserOpen}
+    uri={docUri ?? ''}
+    name={(docUri ?? 'Office file').split('/').pop() ?? 'Office file'}
+    ext={officeExt()}
+    builtInLabel="Built-in lightweight Office viewer"
+    onClose={() => officeRuntimeChooserOpen = false}
+    onUseBuiltIn={() => { selectedOfficePlugin = null; officePluginNotice = ''; }}
+    onUseInstalledPlugin={chooseOfficePlugin}
+  />
 </div>
 
 <style>
@@ -351,6 +466,7 @@
   header button { cursor: pointer; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border); border-radius: 0.3rem; padding: 0.3rem 0.7rem; font-size: 0.85rem; }
   header button:hover { background: var(--border); }
   .theme-toggle { font-size: 1rem; padding: 0.3rem 0.5rem; }
+  .plugin-btn { font-size: 1rem; padding: 0.3rem 0.5rem; }
   .mode-toggle { font-size: 1rem; padding: 0.3rem 0.5rem; }
   main {
     padding: 1rem max(1rem, env(safe-area-inset-right, 0px)) max(1rem, env(safe-area-inset-bottom, 0px)) max(1rem, env(safe-area-inset-left, 0px));
@@ -358,4 +474,7 @@
   }
   .status, .empty { color: var(--text-secondary); font-style: italic; }
   .error { color: var(--error); white-space: pre-wrap; }
+  .runtime-bar { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin: 0 0 0.75rem; color: var(--text-secondary); font-size: 0.8rem; }
+  .runtime-bar button { cursor: pointer; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-secondary); color: var(--text-primary); padding: 0.35rem 0.7rem; }
+  .runtime-bar span { flex: 1 1 18rem; }
 </style>

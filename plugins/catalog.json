@@ -1,0 +1,31 @@
+{
+  "plugins": [
+    {
+      "id": "ffmpeg-transcoder",
+      "name": "FFmpeg Transcoder",
+      "description": "Adds transcoding support for FLV, ASF, WMV, SWF, MXF, and other legacy video formats. Converts unsupported formats to MP4 using FFmpeg.",
+      "version": "1.0.0",
+      "entryClass": "ai.viewit.plugins.ffmpeg_transcoder.Plugin",
+      "sizeBytes": 18000000,
+      "installedSizeBytes": 38375726,
+      "supportedFormats": ["flv", "asf", "wmv", "swf", "mxf", "mpg", "mpeg", "ts", "m2ts", "mts"],
+      "downloadUrl": "http://127.0.0.1:8888/ffmpeg-transcoder-1.0.0.zip",
+      "minAppVersion": 1
+    },
+    {
+      "id": "office-ooxml",
+      "name": "Enhanced Office OOXML",
+      "description": "Optional enhanced DOCX/XLSX/PPTX runtime based on ooxmlsdk. Intended for richer viewing and future safe editing without increasing the base APK.",
+      "version": "0.1.0",
+      "entryClass": "ai.viewit.plugins.office_ooxml.Plugin",
+      "capabilities": ["view", "inspect", "edit-planned"],
+      "runtime": "android-dex-rust-sidecar",
+      "sizeBytes": 18848714,
+      "installedSizeBytes": 53884490,
+      "supportedFormats": ["docx", "xlsx", "pptx", "docm", "xlsm", "pptm"],
+      "downloadUrl": "http://127.0.0.1:8888/office-ooxml-0.1.0.zip",
+      "checksum": "8c5bd4377fd9dd57f58c9c67ae2303989b2f6130da64e204ace4c1b2fc758fe3",
+      "minAppVersion": 1
+    }
+  ]
+}

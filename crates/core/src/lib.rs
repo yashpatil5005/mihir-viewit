@@ -148,7 +148,21 @@ fn sniff_magic(bytes: &[u8], ext: &str) -> Option<Format> {
     if bytes.len() < 4 {
         return None;
     }
+    // ISO BMFF (MP4/MOV/M4V/3GP/F4V/HEVC/MJPEG)
     if bytes.len() >= 12 && bytes[4..8] == *b"ftyp" {
+        return Some(Format::Video);
+    }
+    // RIFF container — AVI or WAVE audio
+    if bytes.len() >= 12 && bytes[..4] == *b"RIFF" {
+        if &bytes[8..12] == *b"AVI " {
+            return Some(Format::Video);
+        }
+        if &bytes[8..12] == *b"WAVE" {
+            return Some(Format::Audio);
+        }
+    }
+    // EBML header — Matroska (MKV/WebM)
+    if bytes.len() >= 4 && bytes[..4] == [0x1A, 0x45, 0xDF, 0xA3] {
         return Some(Format::Video);
     }
     let p = &bytes[..bytes.len().min(16)];
@@ -177,6 +191,26 @@ fn sniff_magic(bytes: &[u8], ext: &str) -> Option<Format> {
         [0x49, 0x49, 0x2A, 0x00, ..] | [0x4D, 0x4D, 0x00, 0x2A, ..] => Format::ImageTiff,
         // ICO
         [0x00, 0x00, 0x01, 0x00, ..] => Format::ImagePng,
+        // FLV: "FLV\x01"
+        [0x46, 0x4C, 0x56, 0x01, ..] => Format::Video,
+        // OGG container (OggS)
+        [0x4F, 0x67, 0x67, 0x53, ..] => Format::Audio,
+        // FLAC
+        [0x66, 0x4C, 0x61, 0x43, ..] => Format::Audio,
+        // MP3 frame sync (0xFF 0xFB or 0xFF 0xF3 or ID3 tag)
+        [0xFF, 0xFB, ..] | [0xFF, 0xF3, ..] | [0xFF, 0xF2, ..] => Format::Audio,
+        // ID3 tag (MP3)
+        [0x49, 0x44, 0x33, ..] => Format::Audio,
+        // ASF/WMV: 0x30 0x26 0xB2 0x75 0x8E 0x66 0xCF 0x11
+        [0x30, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11, ..] => Format::Video,
+        // MXF: 0x06 0x0E 0x2B 0x34 0x02
+        [0x06, 0x0E, 0x2B, 0x34, 0x02, ..] => Format::Video,
+        // MPEG-TS: sync byte 0x47 repeated at 188-byte intervals
+        [0x47, _, _, _, _, _, _, _, _, _, _, _, _, _, _, 0x47, ..] => Format::Video,
+        // MPEG-PS: starts with 0x00 0x00 0x01
+        [0x00, 0x00, 0x01, ..] => Format::Video,
+        // SWF: "FWS" or "CWS"
+        [0x46, 0x57, 0x53, ..] | [0x43, 0x57, 0x53, ..] => Format::Video,
         // ZIP — extension + inner paths disambiguate Office / EPUB from plain zip.
         [0x50, 0x4B, 0x03, 0x04, ..] | [0x50, 0x4B, 0x05, 0x06, ..] => {
             return Some(sniff_zip_as_office_or_epub(bytes, ext));

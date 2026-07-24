@@ -11,5 +11,6 @@ pub fn parse(bytes: &[u8], format: Format, name: &str) -> Result<Document, Error
         byte_len: bytes.len(),
         name: name.to_string(),
         asset_path: String::new(),
+        stream_url: None,
     })
 }
