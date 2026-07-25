@@ -77,10 +77,25 @@ fn render_docx(bytes: &[u8]) -> Result<String, String> {
     let xml = zip_entry_string(bytes, "word/document.xml")?;
 
     let blocks = parse_docx_blocks(&xml)?;
+    let mut warnings = Vec::new();
+    if !zip_has_entry(bytes, "word/styles.xml") {
+        warnings.push("styles.xml missing — style-based heading inference may be incomplete".to_string());
+    }
+    if zip_has_entry(bytes, "word/header1.xml") || zip_has_entry(bytes, "word/footer1.xml") {
+        warnings.push("headers/footers present but not yet rendered".to_string());
+    }
+    let searchable = collect_docx_search_text(&blocks);
     Ok(json!({
         "kind": "docx",
         "blocks": blocks,
-        "byte_len": bytes.len()
+        "byte_len": bytes.len(),
+        "warnings": warnings,
+        "fidelity": {
+            "level": "text+structure",
+            "supports": ["text", "headings", "lists", "tables"],
+            "missing": ["images", "footnotes", "headers", "footers", "tracked-changes", "styles"],
+        },
+        "search_text": searchable,
     })
     .to_string())
 }
@@ -94,6 +109,7 @@ fn render_xlsx(bytes: &[u8]) -> Result<String, String> {
     };
     let rels = parse_relationships(&workbook_rels)?;
     let mut sheets = Vec::new();
+    let mut warnings = Vec::new();
 
     for (name, rel_id) in parse_workbook_sheets(&workbook)? {
         let target = rels
@@ -119,10 +135,20 @@ fn render_xlsx(bytes: &[u8]) -> Result<String, String> {
         }));
     }
 
+    if zip_has_entry(bytes, "xl/drawings/") {
+        warnings.push("sheet drawings/charts present but not yet rendered".to_string());
+    }
+
     Ok(json!({
         "kind": "xlsx",
         "sheets": sheets,
-        "byte_len": bytes.len()
+        "byte_len": bytes.len(),
+        "warnings": warnings,
+        "fidelity": {
+            "level": "text+structure",
+            "supports": ["text", "sheets", "shared-strings"],
+            "missing": ["formatting", "formulas", "merged-cells", "charts", "filters", "frozen-panes", "cell-styles"],
+        },
     })
     .to_string())
 }
@@ -145,15 +171,17 @@ fn render_pptx(bytes: &[u8]) -> Result<String, String> {
     let (slide_w, slide_h) = parse_presentation_size(bytes).unwrap_or((DEFAULT_SLIDE_W, DEFAULT_SLIDE_H));
 
     let mut slides = Vec::new();
-    for name in slide_names {
-        let xml = zip_entry_string(bytes, &name)?;
-        let rels_path = slide_relationships_path(&name);
+    let warnings: Vec<String> = Vec::new();
+    for name in &slide_names {
+        let xml = zip_entry_string(bytes, name)?;
+        let rels_path = slide_relationships_path(name);
         let rels = zip_entry_string(bytes, &rels_path)
             .ok()
             .map(|xml| parse_relationships(&xml))
             .transpose()?
             .unwrap_or_default();
         let parsed = parse_pptx_slide_layout(bytes, &xml, &rels, slide_w, slide_h)?;
+        let bg = parse_slide_background(&xml);
         let texts = if parsed.texts.is_empty() {
             parse_drawing_texts(&xml)?
         } else {
@@ -161,21 +189,31 @@ fn render_pptx(bytes: &[u8]) -> Result<String, String> {
         };
         let title = texts.first().cloned().unwrap_or_default();
         let body = texts.iter().skip(1).cloned().collect::<Vec<_>>().join("\n");
-        slides.push(json!({
+        let mut slide = serde_json::json!({
             "title": title,
             "body": body,
             "width": slide_w,
             "height": slide_h,
             "elements": parsed.elements,
-        }));
+        });
+        if let Some(background) = bg {
+            slide.as_object_mut().unwrap().insert("background".to_string(), background);
+        }
+        slides.push(slide);
     }
 
-    Ok(json!({
+    Ok(serde_json::json!({
         "kind": "pptx",
         "slide_count": slides.len(),
         "slides": slides,
         "byte_len": bytes.len(),
-        "asset_path": ""
+        "asset_path": "",
+        "warnings": warnings,
+        "fidelity": {
+            "level": "text+layout+bullets+rich-runs",
+            "supports": ["text", "slide-elements", "images", "positions", "font-sizes", "bold", "italic", "underline", "bullets", "backgrounds"],
+            "missing": ["master-layout-inheritance", "theme-fonts", "theme-colors", "rich-text-colors", "shapes", "charts", "tables", "smartart", "animations", "transitions"],
+        },
     })
     .to_string())
 }
@@ -196,6 +234,33 @@ struct PptxElementBuilder {
     text: String,
     rel_id: String,
     font_size: Option<f64>,
+    paragraphs: Vec<PptxParagraphBuilder>,
+    current_paragraph: PptxParagraphBuilder,
+}
+
+#[derive(Default, Clone)]
+struct PptxParagraphBuilder {
+    runs: Vec<PptxRunBuilder>,
+    bullet: bool,
+}
+
+#[derive(Default, Clone, Serialize)]
+struct PptxRunBuilder {
+    text: String,
+    bold: bool,
+    italic: bool,
+    underline: bool,
+    font_size: Option<f64>,
+    color: Option<String>,
+}
+
+struct PptxRunAccum {
+    text: String,
+    bold: bool,
+    italic: bool,
+    underline: bool,
+    font_size: Option<f64>,
+    color: Option<String>,
 }
 
 fn parse_presentation_size(bytes: &[u8]) -> Result<(i64, i64), String> {
@@ -221,6 +286,34 @@ fn parse_presentation_size(bytes: &[u8]) -> Result<(i64, i64), String> {
     Ok((DEFAULT_SLIDE_W, DEFAULT_SLIDE_H))
 }
 
+fn parse_slide_background(xml: &str) -> Option<serde_json::Value> {
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(true);
+    let mut bg = None;
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) if e.name() == QName(b"p:bg") => {
+                // Found background element
+            }
+            Ok(Event::Start(e)) if e.name() == QName(b"a:solidFill") => {
+                // Start of solid fill
+            }
+            Ok(Event::Empty(e)) if e.name() == QName(b"a:srgbClr") => {
+                if let Some(color) = attr_value(&e, b"val") {
+                    bg = Some(serde_json::json!({
+                        "type": "solid",
+                        "color": format!("#{}", color),
+                    }));
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(_) => break,
+            _ => {}
+        }
+    }
+    bg
+}
+
 fn slide_relationships_path(slide_path: &str) -> String {
     let file = slide_path.rsplit('/').next().unwrap_or(slide_path);
     format!("ppt/slides/_rels/{file}.rels")
@@ -239,6 +332,7 @@ fn parse_pptx_slide_layout(
     let mut texts = Vec::new();
     let mut current: Option<PptxElementBuilder> = None;
     let mut in_text = false;
+    let mut run_accum: Option<PptxRunAccum> = None;
 
     loop {
         match reader.read_event() {
@@ -282,19 +376,80 @@ fn parse_pptx_slide_layout(
                             .map(|v| v / 100.0);
                     }
                 }
+                if let Some(acc) = &mut run_accum {
+                    if acc.font_size.is_none() {
+                        acc.font_size = attr_value(&e, b"sz")
+                            .and_then(|v| v.parse::<f64>().ok())
+                            .map(|v| v / 100.0);
+                    }
+                    if e.attributes().flatten().any(|a| a.key.as_ref() == b"b" && a.value.as_ref() == b"1") {
+                        acc.bold = true;
+                    }
+                    if e.attributes().flatten().any(|a| a.key.as_ref() == b"i" && a.value.as_ref() == b"1") {
+                        acc.italic = true;
+                    }
+                    if e.attributes().flatten().any(|a| a.key.as_ref() == b"u" && a.value.as_ref() == b"sng") {
+                        acc.underline = true;
+                    }
+                }
             }
             Ok(Event::Empty(e)) if e.name() == QName(b"a:blip") => {
                 if let Some(item) = &mut current {
                     item.rel_id = attr_value(&e, b"r:embed").unwrap_or_default();
                 }
             }
+            Ok(Event::Start(e)) if e.name() == QName(b"a:buChar") || e.name() == QName(b"a:buNone") => {
+                if let Some(item) = &mut current {
+                    item.current_paragraph.bullet = true;
+                }
+            }
+            Ok(Event::Start(e)) if e.name() == QName(b"a:p") => {
+                if let Some(item) = &mut current {
+                    item.current_paragraph = PptxParagraphBuilder::default();
+                }
+            }
+            Ok(Event::Start(e)) if e.name() == QName(b"a:r") => {
+                run_accum = Some(PptxRunAccum {
+                    text: String::new(),
+                    bold: false,
+                    italic: false,
+                    underline: false,
+                    font_size: None,
+                    color: None,
+                });
+            }
             Ok(Event::Start(e)) if e.name() == QName(b"a:t") => in_text = true,
             Ok(Event::Text(e)) if in_text => {
-                if let Some(item) = &mut current {
-                    item.text.push_str(&e.decode().map_err(|e| format!("slide text decode: {e}"))?);
+                let decoded = e.decode().map_err(|e| format!("slide text decode: {e}"))?;
+                if let Some(acc) = &mut run_accum {
+                    acc.text.push_str(&decoded);
+                } else if let Some(item) = &mut current {
+                    item.text.push_str(&decoded);
                 }
             }
             Ok(Event::End(e)) if e.name() == QName(b"a:t") => in_text = false,
+            Ok(Event::End(e)) if e.name() == QName(b"a:r") => {
+                if let Some(acc) = run_accum.take() {
+                    if let Some(item) = &mut current {
+                        item.current_paragraph.runs.push(PptxRunBuilder {
+                            text: acc.text,
+                            bold: acc.bold,
+                            italic: acc.italic,
+                            underline: acc.underline,
+                            font_size: acc.font_size,
+                            color: acc.color,
+                        });
+                    }
+                }
+            }
+            Ok(Event::End(e)) if e.name() == QName(b"a:p") => {
+                if let Some(item) = &mut current {
+                    let para = std::mem::take(&mut item.current_paragraph);
+                    if !para.runs.is_empty() || para.bullet {
+                        item.paragraphs.push(para);
+                    }
+                }
+            }
             Ok(Event::End(e)) if e.name() == QName(b"p:sp") || e.name() == QName(b"p:pic") => {
                 if let Some(item) = current.take() {
                     if let Some(element) = finish_pptx_element(bytes, item, rels, slide_w, slide_h)? {
@@ -324,7 +479,43 @@ fn finish_pptx_element(
     slide_h: i64,
 ) -> Result<Option<serde_json::Value>, String> {
     if item.kind == "text" {
-        let text = item.text.trim().to_string();
+        let mut flat_text = String::new();
+        let mut paragraphs = Vec::new();
+        for para in &item.paragraphs {
+            let mut para_text = String::new();
+            let mut runs = Vec::new();
+            if para.runs.is_empty() {
+                if para.bullet {
+                    para_text.push_str("• ");
+                }
+            }
+            for run in &para.runs {
+                if !run.text.is_empty() {
+                    para_text.push_str(&run.text);
+                    let mut run_obj = serde_json::Map::new();
+                    run_obj.insert("text".to_string(), serde_json::Value::String(run.text.clone()));
+                    if run.bold { run_obj.insert("bold".to_string(), serde_json::Value::Bool(true)); }
+                    if run.italic { run_obj.insert("italic".to_string(), serde_json::Value::Bool(true)); }
+                    if run.underline { run_obj.insert("underline".to_string(), serde_json::Value::Bool(true)); }
+                    if let Some(fs) = run.font_size { run_obj.insert("font_size".to_string(), serde_json::json!(fs)); }
+                    if let Some(c) = &run.color { run_obj.insert("color".to_string(), serde_json::Value::String(c.clone())); }
+                    runs.push(serde_json::Value::Object(run_obj));
+                }
+            }
+            if !para_text.is_empty() {
+                flat_text.push_str(&para_text);
+                flat_text.push('\n');
+            }
+            let mut para_obj = serde_json::Map::new();
+            para_obj.insert("runs".to_string(), serde_json::Value::Array(runs));
+            if para.bullet { para_obj.insert("bullet".to_string(), serde_json::Value::Bool(true)); }
+            paragraphs.push(serde_json::Value::Object(para_obj));
+        }
+        let text = if flat_text.is_empty() {
+            item.text.trim().to_string()
+        } else {
+            flat_text.trim_end().to_string()
+        };
         if text.is_empty() {
             return Ok(None);
         }
@@ -332,15 +523,18 @@ fn finish_pptx_element(
         if w == 0 || h == 0 {
             return Ok(None);
         }
-        return Ok(Some(json!({
-            "kind": "text",
-            "text": text,
-            "x": x,
-            "y": y,
-            "w": w,
-            "h": h,
-            "font_size": item.font_size.unwrap_or_else(|| fallback_font_size(&item.name, &text)),
-        })));
+        let mut obj = serde_json::Map::new();
+        obj.insert("kind".to_string(), serde_json::Value::String("text".to_string()));
+        obj.insert("text".to_string(), serde_json::Value::String(text));
+        obj.insert("x".to_string(), serde_json::json!(x));
+        obj.insert("y".to_string(), serde_json::json!(y));
+        obj.insert("w".to_string(), serde_json::json!(w));
+        obj.insert("h".to_string(), serde_json::json!(h));
+        obj.insert("font_size".to_string(), serde_json::json!(item.font_size.unwrap_or_else(|| fallback_font_size(&item.name, &item.text))));
+        if !paragraphs.is_empty() {
+            obj.insert("paragraphs".to_string(), serde_json::Value::Array(paragraphs));
+        }
+        return Ok(Some(serde_json::Value::Object(obj)));
     }
 
     if item.kind == "image" && !item.rel_id.is_empty() {
@@ -450,6 +644,40 @@ fn zip_entry_string(bytes: &[u8], name: &str) -> Result<String, String> {
         .read_to_string(&mut xml)
         .map_err(|e| format!("{name} read: {e}"))?;
     Ok(xml)
+}
+
+fn zip_has_entry(bytes: &[u8], name: &str) -> bool {
+    ZipArchive::new(Cursor::new(bytes))
+        .map(|mut a| a.by_name(name).is_ok())
+        .unwrap_or(false)
+}
+
+fn collect_docx_search_text(blocks: &[serde_json::Value]) -> Vec<String> {
+    let mut out = Vec::new();
+    for block in blocks {
+        let kind = block.get("kind").and_then(|v| v.as_str()).unwrap_or("");
+        if let Some(text) = block.get("text").and_then(|v| v.as_str()) {
+            if !text.is_empty() {
+                out.push(text.to_string());
+            }
+        }
+        if kind == "table" {
+            if let Some(rows) = block.get("rows").and_then(|v| v.as_array()) {
+                for row in rows {
+                    if let Some(cells) = row.as_array() {
+                        for cell in cells {
+                            if let Some(s) = cell.as_str() {
+                                if !s.is_empty() {
+                                    out.push(s.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out
 }
 
 fn attr_value(e: &quick_xml::events::BytesStart<'_>, key: &[u8]) -> Option<String> {
@@ -766,8 +994,70 @@ pub extern "system" fn Java_ai_viewit_plugins_office_1ooxml_Plugin_renderNative(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn rejects_non_ooxml_extension() {
         assert!(super::inspect_ooxml(&[], "txt").is_err());
+    }
+
+    #[test]
+    fn docx_output_has_warnings_and_fidelity() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:r><w:t>Hello world</w:t></w:r></w:p>
+  </w:body>
+</w:document>"#;
+        let mut buf = Vec::new();
+        {
+            use std::io::Write;
+            let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buf));
+            zip.start_file("word/document.xml", zip::write::SimpleFileOptions::default()).unwrap();
+            zip.write_all(xml.as_bytes()).unwrap();
+            zip.finish().unwrap();
+        }
+        let out = super::render_docx(&buf).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(val["kind"], "docx");
+        assert!(val.get("warnings").is_some(), "docx output must include warnings array");
+        assert!(val.get("fidelity").is_some(), "docx output must include fidelity summary");
+        assert!(val["blocks"].is_array());
+    }
+
+    #[test]
+    fn xlsx_output_has_warnings_and_fidelity() {
+        let workbook = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>
+</workbook>"#;
+        let rels = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>"#;
+        let sheet = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1"><c r="A1" t="inlineStr"><is><t>Header</t></is></c></row>
+    <row r="2"><c r="A2"><v>42</v></c></row>
+  </sheetData>
+</worksheet>"#;
+        let mut buf = Vec::new();
+        {
+            use std::io::Write;
+            let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buf));
+            zip.start_file("xl/workbook.xml", zip::write::SimpleFileOptions::default()).unwrap();
+            zip.write_all(workbook.as_bytes()).unwrap();
+            zip.start_file("xl/_rels/workbook.xml.rels", zip::write::SimpleFileOptions::default()).unwrap();
+            zip.write_all(rels.as_bytes()).unwrap();
+            zip.start_file("xl/worksheets/sheet1.xml", zip::write::SimpleFileOptions::default()).unwrap();
+            zip.write_all(sheet.as_bytes()).unwrap();
+            zip.finish().unwrap();
+        }
+        let out = super::render_xlsx(&buf).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(val["kind"], "xlsx");
+        assert!(val.get("warnings").is_some(), "xlsx output must include warnings array");
+        assert!(val.get("fidelity").is_some(), "xlsx output must include fidelity summary");
     }
 }

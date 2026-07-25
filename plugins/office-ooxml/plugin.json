@@ -1,14 +1,15 @@
 {
   "id": "office-ooxml",
   "name": "Enhanced Office OOXML",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Optional enhanced DOCX/XLSX/PPTX runtime based on ooxmlsdk. Intended for richer viewing and future safe editing without increasing the base APK.",
   "minAppVersion": 1,
+  "abiVersion": 1,
   "entryClass": "ai.viewit.plugins.office_ooxml.Plugin",
   "capabilities": ["view", "inspect", "edit-planned"],
   "runtime": "android-dex-rust-sidecar",
   "supportedFormats": ["docx", "xlsx", "pptx", "docm", "xlsm", "pptm"],
-  "downloadUrl": "http://127.0.0.1:8888/office-ooxml-0.1.0.zip",
+  "downloadUrl": "http://127.0.0.1:8888/office-ooxml-0.2.0.zip",
   "sizeBytes": 18848714,
   "installedSizeBytes": 53884490,
   "checksum": ""

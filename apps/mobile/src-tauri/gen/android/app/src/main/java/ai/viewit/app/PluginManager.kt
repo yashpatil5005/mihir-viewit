@@ -18,11 +18,18 @@ class PluginManager(private val context: Context) {
         private const val TAG = "PluginManager"
         private const val CATALOG_URL = "http://127.0.0.1:8888/catalog.json"
 
+        private const val SUPPORTED_ABI_VERSION = 1
+
         fun fetchManifestFromJson(obj: JSONObject): PluginManifest {
             val formats = mutableListOf<String>()
             val arr = obj.optJSONArray("supportedFormats") ?: obj.optJSONArray("formats")
             if (arr != null) {
                 for (i in 0 until arr.length()) formats.add(arr.getString(i))
+            }
+            val caps = mutableListOf<String>()
+            val capsArr = obj.optJSONArray("capabilities")
+            if (capsArr != null) {
+                for (i in 0 until capsArr.length()) caps.add(capsArr.getString(i))
             }
             return PluginManifest(
                 id = obj.getString("id"),
@@ -37,7 +44,24 @@ class PluginManager(private val context: Context) {
                 installedSizeBytes = obj.optLong("installedSizeBytes", 0),
                 checksum = obj.optString("checksum", ""),
                 abi = obj.optString("abi", ""),
+                abiVersion = obj.optInt("abiVersion", 1),
+                capabilities = caps,
+                runtime = obj.optString("runtime", ""),
             )
+        }
+
+        fun validateManifest(manifest: PluginManifest): List<String> {
+            val errors = mutableListOf<String>()
+            if (manifest.id.isBlank()) errors.add("id is required")
+            if (manifest.name.isBlank()) errors.add("name is required")
+            if (manifest.version.isBlank()) errors.add("version is required")
+            if (manifest.entryClass.isBlank()) errors.add("entryClass is required")
+            if (manifest.downloadUrl.isBlank()) errors.add("downloadUrl is required")
+            if (manifest.supportedFormats.isEmpty()) errors.add("supportedFormats is required")
+            if (manifest.abiVersion > SUPPORTED_ABI_VERSION) {
+                errors.add("abiVersion ${manifest.abiVersion} is not supported (max $SUPPORTED_ABI_VERSION)")
+            }
+            return errors
         }
 
         fun runtimeAbi(): String {
@@ -55,7 +79,17 @@ class PluginManager(private val context: Context) {
         val mediaPlugin: ViewItPlugin?,
         val documentPlugin: ViewItDocumentPlugin?,
         val installDir: File,
+        var health: PluginHealth = PluginHealth.LOADED,
+        var failCount: Int = 0,
     )
+
+    enum class PluginHealth {
+        INSTALLED,
+        LOADED,
+        FAILED,
+        DISABLED,
+        UPDATE_AVAILABLE,
+    }
 
     private val pluginsDir = File(context.filesDir, "plugins")
     private val installed = mutableMapOf<String, InstalledPlugin>()
@@ -84,42 +118,56 @@ class PluginManager(private val context: Context) {
         manifest: PluginManifest,
         onProgress: (Float) -> Unit = {},
     ): Result<InstalledPlugin> {
+        val validationErrors = validateManifest(manifest)
+        if (validationErrors.isNotEmpty()) {
+            return Result.failure(Exception("Invalid manifest: ${validationErrors.joinToString(", ")}"))
+        }
+
         return try {
             val dir = File(pluginsDir, manifest.id)
             if (dir.exists()) {
                 val existing = loadPluginFromDir(dir)
-                if (existing != null) {
+                if (existing != null && existing.manifest.version == manifest.version) {
                     return Result.success(existing)
                 }
                 dir.deleteRecursively()
             }
-            dir.mkdirs()
 
-            val zipFile = File(dir, "${manifest.id}.zip")
+            val stagingDir = File(pluginsDir, "${manifest.id}.staging")
+            stagingDir.deleteRecursively()
+            stagingDir.mkdirs()
+
+            val zipFile = File(stagingDir, "${manifest.id}.zip")
             downloadFile(manifest.downloadUrl, zipFile, onProgress)
 
             if (manifest.checksum.isNotEmpty()) {
                 val hash = sha256(zipFile)
                 if (!hash.equals(manifest.checksum, ignoreCase = true)) {
-                    zipFile.delete()
-                    dir.deleteRecursively()
+                    stagingDir.deleteRecursively()
                     return Result.failure(Exception("Checksum mismatch"))
                 }
             }
 
-            unzip(zipFile, dir)
+            unzip(zipFile, stagingDir)
             zipFile.delete()
 
-            val plugin = loadPluginFromDir(dir)
-                ?: return Result.failure(Exception("Failed to load plugin"))
-            val installedPlugin = plugin.copy(manifest = manifest)
+            saveManifest(stagingDir, manifest)
 
-            saveManifest(dir, manifest)
+            val plugin = loadPluginFromDir(stagingDir)
+                ?: run {
+                    stagingDir.deleteRecursively()
+                    return Result.failure(Exception("Failed to load plugin"))
+                }
+
+            stagingDir.renameTo(dir)
+
+            val installedPlugin = plugin.copy(manifest = manifest, health = PluginHealth.LOADED)
             installed[manifest.id] = installedPlugin
-            Log.i(TAG, "Installed plugin: ${manifest.id}")
+            Log.i(TAG, "Installed plugin: ${manifest.id} v${manifest.version}")
             Result.success(installedPlugin)
         } catch (e: Throwable) {
             Log.e(TAG, "Install failed: ${manifest.id}", e)
+            File(pluginsDir, "${manifest.id}.staging").deleteRecursively()
             Result.failure(Exception(e.message ?: e.javaClass.simpleName, e))
         }
     }
@@ -365,6 +413,9 @@ class PluginManager(private val context: Context) {
             put("installedSizeBytes", manifest.installedSizeBytes)
             put("checksum", manifest.checksum)
             put("abi", manifest.abi)
+            put("abiVersion", manifest.abiVersion)
+            if (manifest.capabilities.isNotEmpty()) put("capabilities", JSONArray(manifest.capabilities))
+            if (manifest.runtime.isNotEmpty()) put("runtime", manifest.runtime)
         }
         File(dir, "plugin.json").writeText(obj.toString(2))
     }

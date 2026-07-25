@@ -10,6 +10,11 @@
     source_uri?: string;
   } = $props();
 
+  type PptxParagraph = {
+    runs: { text: string; bold?: boolean; italic?: boolean; underline?: boolean; font_size?: number; color?: string }[];
+    bullet?: boolean;
+  };
+
   type PptxElement = {
     kind: 'text' | 'image';
     x: number;
@@ -19,6 +24,7 @@
     text?: string;
     src?: string;
     font_size?: number;
+    paragraphs?: PptxParagraph[];
   };
 
   type PptxSlide = {
@@ -27,6 +33,7 @@
     width?: number;
     height?: number;
     elements?: PptxElement[];
+    background?: { type: string; color?: string; gradient?: string };
   };
 
   let canvasEl: HTMLCanvasElement | null = $state(null);
@@ -117,6 +124,18 @@
     return (slide?.elements?.length ?? 0) > 0;
   }
 
+  function slideStyle(slide: PptxSlide | undefined): string {
+    if (!slide?.background) return '';
+    const bg = slide.background;
+    if (bg.type === 'solid' && bg.color) {
+      return `background-color:${bg.color};`;
+    }
+    if (bg.type === 'gradient' && bg.gradient) {
+      return `background:${bg.gradient};`;
+    }
+    return '';
+  }
+
   function elementStyle(element: PptxElement, slide: PptxSlide): string {
     const width = slide.width || 9144000;
     const height = slide.height || 5143500;
@@ -141,15 +160,30 @@
   {/if}
   <div class="stage">
     {#if preParsedSlides.length > 0}
-      <div class:slide-layout={hasLayout(preParsedSlides[idx])} class:slide-text={!hasLayout(preParsedSlides[idx])}>
-        {#if preParsedSlides[idx] && hasLayout(preParsedSlides[idx])}
-          {#each preParsedSlides[idx].elements ?? [] as element}
-            {#if element.kind === 'text'}
-              <div class="slide-element text-box" style={elementStyle(element, preParsedSlides[idx])}>{element.text}</div>
-            {:else if element.kind === 'image' && element.src}
-              <img class="slide-element image-box" style={elementStyle(element, preParsedSlides[idx])} src={element.src} alt="" />
-            {/if}
-          {/each}
+      <div class:slide-layout={hasLayout(preParsedSlides[idx])} class:slide-text={!hasLayout(preParsedSlides[idx])} style={slideStyle(preParsedSlides[idx])}>
+          {#if preParsedSlides[idx] && hasLayout(preParsedSlides[idx])}
+            {#each preParsedSlides[idx].elements ?? [] as element}
+              {#if element.kind === 'text'}
+                <div class="slide-element text-box" style={elementStyle(element, preParsedSlides[idx])}>
+                  {#if element.paragraphs && element.paragraphs.length > 0}
+                    {#each element.paragraphs as para}
+                      <p class="pptx-para">
+                        {#if para.bullet}<span class="pptx-bullet">•</span>{/if}
+                        {#each para.runs as run}
+                          <span class:pptx-bold={run.bold} class:pptx-italic={run.italic} class:pptx-underline={run.underline}
+                            style={run.font_size ? `font-size:${run.font_size / 12}vw` : run.color ? `color:${run.color}` : undefined}
+                          >{run.text}</span>
+                        {/each}
+                      </p>
+                    {/each}
+                  {:else}
+                    {element.text}
+                  {/if}
+                </div>
+              {:else if element.kind === 'image' && element.src}
+                <img class="slide-element image-box" style={elementStyle(element, preParsedSlides[idx])} src={element.src} alt="" />
+              {/if}
+            {/each}
         {:else if preParsedSlides[idx]}
           {#if preParsedSlides[idx].title}<h3>{preParsedSlides[idx].title}</h3>{/if}
           <pre>{preParsedSlides[idx].body}</pre>
@@ -195,6 +229,15 @@
     padding: 0.2rem;
     color: #111;
   }
+  .text-box .pptx-para {
+    margin: 0 0 0.15rem;
+    line-height: 1.3;
+    font-size: inherit;
+  }
+  .text-box .pptx-para .pptx-bold { font-weight: 700; }
+  .text-box .pptx-para .pptx-italic { font-style: italic; }
+  .text-box .pptx-para .pptx-underline { text-decoration: underline; }
+  .text-box .pptx-bullet { margin-right: 0.3em; }
   .image-box { object-fit: contain; }
   .slide-text h3 { margin: 0 0 0.5rem; font-size: 1.1rem; }
   .slide-text pre { white-space: pre-wrap; word-break: break-word; margin: 0; font-family: inherit; }
