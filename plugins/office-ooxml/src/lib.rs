@@ -75,8 +75,14 @@ pub fn render_ooxml_document(bytes: &[u8], ext: &str) -> Result<String, String> 
 
 fn render_docx(bytes: &[u8]) -> Result<String, String> {
     let xml = zip_entry_string(bytes, "word/document.xml")?;
+    let rels_xml = zip_entry_string(bytes, "word/_rels/document.xml.rels").unwrap_or_default();
+    let rels = if rels_xml.is_empty() {
+        std::collections::HashMap::new()
+    } else {
+        parse_relationships(&rels_xml)?
+    };
 
-    let blocks = parse_docx_blocks(&xml)?;
+    let blocks = parse_docx_blocks(bytes, &xml, &rels)?;
     let mut warnings = Vec::new();
     if !zip_has_entry(bytes, "word/styles.xml") {
         warnings.push("styles.xml missing — style-based heading inference may be incomplete".to_string());
@@ -84,7 +90,19 @@ fn render_docx(bytes: &[u8]) -> Result<String, String> {
     if zip_has_entry(bytes, "word/header1.xml") || zip_has_entry(bytes, "word/footer1.xml") {
         warnings.push("headers/footers present but not yet rendered".to_string());
     }
+    if zip_has_entry(bytes, "word/footnotes.xml") {
+        warnings.push("footnotes present but not yet rendered".to_string());
+    }
+    if zip_has_entry(bytes, "word/comments.xml") {
+        warnings.push("comments present but not yet rendered".to_string());
+    }
     let searchable = collect_docx_search_text(&blocks);
+    let mut supports = vec!["text", "headings", "lists", "tables"];
+    let mut missing = vec!["footnotes", "headers", "footers", "tracked-changes", "styles"];
+    let has_images = blocks.iter().any(|b| b.get("kind").and_then(|v| v.as_str()) == Some("image"));
+    let has_links = blocks.iter().any(|b| b.get("kind").and_then(|v| v.as_str()) == Some("hyperlink"));
+    if has_images { supports.push("images"); } else { missing.push("images"); }
+    if has_links { supports.push("hyperlinks"); } else { missing.push("hyperlinks"); }
     Ok(json!({
         "kind": "docx",
         "blocks": blocks,
@@ -92,8 +110,8 @@ fn render_docx(bytes: &[u8]) -> Result<String, String> {
         "warnings": warnings,
         "fidelity": {
             "level": "text+structure",
-            "supports": ["text", "headings", "lists", "tables"],
-            "missing": ["images", "footnotes", "headers", "footers", "tracked-changes", "styles"],
+            "supports": supports,
+            "missing": missing,
         },
         "search_text": searchable,
     })
@@ -126,18 +144,35 @@ fn render_xlsx(bytes: &[u8]) -> Result<String, String> {
         let header = rows.first().cloned().unwrap_or_default();
         let preview_rows = rows.into_iter().skip(1).take(200).collect::<Vec<_>>();
         let total_rows = preview_rows.len() + usize::from(!header.is_empty());
-        sheets.push(json!({
+
+        let merged_cells = parse_sheet_merged_cells(&sheet_xml);
+        let frozen_panes = parse_sheet_frozen_panes(&sheet_xml);
+        let mut sheet_obj = json!({
             "name": name,
             "header": header,
             "preview_rows": preview_rows,
             "total_rows_hint": total_rows,
-            "total_cols_hint": total_cols
-        }));
+            "total_cols_hint": total_cols,
+        });
+        if !merged_cells.is_empty() {
+            sheet_obj.as_object_mut().unwrap().insert("merged_cells".to_string(), json!(merged_cells));
+        }
+        if let Some(fp) = frozen_panes {
+            sheet_obj.as_object_mut().unwrap().insert("frozen_panes".to_string(), json!(fp));
+        }
+        sheets.push(sheet_obj);
     }
 
     if zip_has_entry(bytes, "xl/drawings/") {
         warnings.push("sheet drawings/charts present but not yet rendered".to_string());
     }
+
+    let mut supports = vec!["text", "sheets", "shared-strings"];
+    let mut missing = vec!["formatting", "formulas", "charts", "filters", "cell-styles"];
+    let has_merged = sheets.iter().any(|s| s.get("merged_cells").map_or(false, |v| !v.as_array().map_or(true, |a| a.is_empty())));
+    let has_frozen = sheets.iter().any(|s| s.get("frozen_panes").is_some());
+    if has_merged { supports.push("merged-cells"); } else { missing.push("merged-cells"); }
+    if has_frozen { supports.push("frozen-panes"); } else { missing.push("frozen-panes"); }
 
     Ok(json!({
         "kind": "xlsx",
@@ -146,11 +181,61 @@ fn render_xlsx(bytes: &[u8]) -> Result<String, String> {
         "warnings": warnings,
         "fidelity": {
             "level": "text+structure",
-            "supports": ["text", "sheets", "shared-strings"],
-            "missing": ["formatting", "formulas", "merged-cells", "charts", "filters", "frozen-panes", "cell-styles"],
+            "supports": supports,
+            "missing": missing,
         },
     })
     .to_string())
+}
+
+fn parse_sheet_merged_cells(xml: &str) -> Vec<String> {
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(true);
+    let mut merged = Vec::new();
+    loop {
+        match reader.read_event() {
+            Ok(Event::Empty(e)) if e.name() == QName(b"mergeCell") => {
+                if let Some(ref_range) = attr_value(&e, b"ref") {
+                    merged.push(ref_range);
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(_) => break,
+            _ => {}
+        }
+    }
+    merged
+}
+
+fn parse_sheet_frozen_panes(xml: &str) -> Option<serde_json::Value> {
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(true);
+    let mut found_pane = false;
+    let mut x_split = 0u32;
+    let mut y_split = 0u32;
+    let mut active_pane = String::new();
+    loop {
+        match reader.read_event() {
+            Ok(Event::Empty(e)) if e.name() == QName(b"pane") => {
+                found_pane = true;
+                x_split = attr_value(&e, b"xSplit").and_then(|v| v.parse().ok()).unwrap_or(0);
+                y_split = attr_value(&e, b"ySplit").and_then(|v| v.parse().ok()).unwrap_or(0);
+                active_pane = attr_value(&e, b"activePane").unwrap_or_default();
+            }
+            Ok(Event::Eof) => break,
+            Err(_) => break,
+            _ => {}
+        }
+    }
+    if found_pane && (x_split > 0 || y_split > 0) {
+        Some(json!({
+            "x_split": x_split,
+            "y_split": y_split,
+            "active_pane": active_pane,
+        }))
+    } else {
+        None
+    }
 }
 
 fn render_pptx(bytes: &[u8]) -> Result<String, String> {
@@ -857,7 +942,11 @@ fn parse_drawing_texts(xml: &str) -> Result<Vec<String>, String> {
     Ok(texts)
 }
 
-fn parse_docx_blocks(xml: &str) -> Result<Vec<serde_json::Value>, String> {
+fn parse_docx_blocks(
+    bytes: &[u8],
+    xml: &str,
+    rels: &std::collections::HashMap<String, String>,
+) -> Result<Vec<serde_json::Value>, String> {
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(false);
 
@@ -872,6 +961,10 @@ fn parse_docx_blocks(xml: &str) -> Result<Vec<serde_json::Value>, String> {
     let mut in_table = false;
     let mut in_cell = false;
     let mut in_text = false;
+    let mut hyperlink_rel_id = String::new();
+    let mut in_hyperlink = false;
+    let mut in_drawing = false;
+    let mut drawing_blip_embed = String::new();
 
     loop {
         match reader.read_event() {
@@ -890,6 +983,17 @@ fn parse_docx_blocks(xml: &str) -> Result<Vec<serde_json::Value>, String> {
                 QName(b"w:tc") if in_table => {
                     in_cell = true;
                     cell_text.clear();
+                }
+                QName(b"w:hyperlink") => {
+                    in_hyperlink = true;
+                    hyperlink_rel_id = attr_value(&e, b"r:id").unwrap_or_default();
+                }
+                QName(b"w:drawing") => {
+                    in_drawing = true;
+                    drawing_blip_embed = String::new();
+                }
+                QName(b"a:blip") if in_drawing => {
+                    drawing_blip_embed = attr_value(&e, b"r:embed").unwrap_or_default();
                 }
                 QName(b"w:t") => in_text = true,
                 QName(b"w:numPr") if in_paragraph => list_item = true,
@@ -913,8 +1017,40 @@ fn parse_docx_blocks(xml: &str) -> Result<Vec<serde_json::Value>, String> {
             }
             Ok(Event::End(e)) => match e.name() {
                 QName(b"w:t") => in_text = false,
+                QName(b"w:hyperlink") => {
+                    if !hyperlink_rel_id.is_empty() && !paragraph_text.trim().is_empty() {
+                        if let Some(target) = rels.get(&hyperlink_rel_id) {
+                            blocks.push(json!({
+                                "kind": "hyperlink",
+                                "text": paragraph_text.trim(),
+                                "href": target,
+                            }));
+                        }
+                    }
+                    in_hyperlink = false;
+                    hyperlink_rel_id = String::new();
+                    paragraph_text.clear();
+                }
+                QName(b"w:drawing") => {
+                    if !drawing_blip_embed.is_empty() {
+                        if let Some(target) = rels.get(&drawing_blip_embed) {
+                            let path = normalize_docx_target(target);
+                            if let Ok(data) = zip_entry_bytes(bytes, &path) {
+                                let mime = image_mime(&path);
+                                let encoded = base64::engine::general_purpose::STANDARD.encode(&data);
+                                blocks.push(json!({
+                                    "kind": "image",
+                                    "src": format!("data:{};base64,{}", mime, encoded),
+                                    "byte_len": data.len(),
+                                }));
+                            }
+                        }
+                    }
+                    in_drawing = false;
+                    drawing_blip_embed = String::new();
+                }
                 QName(b"w:p") => {
-                    if !in_table {
+                    if !in_table && !in_hyperlink {
                         let text = paragraph_text.trim();
                         if !text.is_empty() {
                             blocks.push(if list_item {
@@ -951,6 +1087,17 @@ fn parse_docx_blocks(xml: &str) -> Result<Vec<serde_json::Value>, String> {
     }
 
     Ok(blocks)
+}
+
+fn normalize_docx_target(target: &str) -> String {
+    let clean = target.trim_start_matches('/');
+    if clean.starts_with("word/") {
+        clean.to_string()
+    } else if clean.starts_with("../") {
+        format!("word/{}", clean.trim_start_matches("../"))
+    } else {
+        format!("word/{}", clean)
+    }
 }
 
 fn heading_from_style(style: &str) -> Option<u8> {
@@ -1059,5 +1206,111 @@ mod tests {
         assert_eq!(val["kind"], "xlsx");
         assert!(val.get("warnings").is_some(), "xlsx output must include warnings array");
         assert!(val.get("fidelity").is_some(), "xlsx output must include fidelity summary");
+    }
+
+    #[test]
+    fn docx_parses_hyperlinks() {
+        let document = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <w:body>
+    <w:p><w:hyperlink r:id="rId1"><w:r><w:t>Click here</w:t></w:r></w:hyperlink></w:p>
+  </w:body>
+</w:document>"#;
+        let rels = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://example.com"/>
+</Relationships>"#;
+        let mut buf = Vec::new();
+        {
+            use std::io::Write;
+            let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buf));
+            zip.start_file("word/document.xml", zip::write::SimpleFileOptions::default()).unwrap();
+            zip.write_all(document.as_bytes()).unwrap();
+            zip.start_file("word/_rels/document.xml.rels", zip::write::SimpleFileOptions::default()).unwrap();
+            zip.write_all(rels.as_bytes()).unwrap();
+            zip.finish().unwrap();
+        }
+        let out = super::render_docx(&buf).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&out).unwrap();
+        let blocks = val["blocks"].as_array().unwrap();
+        let link = blocks.iter().find(|b| b["kind"] == "hyperlink").expect("hyperlink block");
+        assert_eq!(link["text"], "Click here");
+        assert_eq!(link["href"], "https://example.com");
+    }
+
+    #[test]
+    fn xlsx_parses_merged_cells() {
+        let workbook = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>
+</workbook>"#;
+        let rels = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>"#;
+        let sheet = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <mergeCells count="1"><mergeCell ref="A1:B2"/></mergeCells>
+  <sheetData>
+    <row r="1"><c r="A1" t="inlineStr"><is><t>Merged</t></is></c></row>
+  </sheetData>
+</worksheet>"#;
+        let mut buf = Vec::new();
+        {
+            use std::io::Write;
+            let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buf));
+            zip.start_file("xl/workbook.xml", zip::write::SimpleFileOptions::default()).unwrap();
+            zip.write_all(workbook.as_bytes()).unwrap();
+            zip.start_file("xl/_rels/workbook.xml.rels", zip::write::SimpleFileOptions::default()).unwrap();
+            zip.write_all(rels.as_bytes()).unwrap();
+            zip.start_file("xl/worksheets/sheet1.xml", zip::write::SimpleFileOptions::default()).unwrap();
+            zip.write_all(sheet.as_bytes()).unwrap();
+            zip.finish().unwrap();
+        }
+        let out = super::render_xlsx(&buf).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&out).unwrap();
+        let sheet = &val["sheets"][0];
+        assert!(sheet.get("merged_cells").is_some(), "xlsx output must include merged_cells");
+        assert_eq!(sheet["merged_cells"][0], "A1:B2");
+    }
+
+    #[test]
+    fn xlsx_parses_frozen_panes() {
+        let workbook = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>
+</workbook>"#;
+        let rels = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>"#;
+        let sheet = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetViews><sheetView tabSelected="1" workbookViewId="0">
+    <pane xSplit="2" ySplit="1" topLeftCell="C2" activePane="bottomRight" state="frozen"/>
+    <selection pane="bottomRight" activeCell="C2" sqref="C2"/>
+  </sheetView></sheetViews>
+  <sheetData>
+    <row r="1"><c r="A1" t="inlineStr"><is><t>Header</t></is></c></row>
+  </sheetData>
+</worksheet>"#;
+        let mut buf = Vec::new();
+        {
+            use std::io::Write;
+            let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buf));
+            zip.start_file("xl/workbook.xml", zip::write::SimpleFileOptions::default()).unwrap();
+            zip.write_all(workbook.as_bytes()).unwrap();
+            zip.start_file("xl/_rels/workbook.xml.rels", zip::write::SimpleFileOptions::default()).unwrap();
+            zip.write_all(rels.as_bytes()).unwrap();
+            zip.start_file("xl/worksheets/sheet1.xml", zip::write::SimpleFileOptions::default()).unwrap();
+            zip.write_all(sheet.as_bytes()).unwrap();
+            zip.finish().unwrap();
+        }
+        let out = super::render_xlsx(&buf).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&out).unwrap();
+        let sheet = &val["sheets"][0];
+        assert!(sheet.get("frozen_panes").is_some(), "xlsx output must include frozen_panes");
+        assert_eq!(sheet["frozen_panes"]["x_split"], 2);
+        assert_eq!(sheet["frozen_panes"]["y_split"], 1);
     }
 }

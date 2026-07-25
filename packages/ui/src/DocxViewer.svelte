@@ -88,7 +88,15 @@
               </table>
             </div>
           {:else if block.kind === 'image'}
-            <figure class="img-placeholder" id={`block-${index}`}>Embedded image: {block.name}</figure>
+            <figure class="img-block" id={`block-${index}`}>
+              {#if block.src}
+                <img src={block.src} alt="Embedded image" style="max-width:100%;height:auto;border-radius:0.4rem;" />
+              {:else}
+                <span class="img-placeholder">Embedded image</span>
+              {/if}
+            </figure>
+          {:else if block.kind === 'hyperlink'}
+            <p id={`block-${index}`}><a href={block.href} target="_blank" rel="noopener noreferrer">{@html highlight(block.text)}</a></p>
           {/if}
         {/each}
       </div>
@@ -120,6 +128,9 @@
   td { border: 1px solid var(--border); padding: 0.42rem 0.6rem; font-size: 0.86rem; vertical-align: top; }
   tr:nth-child(even) td { background: var(--bg-secondary); }
   .img-placeholder { padding: 0.75rem; margin: 0.75rem 0; color: var(--text-secondary); font-style: italic; border: 1px dashed var(--border); border-radius: 0.5rem; text-align: center; font-size: 0.85rem; background: var(--bg-secondary); }
+  .img-block { margin: 0.75rem 0; text-align: center; }
+  .img-block img { max-width: 100%; height: auto; border-radius: 0.4rem; box-shadow: 0 0.3rem 1rem rgba(0,0,0,0.08); }
+  .body a { color: var(--link); text-decoration: underline; word-break: break-all; }
   :global(mark) { background: rgba(255, 213, 79, 0.6); border-radius: 0.15rem; }
   @media (max-width: 800px) { .layout { display: block; } .outline { display: none; } .toolbar { top: 3rem; } .page { border-radius: 0.65rem; } }
 </style>

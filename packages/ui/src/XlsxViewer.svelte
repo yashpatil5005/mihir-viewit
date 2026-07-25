@@ -11,6 +11,8 @@
       preview_rows: string[][];
       total_rows_hint?: number;
       total_cols_hint?: number;
+      merged_cells?: string[];
+      frozen_panes?: { x_split: number; y_split: number; active_pane: string };
     }>,
   );
   let activeSheet = $state(0);
@@ -77,6 +79,8 @@
       <strong>{sheet.name}</strong>
       <span>{visibleRows.length}{sheet.total_rows_hint ? '/' + sheet.total_rows_hint : ''} rows</span>
       <span>{columnCount}{sheet.total_cols_hint && sheet.total_cols_hint !== columnCount ? '/' + sheet.total_cols_hint : ''} cols</span>
+      {#if sheet.merged_cells && sheet.merged_cells.length > 0}<span>{sheet.merged_cells.length} merged</span>{/if}
+      {#if sheet.frozen_panes}<span>frozen x:{sheet.frozen_panes.x_split} y:{sheet.frozen_panes.y_split}</span>{/if}
       {#if matches.length > 0}<span>{matches.length} matches</span>{/if}
     </aside>
     <div class="table-frame">

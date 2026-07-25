@@ -43,6 +43,8 @@ Every plugin render returns a JSON object with these top-level fields:
 | `paragraph` | `text: string`, `heading: number?` | normal paragraph or heading 1–6 |
 | `list-item` | `text: string`, `level: number` | numbered or bulleted list item |
 | `table` | `rows: string[][]` | plain-text table rows |
+| `hyperlink` | `text: string`, `href: string` | hyperlink with display text and target URL |
+| `image` | `src: string (data: URL)?`, `byte_len: number` | embedded image |
 
 `search_text` is a flat array of all paragraph/list/table cell strings in
 document order, useful for client-side search without re-parsing.
@@ -68,6 +70,16 @@ document order, useful for client-side search without re-parsing.
 | `preview_rows` | `string[][]` | up to 200 data rows after the header |
 | `total_rows_hint` | `number` | total data rows including header |
 | `total_cols_hint` | `number` | widest row length |
+| `merged_cells` | `string[]?` | Excel-style ranges, e.g. `["A1:B2"]` |
+| `frozen_panes` | `FrozenPane?` | frozen row/column split info |
+
+### XLSX `FrozenPane` (optional `sheet.frozen_panes`)
+
+| Field | Type | Description |
+|---|---|---|
+| `x_split` | `number` | number of frozen columns |
+| `y_split` | `number` | number of frozen rows |
+| `active_pane` | `string` | which pane is active, e.g. `"bottomRight"` |
 
 ## PPTX
 
