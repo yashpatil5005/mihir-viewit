@@ -22,8 +22,27 @@
   let installing = $state<string | null>(null);
   let installProgress = $state(0);
   let errorMsg = $state('');
+  let showPrivacy = $state(false);
+  let acceptedPrivacy = $state(false);
 
   const isAndroid = $derived(hasAndroidBridge());
+
+  const PRIVACY_TEXT = `Plugin Privacy & Security
+
+• Plugins are optional downloadable runtimes
+• Plugins run in a sandboxed process with no network access
+• Plugin code is verified via SHA-256 checksum against the signed catalog
+• No personal data is sent to plugin authors
+• Plugins cannot access files outside the document being viewed
+• Plugin failures fall back to the built-in viewer without crashing`;
+
+  function acceptPrivacy() {
+    acceptedPrivacy = true;
+    showPrivacy = false;
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('viewit-plugin-privacy-accepted', '1');
+    }
+  }
 
   async function refresh() {
     loading = true;
@@ -37,6 +56,9 @@
       const inventory = await pluginInventory();
       installed = inventory.installed;
       catalog = inventory.catalog;
+      if (typeof localStorage !== 'undefined' && localStorage.getItem('viewit-plugin-privacy-accepted') === '1') {
+        acceptedPrivacy = true;
+      }
     } catch (e) {
       errorMsg = `Failed to load plugins: ${e instanceof Error ? e.message : String(e)}`;
     } finally {
@@ -45,7 +67,7 @@
   }
 
   async function install(plugin: PluginInfo) {
-    if (!isAndroid) return;
+    if (!isAndroid || !acceptedPrivacy) return;
     installing = plugin.id;
     installProgress = 0;
     errorMsg = '';
@@ -90,7 +112,15 @@
       <button class="close-btn" onclick={onClose}>&times;</button>
     </header>
 
-    {#if loading}
+    {#if !acceptedPrivacy}
+      <section class="privacy-section">
+        <h3>Plugin Privacy & Security</h3>
+        <pre>{PRIVACY_TEXT}</pre>
+        <div class="privacy-actions">
+          <button class="accept-btn" onclick={acceptPrivacy}>I Understand</button>
+        </div>
+      </section>
+    {:else if loading}
       <div class="loading">Loading plugins...</div>
     {:else if errorMsg}
       <div class="error">{errorMsg}</div>
@@ -203,4 +233,23 @@
   .installed-badge { font-size: 0.75rem; color: var(--link, #3182ce); font-weight: 600; }
   .progress { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; }
   .progress-bar { height: 4px; background: var(--link, #3182ce); border-radius: 2px; width: 100%; }
+  .privacy-section { padding: 1rem 0; }
+  .privacy-section h3 { margin: 0 0 0.75rem; font-size: 1rem; color: var(--text-primary, #000); }
+  .privacy-section pre {
+    font-family: var(--font-mono, monospace);
+    font-size: 0.75rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    color: var(--text-secondary, #666);
+    background: var(--bg-secondary, #f5f5f5);
+    padding: 0.75rem;
+    border-radius: 6px;
+    margin: 0 0 1rem;
+  }
+  .privacy-actions { display: flex; justify-content: flex-end; }
+  .accept-btn {
+    padding: 0.5rem 1.5rem; border-radius: 6px; font-size: 0.9rem;
+    font-weight: 600; cursor: pointer; background: var(--link, #3182ce);
+    color: #fff; border: none;
+  }
 </style>

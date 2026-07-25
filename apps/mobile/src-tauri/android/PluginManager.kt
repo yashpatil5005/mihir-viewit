@@ -11,14 +11,24 @@ import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
+import java.security.spec.X509EncodedKeySpec
+import java.security.KeyFactory
+import net.i2p.crypto.eddsa.EdDSAPublicKey
+import net.i2p.crypto.eddsa.spec.EdDSAPublicKeySpec
 
 class PluginManager(private val context: Context) {
 
     companion object {
         private const val TAG = "PluginManager"
-        private const val CATALOG_URL = "http://127.0.0.1:8888/catalog.json"
+        private const val CATALOG_URL_DEBUG = "http://127.0.0.1:8888/catalog.json"
+        private const val CATALOG_URL_RELEASE = "https://plugins.viewit.ai/catalog.json"
 
         private const val SUPPORTED_ABI_VERSION = 1
+
+        // Ed25519 public key for catalog signature verification (base64 encoded)
+        // Generated with: python3 scripts/sign-catalog.py generate
+        // This is a DEVELOPMENT key - replace with production key before beta launch
+        private const val CATALOG_PUBLIC_KEY_B64 = "hrnfmcarRcPC5tuEXGcdEIMf1a9gaXtf+DCJl0ftoTE="
 
         fun fetchManifestFromJson(obj: JSONObject): PluginManifest {
             val formats = mutableListOf<String>()
@@ -70,6 +80,10 @@ class PluginManager(private val context: Context) {
                 "x86_64", "amd64" -> "x86_64"
                 else -> android.os.Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a"
             }
+        }
+
+        fun getCatalogUrl(): String {
+            return if (BuildConfig.DEBUG) CATALOG_URL_DEBUG else CATALOG_URL_RELEASE
         }
     }
 
@@ -191,23 +205,64 @@ class PluginManager(private val context: Context) {
 
     fun fetchCatalog(): Result<List<PluginManifest>> {
         return try {
-            val conn = URL(CATALOG_URL).openConnection() as HttpURLConnection
+            val conn = URL(getCatalogUrl()).openConnection() as HttpURLConnection
             conn.connectTimeout = 10_000
             conn.readTimeout = 10_000
             val body = conn.inputStream.bufferedReader().readText()
             val obj = JSONObject(body)
-            val arr = obj.getJSONArray("plugins")
-            val list = mutableListOf<PluginManifest>()
-            for (i in 0 until arr.length()) {
-                val manifest = parseManifest(arr.getJSONObject(i))
-                if (manifest.abi.isEmpty() || manifest.abi == runtimeAbi()) {
-                    list.add(manifest)
+
+            // Verify catalog signature if present
+            if (obj.has("signature") && obj.has("catalog")) {
+                val signature = obj.getString("signature")
+                val catalogObj = obj.getJSONObject("catalog")
+                if (!verifyCatalogSignature(catalogObj.toString(), signature)) {
+                    return Result.failure(Exception("Catalog signature verification failed"))
                 }
+                val arr = catalogObj.getJSONArray("plugins")
+                val list = mutableListOf<PluginManifest>()
+                for (i in 0 until arr.length()) {
+                    val manifest = parseManifest(arr.getJSONObject(i))
+                    if (manifest.abi.isEmpty() || manifest.abi == runtimeAbi()) {
+                        list.add(manifest)
+                    }
+                }
+                Result.success(list)
+            } else {
+                // Fallback for unsigned catalog (debug/dev)
+                Log.w(TAG, "Catalog is not signed - accepting for debug/dev")
+                val arr = obj.getJSONArray("plugins")
+                val list = mutableListOf<PluginManifest>()
+                for (i in 0 until arr.length()) {
+                    val manifest = parseManifest(arr.getJSONObject(i))
+                    if (manifest.abi.isEmpty() || manifest.abi == runtimeAbi()) {
+                        list.add(manifest)
+                    }
+                }
+                Result.success(list)
             }
-            Result.success(list)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to fetch catalog", e)
             Result.failure(e)
+        }
+    }
+
+    private fun verifyCatalogSignature(catalogJson: String, signatureB64: String): Boolean {
+        return try {
+            val publicKeyBytes = android.util.Base64.decode(CATALOG_PUBLIC_KEY_B64, android.util.Base64.DEFAULT)
+            val signatureBytes = android.util.Base64.decode(signatureB64, android.util.Base64.DEFAULT)
+
+            // Use Java's built-in Ed25519 support (API 33+)
+            val keySpec = X509EncodedKeySpec(publicKeyBytes)
+            val keyFactory = KeyFactory.getInstance("Ed25519")
+            val publicKey = keyFactory.generatePublic(keySpec)
+
+            val sig = java.security.Signature.getInstance("Ed25519")
+            sig.initVerify(publicKey)
+            sig.update(catalogJson.toByteArray(Charsets.UTF_8))
+            sig.verify(signatureBytes)
+        } catch (e: Exception) {
+            Log.e(TAG, "Signature verification failed", e)
+            false
         }
     }
 

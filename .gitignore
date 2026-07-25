@@ -71,6 +71,10 @@ xcuserdata/
 .env.*
 !.env.example
 
+# --- Catalog signing keys ---
+scripts/.catalog-signing-key.priv
+scripts/.catalog-signing-key.pub
+
 # --- Misc project artifacts ---
 *.pid
 *.seed
