@@ -14,7 +14,7 @@
       "installedSizeBytes": 25195042,
       "supportedFormats": ["docx", "xlsx", "pptx", "docm", "xlsm", "pptm"],
       "downloadUrl": "http://127.0.0.1:8888/office-ooxml-0.2.0-arm64-v8a.zip",
-      "checksum": "f33fdea42cfeeb87a22ac02b3c5f5b087d8b84dcc7698d8cbeb1385e4feef314",
+      "checksum": "69530d19dc34a597b194f1a77b93f9ccf0fbeabdc9e9556f62385e504c168bb6",
       "minAppVersion": 1
     },
     {
@@ -31,7 +31,7 @@
       "installedSizeBytes": 28762186,
       "supportedFormats": ["docx", "xlsx", "pptx", "docm", "xlsm", "pptm"],
       "downloadUrl": "http://127.0.0.1:8888/office-ooxml-0.2.0-x86_64.zip",
-      "checksum": "c3b342b8e7a454a239dc536d6dac95471c745c31e298aedc41954a849ee91b02",
+      "checksum": "ee1e11a2651a361659d80888cdd4fc48483ce76363c06cef4b68c028ef10a2eb",
       "minAppVersion": 1
     },
     {
