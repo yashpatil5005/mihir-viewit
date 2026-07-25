@@ -4,6 +4,7 @@ import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 export default {
   preprocess: vitePreprocess(),
   kit: {
+    appDir: 'app',
     adapter: adapter({ strict: true }),
     alias: {
       '$viewit-ui': '@viewit/ui/src',

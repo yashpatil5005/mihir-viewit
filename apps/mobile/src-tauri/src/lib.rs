@@ -390,7 +390,7 @@ pub fn run() {
         android_log_write_info("viewit", "[viewit] android_logger wired");
         log::info!("[viewit] run() entered — log crate is live");
     }
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
@@ -399,8 +399,10 @@ pub fn run() {
         .manage(HttpPort::default())
         .manage(PendingDisplayNames::default())
         .manage(stream_protocol::StreamSlots::default())
-        .manage(stream_server::StreamRegistry::default())
-        .manage(android_pending::PendingUrisWithMime::new())
+        .manage(stream_server::StreamRegistry::default());
+    #[cfg(target_os = "android")]
+    let builder = builder.manage(android_pending::PendingUrisWithMime::new());
+    builder
         .register_uri_scheme_protocol("viewit-stream", |ctx, request| {
             let app = ctx.app_handle();
             let slots = app.state::<stream_protocol::StreamSlots>();

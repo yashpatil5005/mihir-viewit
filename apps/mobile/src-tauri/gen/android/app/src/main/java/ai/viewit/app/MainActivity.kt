@@ -12,6 +12,8 @@ import androidx.activity.enableEdgeToEdge
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.FileOutputStream
+import java.security.MessageDigest
 
 class MainActivity : TauriActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -111,6 +113,42 @@ class MainActivity : TauriActivity() {
         }
         startActivity(intent)
       }
+    }
+
+    @JavascriptInterface
+    fun materializeExternalUri(uri: String, ext: String): String {
+      val parsed = Uri.parse(uri)
+      if (parsed.scheme == "file") {
+        val path = parsed.path ?: throw IllegalArgumentException("Invalid file URI")
+        val appDir = applicationContext.filesDir.canonicalFile
+        val source = File(path).canonicalFile
+        if (source.path == appDir.path || source.path.startsWith(appDir.path + File.separator)) {
+          return parsed.toString()
+        }
+      }
+
+      val safeExt = ext.lowercase().replace(Regex("[^a-z0-9]"), "").ifEmpty { "bin" }
+      val digest = MessageDigest.getInstance("SHA-256")
+        .digest(uri.toByteArray(Charsets.UTF_8))
+        .take(12)
+        .joinToString("") { "%02x".format(it) }
+      val dest = File(applicationContext.filesDir, "external-$digest.$safeExt")
+      if (dest.exists() && dest.length() > 0) {
+        return Uri.fromFile(dest).toString()
+      }
+
+      val input = if (parsed.scheme == "content") {
+        contentResolver.openInputStream(parsed)
+      } else {
+        File(parsed.path ?: throw IllegalArgumentException("Invalid file URI")).inputStream()
+      } ?: throw IllegalArgumentException("Unable to open URI")
+
+      input.use { source ->
+        FileOutputStream(dest).use { output ->
+          source.copyTo(output)
+        }
+      }
+      return Uri.fromFile(dest).toString()
     }
 
     @JavascriptInterface

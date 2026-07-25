@@ -13,6 +13,7 @@ import java.net.URL
 import java.security.MessageDigest
 import java.security.spec.X509EncodedKeySpec
 import java.security.KeyFactory
+import java.util.TreeSet
 
 class PluginManager(private val context: Context) {
 
@@ -138,10 +139,27 @@ class PluginManager(private val context: Context) {
         return try {
             val dir = File(pluginsDir, manifest.id)
             if (dir.exists()) {
-                val existing = loadPluginFromDir(dir)
-                if (existing != null && existing.manifest.version == manifest.version) {
+                val existing = installed[manifest.id]
+                if (existing?.manifest?.version == manifest.version) {
                     return Result.success(existing)
                 }
+                val manifestFile = File(dir, "plugin.json")
+                if (manifestFile.exists()) {
+                    val existingManifest = parseManifest(JSONObject(manifestFile.readText()))
+                    if (existingManifest.version == manifest.version) {
+                        return loadPluginFromDir(dir)
+                            ?.let { plugin ->
+                                installed[manifest.id] = plugin
+                                Result.success(plugin)
+                            }
+                            ?: Result.failure(Exception("Failed to load existing plugin"))
+                    }
+                }
+                existing?.mediaPlugin?.cleanup()
+                if (existing?.documentPlugin !== existing?.mediaPlugin) {
+                    existing?.documentPlugin?.cleanup()
+                }
+                installed.remove(manifest.id)
                 dir.deleteRecursively()
             }
 
@@ -213,7 +231,7 @@ class PluginManager(private val context: Context) {
             if (obj.has("signature") && obj.has("catalog")) {
                 val signature = obj.getString("signature")
                 val catalogObj = obj.getJSONObject("catalog")
-                if (!verifyCatalogSignature(catalogObj.toString(), signature)) {
+                if (!verifyCatalogSignature(canonicalJson(catalogObj), signature)) {
                     return Result.failure(Exception("Catalog signature verification failed"))
                 }
                 val arr = catalogObj.getJSONArray("plugins")
@@ -249,8 +267,7 @@ class PluginManager(private val context: Context) {
             val publicKeyBytes = android.util.Base64.decode(CATALOG_PUBLIC_KEY_B64, android.util.Base64.DEFAULT)
             val signatureBytes = android.util.Base64.decode(signatureB64, android.util.Base64.DEFAULT)
 
-            // Use Java's built-in Ed25519 support (API 33+)
-            val keySpec = X509EncodedKeySpec(publicKeyBytes)
+            val keySpec = X509EncodedKeySpec(ed25519SubjectPublicKeyInfo(publicKeyBytes))
             val keyFactory = KeyFactory.getInstance("Ed25519")
             val publicKey = keyFactory.generatePublic(keySpec)
 
@@ -261,6 +278,38 @@ class PluginManager(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "Signature verification failed", e)
             false
+        }
+    }
+
+    private fun ed25519SubjectPublicKeyInfo(rawKey: ByteArray): ByteArray {
+        if (rawKey.size != 32) return rawKey
+        val prefix = byteArrayOf(
+            0x30, 0x2a,
+            0x30, 0x05,
+            0x06, 0x03, 0x2b, 0x65, 0x70,
+            0x03, 0x21, 0x00,
+        )
+        return prefix + rawKey
+    }
+
+    private fun canonicalJson(value: Any?): String {
+        return when (value) {
+            null, JSONObject.NULL -> "null"
+            is JSONObject -> {
+                val keys = TreeSet<String>()
+                value.keys().forEachRemaining { keys.add(it) }
+                keys.joinToString(prefix = "{", postfix = "}", separator = ",") { key ->
+                    "${JSONObject.quote(key)}:${canonicalJson(value.get(key))}"
+                }
+            }
+            is JSONArray -> {
+                (0 until value.length()).joinToString(prefix = "[", postfix = "]", separator = ",") { i ->
+                    canonicalJson(value.get(i))
+                }
+            }
+            is String -> JSONObject.quote(value)
+            is Number, is Boolean -> value.toString()
+            else -> JSONObject.quote(value.toString())
         }
     }
 
