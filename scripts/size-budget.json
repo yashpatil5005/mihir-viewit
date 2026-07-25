@@ -1,9 +1,9 @@
 {
-  "_comment": "Per plan \u00a75 \u2014 track size growth commit-by-commit from Phase 1 onward. Update after each phase's measurement.",
+  "_comment": "Per plan §5 — track size growth commit-by-commit from Phase 1 onward. Update after each phase's measurement.",
   "_unit": "bytes",
   "_date": "2026-07-13",
   "_phase": "phase-3.8-codesplit",
-  "_pre_release_note": "Starting budgets per plan \u00a75. Last measurement: 2026-07-13 \u2014 web bundle 135 KB (45 KB gz). Mobile/desktop artifacts still unmeasured pending interactive tauri android/ios init runs.",
+  "_pre_release_note": "Starting budgets per plan §5. Last measurement: 2026-07-13 — web bundle 135 KB (45 KB gz). Mobile/desktop artifacts still unmeasured pending interactive tauri android/ios init runs.",
   "budgets": {
     "android-aab-arm64-v8a": 18000000,
     "android-apk-arm64-v8a": 20000000,
@@ -15,7 +15,7 @@
     "web-wasm-bundle-gz": 3000000
   },
   "last_measured": {
-    "_status": "measured 2026-07-25T19:30:44.821963Z",
+    "_status": "measured 2026-07-25T20:47:49.258Z",
     "android-aab-arm64-v8a": 9818545,
     "android-apk-arm64-v8a": 13199968,
     "ios-ipa": null,
