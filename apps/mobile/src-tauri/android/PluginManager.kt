@@ -20,7 +20,7 @@ class PluginManager(private val context: Context) {
     companion object {
         private const val TAG = "PluginManager"
         private const val CATALOG_URL_DEBUG = "http://127.0.0.1:8888/catalog.json"
-        private const val CATALOG_URL_RELEASE = "https://plugins.viewit.ai/catalog.json"
+        private const val CATALOG_URL_RELEASE = "https://cdn.jsdelivr.net/gh/mihir0209/ViewIt@main/plugins/catalog.signed.json"
 
         private const val SUPPORTED_ABI_VERSION = 1
 
@@ -238,7 +238,7 @@ class PluginManager(private val context: Context) {
                 val list = mutableListOf<PluginManifest>()
                 for (i in 0 until arr.length()) {
                     val manifest = parseManifest(arr.getJSONObject(i))
-                    if (manifest.abi.isEmpty() || manifest.abi == runtimeAbi()) {
+                    if (isCompatible(manifest)) {
                         list.add(manifest)
                     }
                 }
@@ -250,7 +250,7 @@ class PluginManager(private val context: Context) {
                 val list = mutableListOf<PluginManifest>()
                 for (i in 0 until arr.length()) {
                     val manifest = parseManifest(arr.getJSONObject(i))
-                    if (manifest.abi.isEmpty() || manifest.abi == runtimeAbi()) {
+                    if (isCompatible(manifest)) {
                         list.add(manifest)
                     }
                 }
@@ -279,6 +279,11 @@ class PluginManager(private val context: Context) {
             Log.e(TAG, "Signature verification failed", e)
             false
         }
+    }
+
+    private fun isCompatible(manifest: PluginManifest): Boolean {
+        val abiMatches = manifest.abi.isEmpty() || manifest.abi == runtimeAbi()
+        return abiMatches && manifest.minAppVersion <= BuildConfig.VERSION_CODE
     }
 
     private fun ed25519SubjectPublicKeyInfo(rawKey: ByteArray): ByteArray {
