@@ -13,8 +13,6 @@ import java.net.URL
 import java.security.MessageDigest
 import java.security.spec.X509EncodedKeySpec
 import java.security.KeyFactory
-import net.i2p.crypto.eddsa.EdDSAPublicKey
-import net.i2p.crypto.eddsa.spec.EdDSAPublicKeySpec
 
 class PluginManager(private val context: Context) {
 

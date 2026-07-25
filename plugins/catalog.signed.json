@@ -1,0 +1,94 @@
+{
+  "catalog": {
+    "plugins": [
+      {
+        "id": "office-ooxml",
+        "name": "Enhanced Office OOXML",
+        "description": "Optional enhanced DOCX/XLSX/PPTX runtime based on ooxmlsdk. Intended for richer viewing and future safe editing without increasing the base APK.",
+        "version": "0.2.0",
+        "entryClass": "ai.viewit.plugins.office_ooxml.Plugin",
+        "capabilities": [
+          "view",
+          "inspect",
+          "edit-planned"
+        ],
+        "runtime": "android-dex-rust-sidecar",
+        "abi": "arm64-v8a",
+        "abiVersion": 1,
+        "sizeBytes": 9055350,
+        "installedSizeBytes": 25195042,
+        "supportedFormats": [
+          "docx",
+          "xlsx",
+          "pptx",
+          "docm",
+          "xlsm",
+          "pptm"
+        ],
+        "downloadUrl": "http://127.0.0.1:8888/office-ooxml-0.2.0-arm64-v8a.zip",
+        "checksum": "8275553a5622913d5482641f1b11e4d8e44579bba4b8a7956588dd525c5b5750",
+        "minAppVersion": 1
+      },
+      {
+        "id": "office-ooxml",
+        "name": "Enhanced Office OOXML",
+        "description": "Optional enhanced DOCX/XLSX/PPTX runtime based on ooxmlsdk. Intended for richer viewing and future safe editing without increasing the base APK.",
+        "version": "0.2.0",
+        "entryClass": "ai.viewit.plugins.office_ooxml.Plugin",
+        "capabilities": [
+          "view",
+          "inspect",
+          "edit-planned"
+        ],
+        "runtime": "android-dex-rust-sidecar",
+        "abi": "x86_64",
+        "abiVersion": 1,
+        "sizeBytes": 9825290,
+        "installedSizeBytes": 28762186,
+        "supportedFormats": [
+          "docx",
+          "xlsx",
+          "pptx",
+          "docm",
+          "xlsm",
+          "pptm"
+        ],
+        "downloadUrl": "http://127.0.0.1:8888/office-ooxml-0.2.0-x86_64.zip",
+        "checksum": "352a77155299f9166b0c3178a2791668003fac4875ea912efa351a08828e5794",
+        "minAppVersion": 1
+      },
+      {
+        "id": "media-ffmpeg",
+        "name": "Media FFmpeg Transcoder",
+        "description": "Optional media transcode plugin for unsupported video/audio formats. Uses out-of-process FFmpeg service with user consent for heavy conversions.",
+        "version": "0.1.0",
+        "entryClass": "ai.viewit.plugins.media_ffmpeg.Plugin",
+        "capabilities": [
+          "media.inspect",
+          "media.convert"
+        ],
+        "runtime": "android-dex-rust-sidecar",
+        "abi": "arm64-v8a",
+        "abiVersion": 1,
+        "sizeBytes": 0,
+        "installedSizeBytes": 0,
+        "supportedFormats": [
+          "avi",
+          "wmv",
+          "flv",
+          "mkv",
+          "mov",
+          "mpg",
+          "mpeg",
+          "3gp",
+          "webm"
+        ],
+        "downloadUrl": "",
+        "checksum": "",
+        "minAppVersion": 1,
+        "status": "design-only"
+      }
+    ]
+  },
+  "signature": "EHMSh9ZcUuqpXyol8v5uQdlXqOdtMO93U2SSfcdCS2FLaeRbMSFAvN3D4Fnnel0NpDVf9HeyEoiQOek1HnCbBg=="
+}
