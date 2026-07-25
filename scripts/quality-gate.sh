@@ -60,11 +60,12 @@ fi
 
 # 3. Plugin ZIP exists and is valid
 echo "[4/7] Plugin ZIP build..."
-if [[ -f plugins/office-ooxml-0.1.0-arm64-v8a.zip ]] && [[ -f plugins/office-ooxml-0.1.0-x86_64.zip ]]; then
+PLUGIN_VERSION=$(python3 -c "import json; print(json.load(open('plugins/office-ooxml/plugin.json'))['version'])")
+if [[ -f plugins/office-ooxml-$PLUGIN_VERSION-arm64-v8a.zip ]] && [[ -f plugins/office-ooxml-$PLUGIN_VERSION-x86_64.zip ]]; then
   echo -e "${GREEN}PASS${NC}  Plugin ZIP build"
   PASSED=$((PASSED+1))
 else
-  echo -e "${RED}FAIL${NC}  Plugin ZIP build (run scripts/prepare-release.sh first)"
+  echo -e "${RED}FAIL${NC}  Plugin ZIP build (run scripts/prepare-release.sh first; ZIPs are ignored local artifacts)"
   FAILED=$((FAILED+1))
 fi
 

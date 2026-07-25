@@ -3,8 +3,8 @@
     {
       "id": "office-ooxml",
       "name": "Enhanced Office OOXML",
-      "description": "Optional enhanced DOCX/XLSX/PPTX runtime based on ooxmlsdk. Intended for richer viewing and future safe editing without increasing the base APK.",
-      "version": "0.2.0",
+      "description": "Optional enhanced DOCX/XLS/XLSX/PPTX runtime with plugin-owned offline HTML renderers and a calamine spreadsheet engine.",
+      "version": "0.3.0",
       "entryClass": "ai.viewit.plugins.office_ooxml.Plugin",
       "capabilities": [
         "view",
@@ -14,25 +14,26 @@
       "runtime": "android-dex-rust-sidecar",
       "abi": "arm64-v8a",
       "abiVersion": 1,
-      "sizeBytes": 9055350,
-      "installedSizeBytes": 25195042,
+      "sizeBytes": 798264,
+      "installedSizeBytes": 1786051,
       "supportedFormats": [
         "docx",
         "xlsx",
+        "xls",
         "pptx",
         "docm",
         "xlsm",
         "pptm"
       ],
-      "downloadUrl": "http://127.0.0.1:8888/office-ooxml-0.2.0-arm64-v8a.zip",
-      "checksum": "c846ab8a55d4ff145818d3637e17d0abbb79e68037ba748021dfb8c0d12779c7",
+      "downloadUrl": "https://github.com/mihir0209/ViewIt/releases/latest/download/office-ooxml-0.3.0-arm64-v8a.zip",
+      "checksum": "49415d6c4f5503e881c1103006413077c38009c1ec07c99e72233e0f015892d6",
       "minAppVersion": 1
     },
     {
       "id": "office-ooxml",
       "name": "Enhanced Office OOXML",
-      "description": "Optional enhanced DOCX/XLSX/PPTX runtime based on ooxmlsdk. Intended for richer viewing and future safe editing without increasing the base APK.",
-      "version": "0.2.0",
+      "description": "Optional enhanced DOCX/XLS/XLSX/PPTX runtime with plugin-owned offline HTML renderers and a calamine spreadsheet engine.",
+      "version": "0.3.0",
       "entryClass": "ai.viewit.plugins.office_ooxml.Plugin",
       "capabilities": [
         "view",
@@ -42,18 +43,19 @@
       "runtime": "android-dex-rust-sidecar",
       "abi": "x86_64",
       "abiVersion": 1,
-      "sizeBytes": 9825290,
-      "installedSizeBytes": 28762186,
+      "sizeBytes": 804363,
+      "installedSizeBytes": 1777307,
       "supportedFormats": [
         "docx",
         "xlsx",
+        "xls",
         "pptx",
         "docm",
         "xlsm",
         "pptm"
       ],
-      "downloadUrl": "http://127.0.0.1:8888/office-ooxml-0.2.0-x86_64.zip",
-      "checksum": "cf678c6289ce67ccc105cdd253311b09d7a87cd61f3182be82b3ec19146afa29",
+      "downloadUrl": "https://github.com/mihir0209/ViewIt/releases/latest/download/office-ooxml-0.3.0-x86_64.zip",
+      "checksum": "d2997271e468331f85047b4b89bb24b5e1807005bd56f9c980f3b45c7d302df5",
       "minAppVersion": 1
     },
     {

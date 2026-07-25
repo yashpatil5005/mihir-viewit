@@ -15,7 +15,7 @@
     "web-wasm-bundle-gz": 3000000
   },
   "last_measured": {
-    "_status": "measured 2026-07-25T11:20:59.155855Z",
+    "_status": "measured 2026-07-25T19:30:44.821963Z",
     "android-aab-arm64-v8a": 9818545,
     "android-apk-arm64-v8a": 13199968,
     "ios-ipa": null,

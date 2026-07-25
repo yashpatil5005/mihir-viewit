@@ -44,6 +44,8 @@ Cargo.lock.bak
 # --- Tauri ---
 src-tauri/gen/
 src-tauri/target/
+apps/mobile/src-tauri/gen/android/app/src/main/assets/
+apps/mobile/src-tauri/gen/android/app/src/main/jniLibs/
 *.apk
 *.aab
 *.ipa
@@ -82,3 +84,4 @@ scripts/.catalog-signing-key.pub
 patches/pdfium-render/
 apps/mobile/gen/
 plugins/*/build/
+plugins/*.zip

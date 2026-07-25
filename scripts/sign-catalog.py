@@ -85,7 +85,7 @@ def sign_catalog():
         "signature": signature_b64
     }
 
-    SIGNED_CATALOG_FILE.write_text(json.dumps(signed_catalog, indent=2))
+    SIGNED_CATALOG_FILE.write_text(json.dumps(signed_catalog, indent=2) + "\n")
 
     print(f"Signed catalog: {SIGNED_CATALOG_FILE}")
     print(f"Signature: {signature_b64[:40]}...")
