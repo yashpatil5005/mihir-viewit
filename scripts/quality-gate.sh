@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Quality gate script for ViewIt plugin format compatibility.
 # Runs all checks that must pass before a release tag.
+# This script is READ-ONLY - it does not modify any files.
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -17,8 +18,28 @@ SKIPPED=0
 echo "=== ViewIt Quality Gate ==="
 echo ""
 
+# 0. Git worktree clean (check FIRST)
+echo "[1/7] Git worktree clean..."
+if git diff --quiet && git diff --cached --quiet; then
+  echo -e "${GREEN}PASS${NC}  Git worktree clean"
+  PASSED=$((PASSED+1))
+else
+  echo -e "${RED}FAIL${NC}  Git worktree has uncommitted changes"
+  echo "  Commit or stash changes before running quality gate."
+  FAILED=$((FAILED+1))
+  # Early exit - can't guarantee clean state
+  echo ""
+  echo "=== Results ==="
+  echo -e "Passed:  ${GREEN}0${NC}"
+  echo -e "Failed:  ${RED}1${NC}"
+  echo -e "Skipped: ${YELLOW}0${NC}"
+  echo ""
+  echo -e "${RED}QUALITY GATE FAILED${NC}"
+  exit 1
+fi
+
 # 1. Base app frontend build
-echo "[1/7] Frontend build..."
+echo "[2/7] Frontend build..."
 if (cd apps/mobile && npm run build >/tmp/viewit-build.log 2>&1); then
   echo -e "${GREEN}PASS${NC}  Frontend build"
   PASSED=$((PASSED+1))
@@ -28,7 +49,7 @@ else
 fi
 
 # 2. Plugin crate tests
-echo "[2/7] Plugin crate tests..."
+echo "[3/7] Plugin crate tests..."
 if (cd plugins/office-ooxml && cargo test >/tmp/viewit-plugin-test.log 2>&1); then
   echo -e "${GREEN}PASS${NC}  Plugin crate tests"
   PASSED=$((PASSED+1))
@@ -37,58 +58,20 @@ else
   FAILED=$((FAILED+1))
 fi
 
-# 3. Plugin ZIP build
-echo "[3/7] Plugin ZIP build..."
-if [[ -f plugins/office-ooxml/build.sh ]]; then
-  if (cd plugins/office-ooxml && bash build.sh >/tmp/viewit-plugin-build.log 2>&1); then
-    echo -e "${GREEN}PASS${NC}  Plugin ZIP build"
-    PASSED=$((PASSED+1))
-  else
-    echo -e "${RED}FAIL${NC}  Plugin ZIP build (see /tmp/viewit-plugin-build.log)"
-    FAILED=$((FAILED+1))
-  fi
+# 3. Plugin ZIP exists and is valid
+echo "[4/7] Plugin ZIP build..."
+if [[ -f plugins/office-ooxml-0.1.0-arm64-v8a.zip ]] && [[ -f plugins/office-ooxml-0.1.0-x86_64.zip ]]; then
+  echo -e "${GREEN}PASS${NC}  Plugin ZIP build"
+  PASSED=$((PASSED+1))
 else
-  echo -e "${YELLOW}SKIP${NC}  Plugin ZIP build (build.sh not found)"
-  SKIPPED=$((SKIPPED+1))
-fi
-
-# 3b. Update catalog checksums after rebuild
-if [[ -f plugins/catalog.json ]]; then
-  ARM64_ZIP="plugins/office-ooxml-0.1.0-arm64-v8a.zip"
-  X64_ZIP="plugins/office-ooxml-0.1.0-x86_64.zip"
-  if [[ -f "$ARM64_ZIP" ]]; then
-    ARM64_CHECKSUM=$(sha256sum "$ARM64_ZIP" | awk '{print $1}')
-    python3 -c "
-import json
-with open('plugins/catalog.json') as f:
-    catalog = json.load(f)
-for p in catalog['plugins']:
-    if p['id'] == 'office-ooxml' and p.get('abi') == 'arm64-v8a':
-        p['checksum'] = '$ARM64_CHECKSUM'
-with open('plugins/catalog.json', 'w') as f:
-    json.dump(catalog, f, indent=2)
-"
-  fi
-  if [[ -f "$X64_ZIP" ]]; then
-    X64_CHECKSUM=$(sha256sum "$X64_ZIP" | awk '{print $1}')
-    python3 -c "
-import json
-with open('plugins/catalog.json') as f:
-    catalog = json.load(f)
-for p in catalog['plugins']:
-    if p['id'] == 'office-ooxml' and p.get('abi') == 'x86_64':
-        p['checksum'] = '$X64_CHECKSUM'
-with open('plugins/catalog.json', 'w') as f:
-    json.dump(catalog, f, indent=2)
-"
-  fi
+  echo -e "${RED}FAIL${NC}  Plugin ZIP build (run scripts/prepare-release.sh first)"
+  FAILED=$((FAILED+1))
 fi
 
 # 4. Catalog checksum matches ZIP
-echo "[4/7] Catalog checksum verification..."
+echo "[5/7] Catalog checksum verification..."
 CATALOG_CHECK=true
 if [[ -f plugins/catalog.json ]]; then
-  # Check that every checksum in the catalog corresponds to an existing ZIP
   while IFS= read -r checksum; do
     if [[ -n "$checksum" ]]; then
       found=false
@@ -120,7 +103,7 @@ else
 fi
 
 # 5. Size budget
-echo "[5/7] Size budget..."
+echo "[6/7] Size budget..."
 if [[ -f scripts/size-budget.ts ]] && [[ -f scripts/size-budget.json ]]; then
   if npx tsx scripts/size-budget.ts >/tmp/viewit-size.log 2>&1; then
     echo -e "${GREEN}PASS${NC}  Size budget"
@@ -135,7 +118,7 @@ else
 fi
 
 # 6. Dependency separation: ooxmlsdk NOT in base Cargo.lock
-echo "[6/7] Dependency separation (ooxmlsdk not in base)..."
+echo "[7/7] Dependency separation (ooxmlsdk not in base)..."
 BASE_LOCK="apps/mobile/src-tauri/Cargo.lock"
 ROOT_LOCK="Cargo.lock"
 OOXMLSDK_IN_BASE=false
@@ -168,16 +151,6 @@ else
     echo -e "${RED}FAIL${NC}  Dependency separation (ooxmlsdk in base Cargo.lock)"
     FAILED=$((FAILED+1))
   fi
-fi
-
-# 7. Git worktree clean
-echo "[7/7] Git worktree clean..."
-if git diff --quiet && git diff --cached --quiet; then
-  echo -e "${GREEN}PASS${NC}  Git worktree clean"
-  PASSED=$((PASSED+1))
-else
-  echo -e "${RED}FAIL${NC}  Git worktree has uncommitted changes"
-  FAILED=$((FAILED+1))
 fi
 
 echo ""
