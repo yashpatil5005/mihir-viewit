@@ -11,6 +11,8 @@ export interface PluginInfo {
   abi?: string;
   entryClass?: string;
   installed?: boolean;
+  installedVersion?: string;
+  updateAvailable?: boolean;
 }
 
 export function hasAndroidBridge(): boolean {
@@ -45,16 +47,39 @@ export async function fetchPluginCatalog(): Promise<PluginInfo[]> {
 export async function pluginInventory(): Promise<{ installed: PluginInfo[]; catalog: PluginInfo[] }> {
   const installed = await listInstalledPlugins();
   const catalog = await fetchPluginCatalog();
-  const mergedCatalog = catalog.map((item) => ({
-    ...item,
-    installed: installed.some((installedPlugin) => installedPlugin.id === item.id),
-  }));
+  const installedById = new Map(installed.map((plugin) => [plugin.id, plugin]));
+  const seen = new Set<string>();
+  const mergedCatalog = catalog
+    .filter((item) => {
+      const key = `${item.id}:${item.abi ?? ''}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((item) => {
+      const installedPlugin = installedById.get(item.id);
+      const installedVersion = installedPlugin?.version;
+      const versionMatches = installedVersion === item.version;
+      return {
+        ...item,
+        installed: Boolean(installedPlugin && versionMatches),
+        installedVersion,
+        updateAvailable: Boolean(installedPlugin && !versionMatches),
+      };
+    });
   return { installed, catalog: mergedCatalog };
 }
 
 export function pluginSupports(plugin: PluginInfo, ext: string): boolean {
   const cleanExt = ext.toLowerCase().replace(/^\./, '');
   return plugin.formats?.some((format) => format.toLowerCase() === cleanExt) ?? false;
+}
+
+export function materializeExternalUri(uri: string, ext: string): string {
+  if (!hasAndroidBridge()) return uri;
+  const bridge = (window as any).AndroidBridge;
+  if (typeof bridge.materializeExternalUri !== 'function') return uri;
+  return bridge.materializeExternalUri(uri, ext);
 }
 
 export async function installPlugin(plugin: PluginInfo): Promise<void> {

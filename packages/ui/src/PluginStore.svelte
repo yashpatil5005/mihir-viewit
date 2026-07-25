@@ -125,42 +125,36 @@
     {:else if errorMsg}
       <div class="error">{errorMsg}</div>
     {:else}
-      {#if installed.length > 0}
-        <section>
-          <h3>Installed</h3>
-          {#each installed as plugin}
-            <div class="plugin-card installed">
-              <div class="plugin-info">
-                <strong>{plugin.name}</strong>
-                <span class="version">v{plugin.version}</span>
-                <span class="formats">{plugin.formats.join(', ')}</span>
-              </div>
-              <button class="remove-btn" onclick={() => remove(plugin.id)}>Remove</button>
-            </div>
-          {/each}
-        </section>
-      {/if}
-
       <section>
-        <h3>Available</h3>
+        <h3>Plugins</h3>
         {#if catalog.length === 0}
           <div class="empty">No plugins available yet.</div>
         {:else}
           {#each catalog as plugin}
-            <div class="plugin-card">
+            <div class="plugin-card" class:installed={plugin.installed} class:update={plugin.updateAvailable}>
               <div class="plugin-info">
                 <strong>{plugin.name}</strong>
-                <span class="version">v{plugin.version}</span>
+                <span class="version">
+                  Catalog v{plugin.version}{#if plugin.installedVersion && plugin.installedVersion !== plugin.version} · installed v{plugin.installedVersion}{/if}
+                </span>
                 <p class="description">{plugin.description}</p>
                 <span class="formats">{plugin.formats.join(', ')}</span>
                 <span class="size">{formatPluginSize(plugin.sizeBytes)} download{plugin.installedSizeBytes ? ` · ${formatPluginSize(plugin.installedSizeBytes)} installed` : ''}</span>
               </div>
-              {#if plugin.installed}
-                <span class="installed-badge">Installed</span>
-              {:else if installing === plugin.id}
+              {#if installing === plugin.id}
                 <div class="progress">
                   <div class="progress-bar" style="width: {installProgress * 100}%"></div>
                   <span>Installing...</span>
+                </div>
+              {:else if plugin.updateAvailable}
+                <div class="plugin-actions">
+                  <button class="install-btn" onclick={() => install(plugin)}>Update</button>
+                  <button class="remove-btn" onclick={() => remove(plugin.id)}>Remove</button>
+                </div>
+              {:else if plugin.installed}
+                <div class="plugin-actions">
+                  <span class="installed-badge">Installed</span>
+                  <button class="remove-btn" onclick={() => remove(plugin.id)}>Remove</button>
                 </div>
               {:else}
                 <button class="install-btn" onclick={() => install(plugin)}>Install</button>
@@ -231,6 +225,8 @@
   .install-btn:hover { opacity: 0.9; }
   .remove-btn { background: none; color: var(--error, #e53e3e); border: 1px solid var(--error, #e53e3e); }
   .installed-badge { font-size: 0.75rem; color: var(--link, #3182ce); font-weight: 600; }
+  .plugin-card.update { border-color: #d97706; background: color-mix(in srgb, #f59e0b 12%, var(--bg-primary, #fff)); }
+  .plugin-actions { display: flex; gap: 0.45rem; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
   .progress { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; }
   .progress-bar { height: 4px; background: var(--link, #3182ce); border-radius: 2px; width: 100%; }
   .privacy-section { padding: 1rem 0; }

@@ -26,13 +26,18 @@
   import DebugPanel from './DebugPanel.svelte';
   import PluginStore from './PluginStore.svelte';
   import RuntimeChooser from './RuntimeChooser.svelte';
+  import OfficePluginHtmlViewer from './OfficePluginHtmlViewer.svelte';
   import {
     hasAndroidBridge,
     listInstalledPlugins,
+    materializeExternalUri,
     pluginSupports,
     renderDocumentWithPlugin,
     type PluginInfo,
   } from './pluginBridge';
+
+  const OFFICE_PLUGIN_EXTS = new Set(['docx', 'docm', 'dotx', 'dotm', 'xlsx', 'xlsm', 'xls', 'pptx', 'pptm', 'potx']);
+  const OFFICE_KINDS = new Set(['docx', 'xlsx', 'pptx']);
 
   // Phase 3.8 — per-format lazy code-split. Heavy viewers load on demand via
   // dynamic import() so opening a .txt never pulls in the PDF/Office chunks.
@@ -124,6 +129,7 @@
   let officePluginNotice = $state('');
   let officeWarnings: string[] = $state([]);
   let officeFidelity: string = $state('');
+  let officeRendererLabel: string = $state('');
 
   import { onMount } from 'svelte';
   import {
@@ -150,6 +156,16 @@
     const f = d?.fidelity;
     officeWarnings = Array.isArray(d?.warnings) ? d.warnings.slice() : [];
     officeFidelity = f?.level ? `${f.level} — supports: ${(f.supports ?? []).join(', ') || 'none'}` : '';
+    officeRendererLabel = d?.renderer?.label ?? '';
+  }
+
+  function isPluginRendered(): boolean {
+    return Boolean((doc as any)?.renderer?.id);
+  }
+
+  function isOfficePluginHtml(): boolean {
+    const d = doc as any;
+    return Boolean(d?.renderer?.id === 'office-ooxml' && d?.html);
   }
 
   $effect(() => {
@@ -268,7 +284,7 @@
 
   function officeExt(): string {
     const kind = (doc as any)?.kind;
-    if (kind === 'docx' || kind === 'xlsx' || kind === 'pptx') return kind;
+    if (OFFICE_KINDS.has(kind)) return kind;
     const uri = docUri ?? pendingUri ?? '';
     return extFromUri(uri);
   }
@@ -299,7 +315,19 @@
     officeFidelity = '';
     const ext = extFromUri(uri);
     let failedPluginId = '';
-    if (hasAndroidBridge() && (ext === 'docx' || ext === 'xlsx' || ext === 'pptx')) {
+    let readableUri = uri;
+    if (hasAndroidBridge() && OFFICE_PLUGIN_EXTS.has(ext)) {
+      try {
+        readableUri = materializeExternalUri(uri, ext);
+      } catch (e) {
+        await dbg(`runtime[${ext}] materialize failed: ${e instanceof Error ? e.message : String(e)}`);
+        return {
+          kind: 'unsupported',
+          format: ext,
+          reason: 'Android blocked direct access to this raw file path. Open it from the system file picker or share sheet so ViewIt receives a readable content URI.',
+          suggestion: 'none',
+        } as Document;
+      }
       const prefId = getRuntimePref(ext);
       if (prefId === '__builtin__') {
         await dbg(`runtime[${ext}] pref=builtin → skipping plugin`);
@@ -312,7 +340,8 @@
           await dbg(`runtime[${ext}] pref=${prefId ?? 'auto'} → plugin ${plugin.id}`);
           try {
             busyHint = `Opening with ${plugin.name}…`;
-            const rendered = await renderDocumentWithPlugin(plugin, uri, ext) as Document;
+            const rendered = await renderDocumentWithPlugin(plugin, readableUri, ext) as Document;
+            await dbg(`runtime[${ext}] plugin ${plugin.id} returned kind=${(rendered as any)?.kind} renderer=${(rendered as any)?.renderer?.id ?? 'none'}`);
             selectedOfficePlugin = plugin;
             officePluginNotice = `Rendered by ${plugin.name}.`;
             return rendered;
@@ -327,9 +356,9 @@
         }
       }
     }
-    const builtIn = await openFile(uri);
+    const builtIn = await openFile(readableUri);
     const detectedKind = builtIn.kind;
-    if (hasAndroidBridge() && (detectedKind === 'docx' || detectedKind === 'xlsx' || detectedKind === 'pptx')) {
+    if (hasAndroidBridge() && OFFICE_KINDS.has(detectedKind)) {
       const prefId = getRuntimePref(detectedKind);
       if (prefId !== '__builtin__') {
         const plugin = (await listInstalledPlugins()).find((candidate) => candidate.id !== failedPluginId && pluginSupports(candidate, detectedKind));
@@ -337,7 +366,8 @@
           await dbg(`runtime[${detectedKind}] retry plugin ${plugin.id} via detected kind`);
           try {
             busyHint = `Opening with ${plugin.name}…`;
-            const rendered = await renderDocumentWithPlugin(plugin, uri, detectedKind) as Document;
+            const rendered = await renderDocumentWithPlugin(plugin, readableUri, detectedKind) as Document;
+            await dbg(`runtime[${detectedKind}] plugin ${plugin.id} returned kind=${(rendered as any)?.kind} renderer=${(rendered as any)?.renderer?.id ?? 'none'}`);
             selectedOfficePlugin = plugin;
             officePluginNotice = `Rendered by ${plugin.name}.`;
             return rendered;
@@ -360,9 +390,12 @@
     selectedOfficePlugin = plugin;
     officePluginNotice = '';
     try {
-      doc = await renderDocumentWithPlugin(plugin, docUri, officeExt()) as Document;
+      const ext = officeExt();
+      const readableUri = materializeExternalUri(docUri, ext);
+      doc = await renderDocumentWithPlugin(plugin, readableUri, ext) as Document;
+      await dbg(`runtime[${officeExt()}] manual plugin ${plugin.id} returned kind=${(doc as any)?.kind} renderer=${(doc as any)?.renderer?.id ?? 'none'}`);
       officePluginNotice = `Rendered by ${plugin.name}.`;
-      saveRuntimePref(officeExt(), plugin.id);
+      saveRuntimePref(ext, plugin.id);
     } catch (e) {
       officePluginNotice = `${plugin.name} could not render this file: ${e instanceof Error ? e.message : String(e)}. Using the built-in lightweight viewer.`;
       if (pendingUri) doc = await openFile(pendingUri);
@@ -382,7 +415,7 @@
     selectedOfficePlugin = null;
     officePluginNotice = '';
     try {
-      doc = await openFile(uri);
+      doc = await openFile(materializeExternalUri(uri, officeExt()));
       officePluginNotice = 'Rendered by built-in lightweight viewer.';
       saveRuntimePref(officeExt(), '__builtin__');
     } catch (e) {
@@ -464,30 +497,50 @@
         <EpubViewer {...(doc as any)} />
       {:else if doc.kind === 'archive' && ArchiveViewer}
         <ArchiveViewer {...(doc as any)} />
+      {:else if isOfficePluginHtml()}
+        <div class="plugin-renderer-shell">
+        <div class="plugin-renderer-banner">PLUGIN RENDERER ACTIVE · {officeRendererLabel || selectedOfficePlugin?.name || 'Office plugin'} · HTML VIEWER MODE</div>
+        <div class="runtime-bar plugin-runtime-bar">
+          <button type="button" onclick={() => officeRuntimeChooserOpen = true}>Runtime: {selectedOfficePlugin?.name ?? 'Office plugin'}</button>
+          {#if officePluginNotice}<span>{officePluginNotice}</span>{/if}
+          {#if officeFidelity}<span class="fidelity">{officeFidelity}</span>{/if}
+          {#if officeWarnings.length > 0}<details class="warnings"><summary>{officeWarnings.length} warning(s)</summary><ul>{#each officeWarnings as w}<li>{w}</li>{/each}</ul></details>{/if}
+        </div>
+        <OfficePluginHtmlViewer document={doc} />
+        </div>
       {:else if doc.kind === 'pptx' && PptxViewer}
-        <div class="runtime-bar">
+        <div class:plugin-renderer-shell={isPluginRendered()}>
+        {#if isPluginRendered()}<div class="plugin-renderer-banner">PLUGIN RENDERER ACTIVE · {officeRendererLabel || selectedOfficePlugin?.name || 'Office plugin'} · LIGHT PINK TEST MODE</div>{/if}
+        <div class="runtime-bar" class:plugin-runtime-bar={isPluginRendered()}>
           <button type="button" onclick={() => officeRuntimeChooserOpen = true}>Runtime: {selectedOfficePlugin?.name ?? 'Built-in lightweight viewer'}</button>
           {#if officePluginNotice}<span>{officePluginNotice}</span>{/if}
           {#if officeFidelity}<span class="fidelity">{officeFidelity}</span>{/if}
           {#if officeWarnings.length > 0}<details class="warnings"><summary>{officeWarnings.length} warning(s)</summary><ul>{#each officeWarnings as w}<li>{w}</li>{/each}</ul></details>{/if}
         </div>
-        <PptxViewer document={doc} source_uri={docUri ?? ''} />
+        {#if (doc as any).html}<div class="plugin-html-surface">{@html (doc as any).html}</div>{:else}<PptxViewer document={doc} source_uri={docUri ?? ''} />{/if}
+        </div>
       {:else if doc.kind === 'docx' && DocxViewer}
-        <div class="runtime-bar">
+        <div class:plugin-renderer-shell={isPluginRendered()}>
+        {#if isPluginRendered()}<div class="plugin-renderer-banner">PLUGIN RENDERER ACTIVE · {officeRendererLabel || selectedOfficePlugin?.name || 'Office plugin'} · LIGHT PINK TEST MODE</div>{/if}
+        <div class="runtime-bar" class:plugin-runtime-bar={isPluginRendered()}>
           <button type="button" onclick={() => officeRuntimeChooserOpen = true}>Runtime: {selectedOfficePlugin?.name ?? 'Built-in lightweight viewer'}</button>
           {#if officePluginNotice}<span>{officePluginNotice}</span>{/if}
           {#if officeFidelity}<span class="fidelity">{officeFidelity}</span>{/if}
           {#if officeWarnings.length > 0}<details class="warnings"><summary>{officeWarnings.length} warning(s)</summary><ul>{#each officeWarnings as w}<li>{w}</li>{/each}</ul></details>{/if}
         </div>
-        <DocxViewer document={doc} />
+        {#if (doc as any).html}<div class="plugin-html-surface">{@html (doc as any).html}</div>{:else}<DocxViewer document={doc} />{/if}
+        </div>
       {:else if doc.kind === 'xlsx' && XlsxViewer}
-        <div class="runtime-bar">
+        <div class:plugin-renderer-shell={isPluginRendered()}>
+        {#if isPluginRendered()}<div class="plugin-renderer-banner">PLUGIN RENDERER ACTIVE · {officeRendererLabel || selectedOfficePlugin?.name || 'Office plugin'} · LIGHT PINK TEST MODE</div>{/if}
+        <div class="runtime-bar" class:plugin-runtime-bar={isPluginRendered()}>
           <button type="button" onclick={() => officeRuntimeChooserOpen = true}>Runtime: {selectedOfficePlugin?.name ?? 'Built-in lightweight viewer'}</button>
           {#if officePluginNotice}<span>{officePluginNotice}</span>{/if}
           {#if officeFidelity}<span class="fidelity">{officeFidelity}</span>{/if}
           {#if officeWarnings.length > 0}<details class="warnings"><summary>{officeWarnings.length} warning(s)</summary><ul>{#each officeWarnings as w}<li>{w}</li>{/each}</ul></details>{/if}
         </div>
-        <XlsxViewer document={doc} />
+        {#if (doc as any).html}<div class="plugin-html-surface">{@html (doc as any).html}</div>{:else}<XlsxViewer document={doc} />{/if}
+        </div>
       {:else if doc.kind === 'unsupported'}
         <UnsupportedViewer uri={docUri ?? undefined} document={doc} />
       {:else if doc.kind === 'font' && FontViewer}
@@ -564,4 +617,33 @@
   .runtime-bar .warnings { font-size: 0.72rem; color: var(--text-secondary); }
   .runtime-bar .warnings summary { cursor: pointer; }
   .runtime-bar .warnings ul { margin: 0.25rem 0 0; padding-left: 1rem; max-width: 40rem; }
+  .plugin-renderer-shell {
+    background: #ffe6f1;
+    border: 3px solid #ff5aa5;
+    border-radius: 1rem;
+    padding: 0.8rem;
+    box-shadow: 0 0 0 0.3rem rgba(255, 90, 165, 0.15);
+  }
+  .plugin-renderer-banner {
+    margin: 0 0 0.75rem;
+    padding: 0.55rem 0.75rem;
+    border-radius: 0.7rem;
+    background: #ffb8d8;
+    color: #65002f;
+    font-weight: 900;
+    font-size: 0.78rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border: 1px solid #ff5aa5;
+  }
+  .plugin-runtime-bar {
+    background: #ffd3e8;
+    border: 1px solid #ff8cc3;
+    border-radius: 999px;
+    padding: 0.4rem 0.55rem;
+  }
+  .plugin-html-surface {
+    overflow: auto;
+    border-radius: 0.75rem;
+  }
 </style>

@@ -43,6 +43,7 @@
   let idx = $state(0);
   let total = $state(0);
   let preParsedSlides: PptxSlide[] = $state([]);
+  let pluginHtml = $derived(((docProp as any).html ?? '') as string);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let viewer: any = null;
@@ -149,6 +150,9 @@
 </script>
 
 <div class="pptx-root" bind:this={rootEl}>
+  {#if pluginHtml}
+    <div class="plugin-html-surface">{@html pluginHtml}</div>
+  {:else}
   {#if status === 'loading'}<p class="muted">Loading presentation…</p>{/if}
   {#if status === 'error'}<p class="err">{errorMsg}</p>{/if}
   {#if status === 'ready'}
@@ -196,10 +200,12 @@
   {#if status === 'ready'}
     <p class="muted">Offline · {hasLayout(preParsedSlides[idx]) ? 'rendered via enhanced Office layout extraction' : preParsedSlides.length > 0 ? 'rendered via enhanced Office text extraction' : 'rendered via Canvas'} (no PowerPoint animations).</p>
   {/if}
+  {/if}
 </div>
 
 <style>
   .pptx-root { padding: 0.5rem; color: var(--text-primary); }
+  .plugin-html-surface { overflow: auto; border-radius: 0.75rem; }
   .bar { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; }
   .bar button { padding: 0.35rem 0.6rem; border: 1px solid var(--border); border-radius: 0.3rem; background: var(--bg-secondary); color: var(--text-primary); }
   .bar button:disabled { opacity: 0.35; }

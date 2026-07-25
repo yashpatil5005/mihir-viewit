@@ -12,6 +12,7 @@ export { default as PlaceholderViewer } from './PlaceholderViewer.svelte';
 export { default as PptxViewer } from './PptxViewer.svelte';
 export { default as DocxViewer } from './DocxViewer.svelte';
 export { default as XlsxViewer } from './XlsxViewer.svelte';
+export { default as OfficePluginHtmlViewer } from './OfficePluginHtmlViewer.svelte';
 export { default as GridView } from './GridView.svelte';
 export { default as SearchBar } from './SearchBar.svelte';
 export { theme, toggleTheme, setTheme, resolvedTheme } from './theme.svelte';

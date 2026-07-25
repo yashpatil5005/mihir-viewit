@@ -7,12 +7,10 @@
 use std::io::{Cursor, Read};
 
 use base64::Engine;
+use calamine::{open_workbook_auto_from_rs, Data, Reader as SpreadsheetReader};
 use jni::objects::{JByteArray, JClass, JString};
 use jni::sys::jstring;
 use jni::JNIEnv;
-use ooxmlsdk::parts::presentation_document::PresentationDocument;
-use ooxmlsdk::parts::spreadsheet_document::SpreadsheetDocument;
-use ooxmlsdk::parts::wordprocessing_document::WordprocessingDocument;
 use quick_xml::events::Event;
 use quick_xml::name::QName;
 use quick_xml::Reader;
@@ -22,6 +20,56 @@ use zip::ZipArchive;
 
 const DEFAULT_SLIDE_W: i64 = 9_144_000;
 const DEFAULT_SLIDE_H: i64 = 5_143_500;
+
+fn plugin_renderer_marker() -> serde_json::Value {
+    json!({
+        "id": "office-ooxml",
+        "label": "Office OOXML Plugin Renderer",
+        "theme": "plugin-pink",
+    })
+}
+
+fn escape_html(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for ch in input.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+fn office_html_document(title: &str, body: &str) -> String {
+    format!(
+        r#"<section class="office-plugin-html"><style>
+.office-plugin-html {{ color:#161616; background:#f4f1ea; padding:16px; overflow:auto; }}
+.office-plugin-page {{ max-width:860px; margin:0 auto 18px; background:white; box-shadow:0 10px 30px rgba(0,0,0,.14); border:1px solid #ddd4c4; padding:48px; min-height:720px; }}
+.office-plugin-page h1,.office-plugin-page h2,.office-plugin-page h3 {{ color:#111; margin:1.1em 0 .45em; line-height:1.18; }}
+.office-plugin-page p {{ margin:.55em 0; line-height:1.58; }}
+.office-plugin-page ul {{ margin:.55em 0; padding-left:1.6em; }}
+.office-plugin-page table {{ border-collapse:collapse; width:100%; margin:1em 0; }}
+.office-plugin-page td,.office-plugin-page th {{ border:1px solid #bbb; padding:6px 8px; vertical-align:top; }}
+.office-plugin-workbook {{ background:#0f172a; color:#e5e7eb; min-height:70vh; padding:12px; overflow:auto; }}
+.office-plugin-sheet {{ margin:0 0 18px; background:#fff; color:#111; border-radius:8px; overflow:hidden; box-shadow:0 8px 24px rgba(0,0,0,.22); }}
+.office-plugin-sheet h2 {{ margin:0; padding:10px 12px; background:#1d6f42; color:white; font-size:15px; }}
+.office-plugin-grid {{ border-collapse:separate; border-spacing:0; width:max-content; min-width:100%; font:13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }}
+.office-plugin-grid th {{ position:sticky; top:0; background:#e7f1e9; z-index:2; font-weight:700; }}
+.office-plugin-grid td,.office-plugin-grid th {{ border-right:1px solid #cbd5cf; border-bottom:1px solid #cbd5cf; padding:5px 8px; white-space:pre; max-width:280px; overflow:hidden; text-overflow:ellipsis; }}
+.office-plugin-slides {{ background:#111827; color:white; padding:14px; }}
+.office-plugin-slide {{ position:relative; margin:0 auto 18px; max-width:960px; aspect-ratio:16/9; background:white; color:#111; overflow:hidden; box-shadow:0 12px 34px rgba(0,0,0,.35); }}
+.office-plugin-slide-title {{ position:absolute; left:6%; top:6%; right:6%; font-size:clamp(18px,3vw,34px); font-weight:700; }}
+.office-plugin-slide-body {{ position:absolute; left:7%; top:23%; right:7%; bottom:8%; white-space:pre-wrap; font-size:clamp(13px,1.7vw,21px); line-height:1.35; }}
+@media (max-width:700px) {{ .office-plugin-page {{ padding:22px; min-height:0; }} }}
+</style><div data-office-plugin-title="{}">{}</div></section>"#,
+        escape_html(title),
+        body
+    )
+}
 
 #[derive(Debug, Serialize)]
 pub struct OoxmlInspection {
@@ -33,30 +81,29 @@ pub struct OoxmlInspection {
 pub fn inspect_ooxml(bytes: &[u8], ext: &str) -> Result<OoxmlInspection, String> {
     match ext.to_ascii_lowercase().as_str() {
         "docx" | "docm" => {
-            let document = WordprocessingDocument::new(Cursor::new(bytes.to_vec()))
-                .map_err(|e| format!("wordprocessing open: {e}"))?;
+            let main_part = zip_has_entry(bytes, "word/document.xml");
             Ok(OoxmlInspection {
                 format: "wordprocessing".into(),
-                readable: true,
-                main_part: document.main_document_part().is_ok(),
+                readable: main_part,
+                main_part,
             })
         }
-        "xlsx" | "xlsm" => {
-            let document = SpreadsheetDocument::new(Cursor::new(bytes.to_vec()))
+        "xlsx" | "xlsm" | "xls" => {
+            let workbook = open_workbook_auto_from_rs(Cursor::new(bytes.to_vec()))
                 .map_err(|e| format!("spreadsheet open: {e}"))?;
+            let main_part = !workbook.sheet_names().is_empty();
             Ok(OoxmlInspection {
                 format: "spreadsheet".into(),
                 readable: true,
-                main_part: document.workbook_part().is_ok(),
+                main_part,
             })
         }
         "pptx" | "pptm" => {
-            let document = PresentationDocument::new(Cursor::new(bytes.to_vec()))
-                .map_err(|e| format!("presentation open: {e}"))?;
+            let main_part = zip_has_entry(bytes, "ppt/presentation.xml");
             Ok(OoxmlInspection {
                 format: "presentation".into(),
-                readable: true,
-                main_part: document.presentation_part().is_ok(),
+                readable: main_part,
+                main_part,
             })
         }
         _ => Err(format!("unsupported OOXML extension: {ext}")),
@@ -67,7 +114,7 @@ pub fn render_ooxml_document(bytes: &[u8], ext: &str) -> Result<String, String> 
     inspect_ooxml(bytes, ext)?;
     match ext.to_ascii_lowercase().as_str() {
         "docx" | "docm" => render_docx(bytes),
-        "xlsx" | "xlsm" => render_xlsx(bytes),
+        "xlsx" | "xlsm" | "xls" => render_xlsx(bytes),
         "pptx" | "pptm" => render_pptx(bytes),
         _ => Err(format!("unsupported OOXML extension: {ext}")),
     }
@@ -97,6 +144,7 @@ fn render_docx(bytes: &[u8]) -> Result<String, String> {
         warnings.push("comments present but not yet rendered".to_string());
     }
     let searchable = collect_docx_search_text(&blocks);
+    let html = office_html_document("DOCX", &docx_blocks_to_html(&blocks));
     let mut supports = vec!["text", "headings", "lists", "tables"];
     let mut missing = vec!["footnotes", "headers", "footers", "tracked-changes", "styles"];
     let has_images = blocks.iter().any(|b| b.get("kind").and_then(|v| v.as_str()) == Some("image"));
@@ -105,6 +153,8 @@ fn render_docx(bytes: &[u8]) -> Result<String, String> {
     if has_links { supports.push("hyperlinks"); } else { missing.push("hyperlinks"); }
     Ok(json!({
         "kind": "docx",
+        "renderer": plugin_renderer_marker(),
+        "html": html,
         "blocks": blocks,
         "byte_len": bytes.len(),
         "warnings": warnings,
@@ -118,35 +168,88 @@ fn render_docx(bytes: &[u8]) -> Result<String, String> {
     .to_string())
 }
 
+fn docx_blocks_to_html(blocks: &[serde_json::Value]) -> String {
+    let mut html = String::from("<article class=\"office-plugin-page\">");
+    for block in blocks {
+        match block.get("kind").and_then(|v| v.as_str()).unwrap_or("") {
+            "paragraph" => {
+                let text = escape_html(block.get("text").and_then(|v| v.as_str()).unwrap_or(""));
+                if let Some(level) = block.get("heading").and_then(|v| v.as_u64()) {
+                    let level = level.clamp(1, 6);
+                    html.push_str(&format!("<h{level}>{text}</h{level}>"));
+                } else {
+                    html.push_str(&format!("<p>{text}</p>"));
+                }
+            }
+            "list-item" => {
+                let text = escape_html(block.get("text").and_then(|v| v.as_str()).unwrap_or(""));
+                html.push_str(&format!("<ul><li>{text}</li></ul>"));
+            }
+            "hyperlink" => {
+                let text = escape_html(block.get("text").and_then(|v| v.as_str()).unwrap_or(""));
+                let href = escape_html(block.get("href").and_then(|v| v.as_str()).unwrap_or("#"));
+                html.push_str(&format!("<p><a href=\"{href}\">{text}</a></p>"));
+            }
+            "table" => {
+                html.push_str("<table><tbody>");
+                if let Some(rows) = block.get("rows").and_then(|v| v.as_array()) {
+                    for row in rows {
+                        html.push_str("<tr>");
+                        if let Some(cells) = row.as_array() {
+                            for cell in cells {
+                                html.push_str("<td>");
+                                html.push_str(&escape_html(cell.as_str().unwrap_or("")));
+                                html.push_str("</td>");
+                            }
+                        }
+                        html.push_str("</tr>");
+                    }
+                }
+                html.push_str("</tbody></table>");
+            }
+            "image" => html.push_str("<p><em>[Embedded image]</em></p>"),
+            _ => {}
+        }
+    }
+    html.push_str("</article>");
+    html
+}
+
 fn render_xlsx(bytes: &[u8]) -> Result<String, String> {
-    let workbook = zip_entry_string(bytes, "xl/workbook.xml")?;
-    let workbook_rels = zip_entry_string(bytes, "xl/_rels/workbook.xml.rels")?;
-    let shared_strings = match zip_entry_string(bytes, "xl/sharedStrings.xml") {
-        Ok(xml) => parse_shared_strings(&xml)?,
-        Err(_) => Vec::new(),
-    };
-    let rels = parse_relationships(&workbook_rels)?;
     let mut sheets = Vec::new();
     let mut warnings = Vec::new();
+    let mut html_body = String::from("<div class=\"office-plugin-workbook\">");
+    let mut workbook = open_workbook_auto_from_rs(Cursor::new(bytes.to_vec()))
+        .map_err(|e| format!("spreadsheet open: {e}"))?;
+    let sheet_names = workbook.sheet_names().to_vec();
+    let sheet_paths = xlsx_sheet_paths(bytes).unwrap_or_default();
 
-    for (name, rel_id) in parse_workbook_sheets(&workbook)? {
-        let target = rels
-            .get(&rel_id)
-            .ok_or_else(|| format!("workbook relationship missing: {rel_id}"))?;
-        let path = if target.starts_with("xl/") {
-            target.clone()
-        } else {
-            format!("xl/{}", target.trim_start_matches('/'))
-        };
-        let sheet_xml = zip_entry_string(bytes, &path)?;
-        let rows = parse_sheet_rows(&sheet_xml, &shared_strings)?;
+    for name in sheet_names {
+        let range = workbook
+            .worksheet_range(&name)
+            .map_err(|e| format!("sheet read {name}: {e}"))?;
+        let rows = range
+            .rows()
+            .map(|row| row.iter().map(data_to_string).collect::<Vec<_>>())
+            .collect::<Vec<_>>();
+        let total_rows = rows.len();
         let total_cols = rows.iter().map(Vec::len).max().unwrap_or(0);
-        let header = rows.first().cloned().unwrap_or_default();
-        let preview_rows = rows.into_iter().skip(1).take(200).collect::<Vec<_>>();
-        let total_rows = preview_rows.len() + usize::from(!header.is_empty());
+        let header = rows.first().cloned().unwrap_or_else(|| {
+            (0..total_cols).map(|i| spreadsheet_column_label(i)).collect()
+        });
+        let preview_rows = rows.iter().skip(1).take(500).cloned().collect::<Vec<_>>();
 
-        let merged_cells = parse_sheet_merged_cells(&sheet_xml);
-        let frozen_panes = parse_sheet_frozen_panes(&sheet_xml);
+        let merged_cells;
+        let frozen_panes;
+        if let Some(path) = sheet_paths.get(&name) {
+            let sheet_xml = zip_entry_string(bytes, path).unwrap_or_default();
+            merged_cells = parse_sheet_merged_cells(&sheet_xml);
+            frozen_panes = parse_sheet_frozen_panes(&sheet_xml);
+        } else {
+            merged_cells = Vec::new();
+            frozen_panes = None;
+        }
+
         let mut sheet_obj = json!({
             "name": name,
             "header": header,
@@ -160,22 +263,34 @@ fn render_xlsx(bytes: &[u8]) -> Result<String, String> {
         if let Some(fp) = frozen_panes {
             sheet_obj.as_object_mut().unwrap().insert("frozen_panes".to_string(), json!(fp));
         }
+
+        html_body.push_str(&format!("<section class=\"office-plugin-sheet\"><h2>{}</h2><table class=\"office-plugin-grid\"><thead><tr><th></th>", escape_html(&name)));
+        for col in 0..total_cols {
+            html_body.push_str(&format!("<th>{}</th>", spreadsheet_column_label(col)));
+        }
+        html_body.push_str("</tr></thead><tbody>");
+        for (row_index, row) in rows.iter().take(500).enumerate() {
+            html_body.push_str(&format!("<tr><th>{}</th>", row_index + 1));
+            for col in 0..total_cols {
+                let value = row.get(col).map_or("", String::as_str);
+                html_body.push_str(&format!("<td>{}</td>", escape_html(value)));
+            }
+            html_body.push_str("</tr>");
+        }
+        html_body.push_str("</tbody></table></section>");
         sheets.push(sheet_obj);
     }
+    html_body.push_str("</div>");
 
-    if zip_has_entry(bytes, "xl/drawings/") {
-        warnings.push("sheet drawings/charts present but not yet rendered".to_string());
-    }
+    warnings.push("spreadsheet rendered with calamine; charts, pivot tables, macros, and exact Excel layout are not rendered".to_string());
 
-    let mut supports = vec!["text", "sheets", "shared-strings"];
-    let mut missing = vec!["formatting", "formulas", "charts", "filters", "cell-styles"];
-    let has_merged = sheets.iter().any(|s| s.get("merged_cells").map_or(false, |v| !v.as_array().map_or(true, |a| a.is_empty())));
-    let has_frozen = sheets.iter().any(|s| s.get("frozen_panes").is_some());
-    if has_merged { supports.push("merged-cells"); } else { missing.push("merged-cells"); }
-    if has_frozen { supports.push("frozen-panes"); } else { missing.push("frozen-panes"); }
+    let supports = vec!["xls", "xlsx", "xlsm", "multi-sheet", "typed-cells", "dates", "formulas-as-values"];
+    let missing = vec!["charts", "pivot-tables", "macros", "exact-cell-styles", "page-layout"];
 
     Ok(json!({
         "kind": "xlsx",
+        "renderer": plugin_renderer_marker(),
+        "html": office_html_document("Workbook", &html_body),
         "sheets": sheets,
         "byte_len": bytes.len(),
         "warnings": warnings,
@@ -186,6 +301,51 @@ fn render_xlsx(bytes: &[u8]) -> Result<String, String> {
         },
     })
     .to_string())
+}
+
+fn xlsx_sheet_paths(bytes: &[u8]) -> Result<std::collections::HashMap<String, String>, String> {
+    let workbook = zip_entry_string(bytes, "xl/workbook.xml")?;
+    let workbook_rels = zip_entry_string(bytes, "xl/_rels/workbook.xml.rels")?;
+    let rels = parse_relationships(&workbook_rels)?;
+    let mut paths = std::collections::HashMap::new();
+    for (name, rel_id) in parse_workbook_sheets(&workbook)? {
+        if let Some(target) = rels.get(&rel_id) {
+            let path = if target.starts_with("xl/") {
+                target.clone()
+            } else {
+                format!("xl/{}", target.trim_start_matches('/'))
+            };
+            paths.insert(name, path);
+        }
+    }
+    Ok(paths)
+}
+
+fn data_to_string(data: &Data) -> String {
+    match data {
+        Data::Empty => String::new(),
+        Data::String(s) => s.clone(),
+        Data::Float(v) => {
+            if v.fract() == 0.0 { format!("{v:.0}") } else { v.to_string() }
+        }
+        Data::Int(v) => v.to_string(),
+        Data::Bool(v) => v.to_string(),
+        Data::DateTime(v) => v.to_string(),
+        Data::DateTimeIso(v) => v.clone(),
+        Data::DurationIso(v) => v.clone(),
+        Data::Error(v) => format!("{v:?}"),
+    }
+}
+
+fn spreadsheet_column_label(index: usize) -> String {
+    let mut n = index + 1;
+    let mut label = String::new();
+    while n > 0 {
+        let rem = (n - 1) % 26;
+        label.insert(0, (b'A' + rem as u8) as char);
+        n = (n - 1) / 26;
+    }
+    label
 }
 
 fn parse_sheet_merged_cells(xml: &str) -> Vec<String> {
@@ -286,9 +446,23 @@ fn render_pptx(bytes: &[u8]) -> Result<String, String> {
         }
         slides.push(slide);
     }
+    let mut html_body = String::from("<div class=\"office-plugin-slides\">");
+    for (idx, slide) in slides.iter().enumerate() {
+        let title = escape_html(slide.get("title").and_then(|v| v.as_str()).unwrap_or(""));
+        let body = escape_html(slide.get("body").and_then(|v| v.as_str()).unwrap_or(""));
+        html_body.push_str(&format!(
+            "<section class=\"office-plugin-slide\" aria-label=\"Slide {}\"><div class=\"office-plugin-slide-title\">{}</div><div class=\"office-plugin-slide-body\">{}</div></section>",
+            idx + 1,
+            title,
+            body
+        ));
+    }
+    html_body.push_str("</div>");
 
     Ok(serde_json::json!({
         "kind": "pptx",
+        "renderer": plugin_renderer_marker(),
+        "html": office_html_document("Presentation", &html_body),
         "slide_count": slides.len(),
         "slides": slides,
         "byte_len": bytes.len(),
@@ -813,101 +987,6 @@ fn parse_workbook_sheets(xml: &str) -> Result<Vec<(String, String)>, String> {
     Ok(sheets)
 }
 
-fn parse_shared_strings(xml: &str) -> Result<Vec<String>, String> {
-    let mut reader = Reader::from_str(xml);
-    reader.config_mut().trim_text(false);
-    let mut strings = Vec::new();
-    let mut current = String::new();
-    let mut in_si = false;
-    let mut in_text = false;
-    loop {
-        match reader.read_event() {
-            Ok(Event::Start(e)) if e.name() == QName(b"si") => {
-                in_si = true;
-                current.clear();
-            }
-            Ok(Event::Start(e)) if e.name() == QName(b"t") => in_text = true,
-            Ok(Event::Text(e)) if in_text => current.push_str(&e.decode().map_err(|e| format!("shared string decode: {e}"))?),
-            Ok(Event::End(e)) if e.name() == QName(b"t") => in_text = false,
-            Ok(Event::End(e)) if e.name() == QName(b"si") => {
-                in_si = false;
-                strings.push(current.clone());
-            }
-            Ok(Event::Eof) => break,
-            Err(e) => return Err(format!("sharedStrings parse: {e}")),
-            _ => {}
-        }
-    }
-    if in_si && !current.is_empty() {
-        strings.push(current);
-    }
-    Ok(strings)
-}
-
-fn parse_sheet_rows(xml: &str, shared_strings: &[String]) -> Result<Vec<Vec<String>>, String> {
-    let mut reader = Reader::from_str(xml);
-    reader.config_mut().trim_text(true);
-    let mut rows = Vec::new();
-    let mut row = Vec::new();
-    let mut cell_type = String::new();
-    let mut cell_ref = String::new();
-    let mut cell_value = String::new();
-    let mut in_value = false;
-    let mut in_inline_text = false;
-
-    loop {
-        match reader.read_event() {
-            Ok(Event::Start(e)) if e.name() == QName(b"row") => row.clear(),
-            Ok(Event::Start(e)) if e.name() == QName(b"c") => {
-                cell_type = attr_value(&e, b"t").unwrap_or_default();
-                cell_ref = attr_value(&e, b"r").unwrap_or_default();
-                cell_value.clear();
-            }
-            Ok(Event::Start(e)) if e.name() == QName(b"v") => in_value = true,
-            Ok(Event::Start(e)) if e.name() == QName(b"t") => in_inline_text = true,
-            Ok(Event::Text(e)) if in_value || in_inline_text => {
-                cell_value.push_str(&e.decode().map_err(|e| format!("sheet text decode: {e}"))?);
-            }
-            Ok(Event::End(e)) if e.name() == QName(b"v") => in_value = false,
-            Ok(Event::End(e)) if e.name() == QName(b"t") => in_inline_text = false,
-            Ok(Event::End(e)) if e.name() == QName(b"c") => {
-                let col = column_index(&cell_ref).unwrap_or(row.len());
-                if row.len() <= col {
-                    row.resize(col + 1, String::new());
-                }
-                row[col] = if cell_type == "s" {
-                    cell_value
-                        .parse::<usize>()
-                        .ok()
-                        .and_then(|idx| shared_strings.get(idx).cloned())
-                        .unwrap_or_else(|| cell_value.clone())
-                } else {
-                    cell_value.clone()
-                };
-            }
-            Ok(Event::End(e)) if e.name() == QName(b"row") => {
-                if row.iter().any(|cell| !cell.is_empty()) {
-                    rows.push(std::mem::take(&mut row));
-                }
-            }
-            Ok(Event::Eof) => break,
-            Err(e) => return Err(format!("sheet parse: {e}")),
-            _ => {}
-        }
-    }
-    Ok(rows)
-}
-
-fn column_index(cell_ref: &str) -> Option<usize> {
-    let mut value = 0usize;
-    let mut saw_letter = false;
-    for b in cell_ref.bytes().take_while(|b| b.is_ascii_alphabetic()) {
-        saw_letter = true;
-        value = value * 26 + usize::from(b.to_ascii_uppercase() - b'A' + 1);
-    }
-    saw_letter.then_some(value.saturating_sub(1))
-}
-
 fn parse_drawing_texts(xml: &str) -> Result<Vec<String>, String> {
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(false);
@@ -1141,8 +1220,6 @@ pub extern "system" fn Java_ai_viewit_plugins_office_1ooxml_Plugin_renderNative(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn rejects_non_ooxml_extension() {
         assert!(super::inspect_ooxml(&[], "txt").is_err());

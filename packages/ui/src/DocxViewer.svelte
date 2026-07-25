@@ -7,6 +7,7 @@
   let { document: docProp = {} }: { document?: any } = $props();
 
   let blocks = $derived((docProp.blocks ?? []) as Array<any>);
+  let pluginHtml = $derived((docProp.html ?? '') as string);
   let byte_len = $derived((docProp.byte_len ?? 0) as number);
   let query = $state('');
   let caseSensitive = $state(false);
@@ -46,6 +47,9 @@
 </script>
 
 <article class="docx-viewer">
+  {#if pluginHtml}
+    <div class="plugin-html-surface">{@html pluginHtml}</div>
+  {:else}
   <div class="toolbar">
     <SearchBar onSearch={(q, cs) => { query = q; caseSensitive = cs; }} />
     <aside class="meta">
@@ -90,7 +94,7 @@
           {:else if block.kind === 'image'}
             <figure class="img-block" id={`block-${index}`}>
               {#if block.src}
-                <img src={block.src} alt="Embedded image" style="max-width:100%;height:auto;border-radius:0.4rem;" />
+                <img src={block.src} alt="" style="max-width:100%;height:auto;border-radius:0.4rem;" />
               {:else}
                 <span class="img-placeholder">Embedded image</span>
               {/if}
@@ -102,10 +106,12 @@
       </div>
     </div>
   </div>
+  {/if}
 </article>
 
 <style>
   .docx-viewer { color: var(--text-primary); }
+  .plugin-html-surface { overflow: auto; border-radius: 0.75rem; }
   .toolbar { position: sticky; top: 3.2rem; z-index: 3; background: var(--bg-primary); border-bottom: 1px solid var(--border); padding: 0.75rem 0 0.6rem; }
   .meta { display: flex; flex-wrap: wrap; gap: 0.4rem; color: var(--text-secondary); margin-top: 0.5rem; font-size: 0.75rem; }
   .meta span { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 999px; padding: 0.12rem 0.45rem; }

@@ -15,6 +15,7 @@
       frozen_panes?: { x_split: number; y_split: number; active_pane: string };
     }>,
   );
+  let pluginHtml = $derived((docProp.html ?? '') as string);
   let activeSheet = $state(0);
   let query = $state('');
   let caseSensitive = $state(false);
@@ -66,6 +67,9 @@
 </script>
 
 <article class="xlsx-viewer">
+  {#if pluginHtml}
+    <div class="plugin-html-surface">{@html pluginHtml}</div>
+  {:else}
   <SearchBar onSearch={(q, cs) => { query = q; caseSensitive = cs; }} />
   {#if sheets.length > 1}
     <div class="tabs" role="tablist">
@@ -110,10 +114,12 @@
       </table>
     </div>
   {/if}
+  {/if}
 </article>
 
 <style>
   .xlsx-viewer { padding: 0.5rem 1rem; color: var(--text-primary); }
+  .plugin-html-surface { overflow: auto; border-radius: 0.75rem; }
   .tabs { display: flex; gap: 0.3rem; margin-bottom: 0.5rem; overflow-x: auto; }
   .tabs button { cursor: pointer; padding: 0.36rem 0.75rem; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border); border-radius: 0.5rem; font-size: 0.8rem; }
   .tabs button.active { background: var(--link); color: #fff; border-color: var(--link); font-weight: 700; }
