@@ -58,12 +58,13 @@ if [[ -f plugins/catalog.json ]]; then
   X64_ZIP="plugins/office-ooxml-0.1.0-x86_64.zip"
   if [[ -f "$ARM64_ZIP" ]]; then
     ARM64_CHECKSUM=$(sha256sum "$ARM64_ZIP" | awk '{print $1}')
-    # Update arm64 checksum in catalog using Python for reliable JSON editing
     python3 -c "
-import json, sys
+import json
 with open('plugins/catalog.json') as f:
     catalog = json.load(f)
-catalog['plugins'][0]['channels']['stable']['arm64-v8a']['checksum'] = '$ARM64_CHECKSUM'
+for p in catalog['plugins']:
+    if p['id'] == 'office-ooxml' and p.get('abi') == 'arm64-v8a':
+        p['checksum'] = '$ARM64_CHECKSUM'
 with open('plugins/catalog.json', 'w') as f:
     json.dump(catalog, f, indent=2)
 "
@@ -71,10 +72,12 @@ with open('plugins/catalog.json', 'w') as f:
   if [[ -f "$X64_ZIP" ]]; then
     X64_CHECKSUM=$(sha256sum "$X64_ZIP" | awk '{print $1}')
     python3 -c "
-import json, sys
+import json
 with open('plugins/catalog.json') as f:
     catalog = json.load(f)
-catalog['plugins'][0]['channels']['stable']['x86_64']['checksum'] = '$X64_CHECKSUM'
+for p in catalog['plugins']:
+    if p['id'] == 'office-ooxml' and p.get('abi') == 'x86_64':
+        p['checksum'] = '$X64_CHECKSUM'
 with open('plugins/catalog.json', 'w') as f:
     json.dump(catalog, f, indent=2)
 "
