@@ -25,7 +25,7 @@
         "pptm"
       ],
       "downloadUrl": "http://127.0.0.1:8888/office-ooxml-0.2.0-arm64-v8a.zip",
-      "checksum": "d02f2a02089c0916ac81c2d0ca6b5d7589f3634abe4361372d29882c1349f9a0",
+      "checksum": "c846ab8a55d4ff145818d3637e17d0abbb79e68037ba748021dfb8c0d12779c7",
       "minAppVersion": 1
     },
     {
@@ -53,7 +53,7 @@
         "pptm"
       ],
       "downloadUrl": "http://127.0.0.1:8888/office-ooxml-0.2.0-x86_64.zip",
-      "checksum": "eee8b9ba5d6f95e1f9d6367368afdc0d987b23b94963ba7859f3fbddac572ad4",
+      "checksum": "cf678c6289ce67ccc105cdd253311b09d7a87cd61f3182be82b3ec19146afa29",
       "minAppVersion": 1
     },
     {
