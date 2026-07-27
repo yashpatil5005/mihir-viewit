@@ -96,6 +96,10 @@ fn is_office_format(format: Format) -> bool {
     )
 }
 
+fn is_iwork_format(format: Format) -> bool {
+    matches!(format, Format::IworkPages | Format::IworkNumbers | Format::IworkKey)
+}
+
 fn format_from_ext(ext: &str) -> Format {
     sniff(&[], ext)
 }
@@ -257,7 +261,7 @@ fn sniff_prefix(app: &AppHandle, uri: &str, ext: &str) -> Result<(String, Format
     }
     if !ext_hint.is_empty() {
         let f = format_from_ext(&ext_hint);
-        if is_image_format(f) || is_office_format(f) {
+        if is_image_format(f) || is_office_format(f) || is_iwork_format(f) {
             return Ok((ext_hint.clone(), f));
         }
     }
@@ -387,12 +391,12 @@ pub fn open_from_uri(
         return Ok(doc);
     }
 
-    // Office files (non-PPTX): read full bytes (they need full content for parsing)
-    if is_office_format(format) {
+    // Office/iWork files (non-PPTX): read full bytes (they need full content for parsing)
+    if is_office_format(format) || is_iwork_format(format) {
         let bytes = read_uri_bytes(app, &uri)?;
         if bytes.len() > OPEN_BYTES_CAP {
             return Err(format!(
-                "Office file is {:.1} MB — max {} MB in memory.",
+                "Document is {:.1} MB — max {} MB in memory.",
                 bytes.len() as f64 / 1_048_576.0,
                 OPEN_BYTES_CAP / 1_048_576
             ));

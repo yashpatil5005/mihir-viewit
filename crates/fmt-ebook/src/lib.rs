@@ -56,8 +56,7 @@ fn parse_mobi(bytes: &[u8]) -> Result<Document, Error> {
     
     // Extract text content — MOBI uses PalmDOC compression
     // The mobi crate handles decompression internally
-    let text = mobi.content_as_string()
-        .map_err(|e| Error::Parse(format!("mobi text extraction: {}", e)))?;
+    let text = mobi.content_as_string().unwrap_or_else(|_| mobi.content_as_string_lossy());
     let html = if text.is_empty() {
         "<p>(no text content)</p>".into()
     } else {
@@ -197,4 +196,21 @@ fn parse_opf(xml: &str) -> Result<(String, Option<String>, Vec<String>), Error> 
         .collect();
 
     Ok((title, author, spine_paths))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A degenerate MOBI fixture cannot easily be constructed by hand, so this
+    /// test only asserts that the parse path fails cleanly with a Parse error
+    /// (not a panic) on bytes that are not a valid MOBI. The real MOBI path is
+    /// covered by the device smoke (`sample.mobi`) and recorded in
+    /// `.agent/failures/format-verification.md` after the lossy fallback fix.
+    #[test]
+    fn mobi_parse_invalid_bytes_returns_parse_error_not_panic() {
+        let bytes = [0u8; 16];
+        let result = parse_mobi(&bytes);
+        assert!(matches!(result, Err(Error::Parse(_))), "invalid MOBI bytes should surface a Parse error, got {:?}", result);
+    }
 }

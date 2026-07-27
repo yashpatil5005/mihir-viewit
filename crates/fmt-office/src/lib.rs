@@ -162,7 +162,18 @@ fn parse_legacy_binary(bytes: &[u8], format: Format) -> Result<Document, Error> 
         }
     }
 
-    let label = match format { Format::Doc => "Word .doc", Format::Ppt => "PowerPoint .ppt", _ => "legacy" };
+    if format == Format::Ppt {
+        let slides = legacy_ppt_slides(&text);
+        return Ok(Document::Pptx {
+            slide_count: slides.len(),
+            slides,
+            byte_len: bytes.len(),
+            asset_path: String::new(),
+            stream_url: None,
+        });
+    }
+
+    let label = match format { Format::Doc => "Word .doc", _ => "legacy" };
     Ok(Document::Text {
         content: format!(
             "[Partial preview — {} legacy binary, layout/formatting not preserved]\n\n{}",
@@ -173,6 +184,38 @@ fn parse_legacy_binary(bytes: &[u8], format: Format) -> Result<Document, Error> 
         truncated: text.len() > 256 * 1024,
         stream_url: None,
     })
+}
+
+fn legacy_ppt_slides(text: &str) -> Vec<viewit_core_types::PptxSlide> {
+    use viewit_core_types::PptxSlide;
+
+    let cleaned: Vec<String> = text
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.len() >= 3)
+        .filter(|line| !line.chars().all(|c| c.is_ascii_punctuation() || c.is_ascii_digit()))
+        .map(str::to_string)
+        .collect();
+
+    if cleaned.is_empty() {
+        return vec![PptxSlide {
+            title: "Legacy PowerPoint preview".into(),
+            body: "No extractable slide text found. Legacy binary PowerPoint layout is not decoded in the lightweight viewer.".into(),
+        }];
+    }
+
+    let mut slides = Vec::new();
+    let chunk_size = 12;
+    for (idx, chunk) in cleaned.chunks(chunk_size).enumerate() {
+        let title = chunk
+            .first()
+            .cloned()
+            .filter(|s| s.len() <= 120)
+            .unwrap_or_else(|| format!("Legacy PowerPoint slide {}", idx + 1));
+        let body = chunk.iter().skip(1).cloned().collect::<Vec<_>>().join("\n");
+        slides.push(PptxSlide { title, body });
+    }
+    slides
 }
 
 /// Extract printable UTF-16 LE strings from a byte slice.
@@ -486,4 +529,82 @@ fn heading_from_style(style: &str) -> Option<u8> {
         .strip_prefix("Heading")
         .or_else(|| style.strip_prefix("heading"))
         .and_then(|level| level.trim().parse::<u8>().ok())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn legacy_ppt_text() -> Vec<u8> {
+        use std::io::{Cursor, Write};
+        let mut buf: Vec<u8> = Vec::new();
+        {
+            let cursor = Cursor::new(&mut buf);
+            let mut cfb = cfb::CompoundFile::create(cursor).unwrap();
+            let mut stream = cfb.create_stream("PowerPoint Document").unwrap();
+            for line in [
+                "Click to edit the title text format",
+                "Click to edit the outline text format",
+                "Second Outline Level",
+                "Third Outline Level",
+                "Fourth Outline Level",
+                "Arial",
+            ] {
+                for ch in line.chars() {
+                    let _ = stream.write_all(&[ch as u8, 0]);
+                }
+                let _ = stream.write_all(&[0x0A, 0x00]);
+            }
+            stream.flush().unwrap();
+            drop(stream);
+            cfb.flush().unwrap();
+        }
+        buf
+    }
+
+    #[test]
+    fn legacy_ppt_maps_to_pptx_slide_model() {
+        let bytes = legacy_ppt_text();
+        if bytes.is_empty() {
+            eprintln!("skipping legacy_ppt_maps_to_pptx_slide_model: cfb stream write unavailable in environment");
+            return;
+        }
+        let doc = crate::parse(&bytes, Format::Ppt, "sample.ppt").unwrap();
+        match doc {
+            Document::Pptx { slides, .. } => {
+                assert!(!slides.is_empty(), "PPT should produce at least one slide");
+                assert!(
+                    slides.iter().any(|s| !s.title.is_empty()),
+                    "slides should have non-empty titles derived from extracted text"
+                );
+                assert!(
+                    slides.iter().any(|s| !s.body.is_empty()),
+                    "slides should have non-empty bodies derived from extracted text"
+                );
+            }
+            other => panic!("expected Document::Pptx for PPT, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn legacy_ppt_slides_chunks_extracted_text() {
+        let text = "Alpha\nBeta\nGamma\nDelta\nEpsilon\nZeta\nEta\nTheta\nIota\nKappa\nLambda\nMu\nNu\nXi\nOmicron\nPi\nRho\n";
+        let slides = legacy_ppt_slides(text);
+        assert!(slides.len() >= 2, "expected multiple slides from chunking, got {}", slides.len());
+        assert!(
+            slides.iter().all(|s| !s.title.is_empty()),
+            "every slide should have a non-empty title"
+        );
+        assert!(
+            slides.iter().any(|s| !s.body.is_empty()),
+            "at least one slide should have a non-empty body"
+        );
+    }
+
+    #[test]
+    fn legacy_ppt_slides_empty_text_yields_honest_partial_slide() {
+        let slides = legacy_ppt_slides("");
+        assert_eq!(slides.len(), 1);
+        assert!(slides[0].body.contains("not decoded"), "empty PPT text should yield honest partial-notice slide");
+    }
 }

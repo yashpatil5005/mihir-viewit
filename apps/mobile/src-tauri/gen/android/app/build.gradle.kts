@@ -30,11 +30,6 @@ android {
             isDebuggable = true
             isJniDebuggable = true
             isMinifyEnabled = false
-            packaging {                jniLibs.keepDebugSymbols.add("*/arm64-v8a/*.so")
-                jniLibs.keepDebugSymbols.add("*/armeabi-v7a/*.so")
-                jniLibs.keepDebugSymbols.add("*/x86/*.so")
-                jniLibs.keepDebugSymbols.add("*/x86_64/*.so")
-            }
         }
         getByName("release") {
             manifestPlaceholders["usesCleartextTraffic"] = "true"
@@ -51,6 +46,9 @@ android {
     }
     buildFeatures {
         buildConfig = true
+    }
+    packaging {
+        jniLibs.keepDebugSymbols.add("**/*.so")
     }
 }
 
@@ -74,3 +72,9 @@ dependencies {
 }
 
 apply(from = "tauri.build.gradle.kts")
+
+tasks.configureEach {
+    if (name.startsWith("strip") && name.endsWith("DebugSymbols")) {
+        enabled = false
+    }
+}

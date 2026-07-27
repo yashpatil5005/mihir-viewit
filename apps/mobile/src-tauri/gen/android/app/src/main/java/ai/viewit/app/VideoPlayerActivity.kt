@@ -281,6 +281,7 @@ class VideoPlayerActivity : AppCompatActivity() {
             "flac" -> "audio/flac"
             "ogg" -> "audio/ogg"
             "wav" -> "audio/wav"
+            "aif", "aiff" -> "audio/aiff"
             "wma" -> "audio/x-ms-wma"
             else -> ""
         }

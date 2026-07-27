@@ -198,6 +198,14 @@
         if (await drainOpenedQueue()) break;
       }
     }
+    (window as any).__viewitAndroidOpened = (urls: string[] | string) => {
+      const list = Array.isArray(urls) ? urls : [urls];
+      if (list.length > 0) {
+        debugLog(`android opened event ${list[0].slice(0, 60)}…`);
+        pendingUri = list[0];
+        void load();
+      }
+    };
     onOpenedFiles((urls) => {
       if (urls.length > 0) {
         debugLog(`opened event ${urls[0].slice(0, 60)}…`);
@@ -358,7 +366,7 @@
     }
     const builtIn = await openFile(readableUri);
     const detectedKind = builtIn.kind;
-    if (hasAndroidBridge() && OFFICE_KINDS.has(detectedKind)) {
+    if (hasAndroidBridge() && OFFICE_KINDS.has(detectedKind) && OFFICE_PLUGIN_EXTS.has(ext)) {
       const prefId = getRuntimePref(detectedKind);
       if (prefId !== '__builtin__') {
         const plugin = (await listInstalledPlugins()).find((candidate) => candidate.id !== failedPluginId && pluginSupports(candidate, detectedKind));
@@ -498,6 +506,7 @@
       {:else if doc.kind === 'archive' && ArchiveViewer}
         <ArchiveViewer {...(doc as any)} />
       {:else if isOfficePluginHtml()}
+        {#key docUri}
         <div class="plugin-renderer-shell">
         <div class="plugin-renderer-banner">PLUGIN RENDERER ACTIVE · {officeRendererLabel || selectedOfficePlugin?.name || 'Office plugin'} · HTML VIEWER MODE</div>
         <div class="runtime-bar plugin-runtime-bar">
@@ -508,7 +517,9 @@
         </div>
         <OfficePluginHtmlViewer document={doc} />
         </div>
+        {/key}
       {:else if doc.kind === 'pptx' && PptxViewer}
+        {#key docUri}
         <div class:plugin-renderer-shell={isPluginRendered()}>
         {#if isPluginRendered()}<div class="plugin-renderer-banner">PLUGIN RENDERER ACTIVE · {officeRendererLabel || selectedOfficePlugin?.name || 'Office plugin'} · LIGHT PINK TEST MODE</div>{/if}
         <div class="runtime-bar" class:plugin-runtime-bar={isPluginRendered()}>
@@ -519,7 +530,9 @@
         </div>
         {#if (doc as any).html}<div class="plugin-html-surface">{@html (doc as any).html}</div>{:else}<PptxViewer document={doc} source_uri={docUri ?? ''} />{/if}
         </div>
+        {/key}
       {:else if doc.kind === 'docx' && DocxViewer}
+        {#key docUri}
         <div class:plugin-renderer-shell={isPluginRendered()}>
         {#if isPluginRendered()}<div class="plugin-renderer-banner">PLUGIN RENDERER ACTIVE · {officeRendererLabel || selectedOfficePlugin?.name || 'Office plugin'} · LIGHT PINK TEST MODE</div>{/if}
         <div class="runtime-bar" class:plugin-runtime-bar={isPluginRendered()}>
@@ -530,7 +543,9 @@
         </div>
         {#if (doc as any).html}<div class="plugin-html-surface">{@html (doc as any).html}</div>{:else}<DocxViewer document={doc} />{/if}
         </div>
+        {/key}
       {:else if doc.kind === 'xlsx' && XlsxViewer}
+        {#key docUri}
         <div class:plugin-renderer-shell={isPluginRendered()}>
         {#if isPluginRendered()}<div class="plugin-renderer-banner">PLUGIN RENDERER ACTIVE · {officeRendererLabel || selectedOfficePlugin?.name || 'Office plugin'} · LIGHT PINK TEST MODE</div>{/if}
         <div class="runtime-bar" class:plugin-runtime-bar={isPluginRendered()}>
@@ -541,6 +556,7 @@
         </div>
         {#if (doc as any).html}<div class="plugin-html-surface">{@html (doc as any).html}</div>{:else}<XlsxViewer document={doc} />{/if}
         </div>
+        {/key}
       {:else if doc.kind === 'unsupported'}
         <UnsupportedViewer uri={docUri ?? undefined} document={doc} />
       {:else if doc.kind === 'font' && FontViewer}

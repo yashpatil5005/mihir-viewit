@@ -18,24 +18,33 @@ SKIPPED=0
 echo "=== ViewIt Quality Gate ==="
 echo ""
 
-# 0. Git worktree clean (check FIRST)
+# 0. Git worktree clean (check FIRST).
+#    Releases still require a clean worktree, but local iteration can opt in
+#    via VIEWIT_ALLOW_DIRTY=1 so cargo/frontend/plugin checks run without
+#    forcing a commit first. CI runs unset this env var to keep the guard.
 echo "[1/7] Git worktree clean..."
 if git diff --quiet && git diff --cached --quiet; then
   echo -e "${GREEN}PASS${NC}  Git worktree clean"
   PASSED=$((PASSED+1))
 else
-  echo -e "${RED}FAIL${NC}  Git worktree has uncommitted changes"
-  echo "  Commit or stash changes before running quality gate."
-  FAILED=$((FAILED+1))
-  # Early exit - can't guarantee clean state
-  echo ""
-  echo "=== Results ==="
-  echo -e "Passed:  ${GREEN}0${NC}"
-  echo -e "Failed:  ${RED}1${NC}"
-  echo -e "Skipped: ${YELLOW}0${NC}"
-  echo ""
-  echo -e "${RED}QUALITY GATE FAILED${NC}"
-  exit 1
+  if [[ "${VIEWIT_ALLOW_DIRTY:-0}" == "1" ]]; then
+    echo -e "${YELLOW}SKIP${NC}  Git worktree dirty (VIEWIT_ALLOW_DIRTY=1 — release builds must unset this env)"
+    SKIPPED=$((SKIPPED+1))
+  else
+    echo -e "${RED}FAIL${NC}  Git worktree has uncommitted changes"
+    echo "  Commit or stash changes before running the release quality gate."
+    echo "  For local iteration only: VIEWIT_ALLOW_DIRTY=1 scripts/quality-gate.sh"
+    FAILED=$((FAILED+1))
+    # Early exit - can't guarantee clean state for releases
+    echo ""
+    echo "=== Results ==="
+    echo -e "Passed:  ${GREEN}0${NC}"
+    echo -e "Failed:  ${RED}1${NC}"
+    echo -e "Skipped: ${YELLOW}0${NC}"
+    echo ""
+    echo -e "${RED}QUALITY GATE FAILED${NC}"
+    exit 1
+  fi
 fi
 
 # 1. Base app frontend build
@@ -160,6 +169,27 @@ echo -e "Passed:  ${GREEN}$PASSED${NC}"
 echo -e "Failed:  ${RED}$FAILED${NC}"
 echo -e "Skipped: ${YELLOW}$SKIPPED${NC}"
 echo ""
+
+# Optional bonus gate: 16 KB compatibility of the most recent signed APK.
+# This runs only when an APK already exists in dist/. CI trips this if a
+# release build regresses the ELF alignment / zipalign page-size.
+APK="$ROOT/dist/viewit-android-universal-debug.apk"
+if [[ -f "$APK" && -x "$ROOT/scripts/verify-android-16kb.sh" ]]; then
+  echo "[bonus] 16 KB APK compatibility..."
+  if bash "$ROOT/scripts/verify-android-16kb.sh" "$APK" >/tmp/viewit-16kb.log 2>&1; then
+    echo -e "${GREEN}PASS${NC}  16 KB APK compatibility"
+    PASSED=$((PASSED+1))
+  else
+    echo -e "${RED}FAIL${NC}  16 KB APK compatibility (see /tmp/viewit-16kb.log)"
+    FAILED=$((FAILED+1))
+  fi
+  echo ""
+  echo "=== Results (incl. bonus) ==="
+  echo -e "Passed:  ${GREEN}$PASSED${NC}"
+  echo -e "Failed:  ${RED}$FAILED${NC}"
+  echo -e "Skipped: ${YELLOW}$SKIPPED${NC}"
+  echo ""
+fi
 
 if [[ $FAILED -gt 0 ]]; then
   echo -e "${RED}QUALITY GATE FAILED${NC}"

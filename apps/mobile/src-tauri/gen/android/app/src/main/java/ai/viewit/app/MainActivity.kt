@@ -16,6 +16,8 @@ import java.io.FileOutputStream
 import java.security.MessageDigest
 
 class MainActivity : TauriActivity() {
+  private var bridgeWebView: WebView? = null
+
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     WebView.setWebContentsDebuggingEnabled(true)
@@ -25,6 +27,7 @@ class MainActivity : TauriActivity() {
 
   override fun onWebViewCreate(webView: WebView) {
     super.onWebViewCreate(webView)
+    bridgeWebView = webView
     webView.addJavascriptInterface(AndroidBridge(webView), "AndroidBridge")
   }
 
@@ -66,8 +69,18 @@ class MainActivity : TauriActivity() {
     try {
       val f = File(applicationContext.filesDir, "viewit_pending_opens.txt")
       f.writeText(lines.joinToString("\n") + "\n")
+      notifyWebViewOpened(lines.map { it.substringBefore('\t') })
     } catch (e: Exception) {
       android.util.Log.e("ViewIt", "pending opens write failed", e)
+    }
+  }
+
+  private fun notifyWebViewOpened(uris: List<String>) {
+    val webView = bridgeWebView ?: return
+    if (uris.isEmpty()) return
+    val payload = JSONArray(uris).toString()
+    webView.post {
+      webView.evaluateJavascript("window.__viewitAndroidOpened && window.__viewitAndroidOpened($payload)", null)
     }
   }
 

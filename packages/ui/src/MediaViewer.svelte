@@ -41,6 +41,7 @@
     ogv: 'video/ogg', f4v: 'video/mp4', asf: 'video/x-ms-wmv',
     mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac', flac: 'audio/flac',
     ogg: 'audio/ogg', wav: 'audio/wav', wma: 'audio/x-ms-wma', opus: 'audio/opus',
+    aif: 'audio/aiff', aiff: 'audio/aiff',
   };
 
   function mimeForExt(e: string): string {
@@ -94,6 +95,91 @@
     return false;
   }
 
+  async function tryAiffWavUrl(): Promise<boolean> {
+    if (ext !== 'aif' && ext !== 'aiff') return false;
+    const { debugLog: log } = await import('@viewit/platform');
+    try {
+      const bytes = stream_url
+        ? new Uint8Array(await (await fetch(stream_url)).arrayBuffer())
+        : await (async () => {
+            const { readMaterializedBytes } = await import('@viewit/platform');
+            return readMaterializedBytes(asset_path);
+          })();
+      const wav = aiffToWav(bytes);
+      blobUrl = URL.createObjectURL(new Blob([wav], { type: 'audio/wav' }));
+      src = blobUrl;
+      currentStrategy = 'aiff-wav';
+      log(`[media] AIFF decoded to WAV bytes=${wav.length}`);
+      return true;
+    } catch (e) {
+      log(`[media] AIFF decode failed: ${e instanceof Error ? e.message : String(e)}`);
+      return false;
+    }
+  }
+
+  function aiffToWav(bytes: Uint8Array): Uint8Array {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const ascii = (offset: number, len: number) => String.fromCharCode(...bytes.subarray(offset, offset + len));
+    if (ascii(0, 4) !== 'FORM' || ascii(8, 4) !== 'AIFF') throw new Error('not AIFF');
+    let channels = 0;
+    let frames = 0;
+    let bits = 0;
+    let sampleRate = 0;
+    let pcmStart = 0;
+    let pcmLen = 0;
+    for (let pos = 12; pos + 8 <= bytes.length;) {
+      const id = ascii(pos, 4);
+      const size = view.getUint32(pos + 4, false);
+      const data = pos + 8;
+      if (id === 'COMM') {
+        channels = view.getUint16(data, false);
+        frames = view.getUint32(data + 2, false);
+        bits = view.getUint16(data + 6, false);
+        sampleRate = readExtended80(view, data + 8);
+      } else if (id === 'SSND') {
+        const offset = view.getUint32(data, false);
+        pcmStart = data + 8 + offset;
+        pcmLen = size - 8 - offset;
+      }
+      pos = data + size + (size % 2);
+    }
+    if (!channels || !frames || !bits || !sampleRate || !pcmStart || !pcmLen) throw new Error('unsupported AIFF structure');
+    if (![8, 16, 24, 32].includes(bits)) throw new Error(`unsupported AIFF bit depth ${bits}`);
+
+    const pcm = new Uint8Array(pcmLen);
+    if (bits === 8) {
+      pcm.set(bytes.subarray(pcmStart, pcmStart + pcmLen));
+    } else {
+      const step = bits / 8;
+      for (let i = 0; i < pcmLen; i += step) {
+        for (let b = 0; b < step; b++) pcm[i + b] = bytes[pcmStart + i + step - 1 - b];
+      }
+    }
+    return wavBytes(pcm, channels, sampleRate, bits);
+  }
+
+  function readExtended80(view: DataView, offset: number): number {
+    const expon = view.getUint16(offset, false);
+    const hiMant = view.getUint32(offset + 2, false);
+    const loMant = view.getUint32(offset + 6, false);
+    if (expon === 0 && hiMant === 0 && loMant === 0) return 0;
+    const sign = expon & 0x8000 ? -1 : 1;
+    const exp = (expon & 0x7fff) - 16383;
+    const mant = hiMant * 2 ** -31 + loMant * 2 ** -63;
+    return Math.round(sign * mant * 2 ** exp);
+  }
+
+  function wavBytes(pcm: Uint8Array, channels: number, sampleRate: number, bits: number): Uint8Array {
+    const out = new Uint8Array(44 + pcm.length);
+    const v = new DataView(out.buffer);
+    const put = (o: number, s: string) => { for (let i = 0; i < s.length; i++) out[o + i] = s.charCodeAt(i); };
+    put(0, 'RIFF'); v.setUint32(4, 36 + pcm.length, true); put(8, 'WAVE'); put(12, 'fmt ');
+    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, channels, true);
+    v.setUint32(24, sampleRate, true); v.setUint32(28, sampleRate * channels * bits / 8, true);
+    v.setUint16(32, channels * bits / 8, true); v.setUint16(34, bits, true); put(36, 'data');
+    v.setUint32(40, pcm.length, true); out.set(pcm, 44); return out;
+  }
+
   async function launchNativePlayer() {
     const { debugLog: log } = await import('@viewit/platform');
     try {
@@ -112,7 +198,7 @@
   }
 
   async function useBuiltInRuntime() {
-    if (isAndroidTauri && media_kind === 'video') {
+    if (isAndroidTauri && (media_kind === 'video' || ext === 'wma')) {
       await launchNativePlayer();
       return;
     }
@@ -125,6 +211,8 @@
 
   async function useWebRuntime() {
     const { debugLog: log } = await import('@viewit/platform');
+    if (await tryAiffWavUrl()) return;
+
     if (stream_url) {
       log(`[media] using direct stream_url`);
       src = stream_url;
@@ -161,7 +249,7 @@
     loadStart = Date.now();
 
     // On Android/Tauri: let the user choose built-in/native/plugin/external.
-    if (isAndroidTauri && media_kind === 'video') {
+    if (isAndroidTauri && (media_kind === 'video' || ext === 'wma')) {
       runtimeChooserOpen = true;
       return;
     }

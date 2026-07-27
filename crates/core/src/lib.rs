@@ -76,6 +76,9 @@ pub fn ext_from_sniff(bytes: &[u8], ext_hint: &str) -> Option<&'static str> {
         Format::Video => "mp4",
         Format::Audio => "mp3",
         Format::ArchiveZip => "zip",
+        Format::IworkPages => "pages",
+        Format::IworkNumbers => "numbers",
+        Format::IworkKey => "key",
         _ => return None,
     })
 }
@@ -238,7 +241,7 @@ pub fn is_audio_ext(ext: &str) -> bool {
     matches!(
         ext,
         "mp3" | "m4a" | "aac" | "flac" | "ogg" | "wav" | "wma" | "opus" | "8svx" | "ac3"
-        | "aiff" | "amb" | "au" | "avr" | "caf" | "cdda" | "cvs" | "cvsd" | "cvu" | "dts"
+        | "aif" | "aiff" | "amb" | "au" | "avr" | "caf" | "cdda" | "cvs" | "cvsd" | "cvu" | "dts"
         | "dvms" | "fap" | "fssd" | "gsrt" | "hcom" | "htk" | "ima" | "ircam" | "m4r" | "maud"
         | "mp2" | "nist" | "oga" | "paf" | "prc" | "pvf" | "ra" | "sd2" | "sln" | "smp"
         | "snd" | "sndr" | "sndt" | "sou" | "sph" | "spx" | "tta" | "txw" | "vms" | "voc"
@@ -350,7 +353,7 @@ fn sniff_ext(ext: &str) -> Format {
         | "ts" | "asf" | "f4v" | "hevc" | "m2ts" | "m2v" | "mjpeg" | "mts" | "mxf" | "ogv"
         | "rm" | "swf" | "vob" | "wtv" => Format::Video,
         "mp3" | "m4a" | "aac" | "flac" | "ogg" | "wav" | "wma" | "opus" | "8svx" | "ac3"
-        | "aiff" | "amb" | "au" | "avr" | "caf" | "cdda" | "cvs" | "cvsd" | "cvu" | "dts"
+        | "aif" | "aiff" | "amb" | "au" | "avr" | "caf" | "cdda" | "cvs" | "cvsd" | "cvu" | "dts"
         | "dvms" | "fap" | "fssd" | "gsrt" | "hcom" | "htk" | "ima" | "ircam" | "m4r" | "maud"
         | "mp2" | "nist" | "oga" | "paf" | "prc" | "pvf" | "ra" | "sd2" | "sln" | "smp"
         | "snd" | "sndr" | "sndt" | "sou" | "sph" | "spx" | "tta" | "txw" | "vms" | "voc"
@@ -547,5 +550,37 @@ mod tests {
         assert_eq!(sniff(b"", "toml"), Format::Code);
         assert_eq!(sniff(b"", "ics"), Format::Ics);
         assert_eq!(sniff(b"", "tsx"), Format::Code);
+    }
+
+    #[test]
+    fn aif_and_aiff_route_to_audio() {
+        assert!(is_audio_ext("aif"), "`aif` must route to the audio path");
+        assert!(is_audio_ext("aiff"), "`aiff` must route to the audio path");
+        assert_eq!(sniff_ext("aif"), Format::Audio);
+        assert_eq!(sniff_ext("aiff"), Format::Audio);
+        assert_eq!(sniff_ext("wma"), Format::Audio, "wma must remain in the audio path so the runtime chooser (not the text viewer) handles it");
+    }
+
+    #[test]
+    fn wma_does_not_route_to_video() {
+        assert!(!is_video_ext("wma"), "wma must not be classified as video — it goes through the audio media viewer and the runtime chooser");
+    }
+
+    #[test]
+    fn iwork_extensions_route_to_iwork_not_archive() {
+        let pk = &[0x50, 0x4B, 0x03, 0x04, 0x00, 0x00];
+        assert_eq!(sniff(pk, "pages"), Format::IworkPages);
+        assert_eq!(sniff(pk, "numbers"), Format::IworkNumbers);
+        assert_eq!(sniff(pk, "key"), Format::IworkKey);
+        // ext_from_sniff must round-trip to the iWork extension (not "zip")
+        // so the Android URI fast-path treats iWork as a semantic document.
+        assert_eq!(ext_from_sniff(pk, "pages").unwrap(), "pages");
+        assert_eq!(ext_from_sniff(pk, "numbers").unwrap(), "numbers");
+        assert_eq!(ext_from_sniff(pk, "key").unwrap(), "key");
+    }
+
+    #[test]
+    fn legacy_ppt_routes_to_ppt_not_pptx() {
+        assert_eq!(sniff_ext("ppt"), Format::Ppt);
     }
 }

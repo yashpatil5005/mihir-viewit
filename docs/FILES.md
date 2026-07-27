@@ -292,17 +292,17 @@ ViewIt is a universal file viewer supporting 250+ file formats across text, code
 
 | Format | Extensions | Android | iOS | Desktop | Web | Notes |
 |--------|-----------|---------|-----|---------|-----|-------|
-| ODF Text | `.odt`, `.ott` | ✅ | 🚧 | 🚧 | 🚧 | LibreOffice/OpenOffice documents |
-| ODF Spreadsheet | `.ods` | ⚠️ | 🚧 | 🚧 | 🚧 | Needs test file fix |
-| ODF Presentation | `.odp` | ✅ | 🚧 | 🚧 | 🚧 | Slide deck with text extraction |
+| ODF Text | `.odt`, `.ott` | ⚠️* | 🚧 | 🚧 | 🚧 | Structured text + tables + image placeholders; not full LibreOffice/ODF layout. *Verified on Samsung SM-E346B (Android 16). |
+| ODF Spreadsheet | `.ods` | ⚠️* | 🚧 | 🚧 | 🚧 | Spreadsheet grid via Calamine; not full ODF layout. *Verified on Samsung SM-E346B (Android 16). |
+| ODF Presentation | `.odp` | ⚠️* | 🚧 | 🚧 | 🚧 | Slide model + navigation; no animations and no full presentation layout extraction. *Verified on Samsung SM-E346B (Android 16). |
 
 ### 3.5 Apple iWork
 
 | Format | Extensions | Android | iOS | Desktop | Web | Notes |
 |--------|-----------|---------|-----|---------|-----|-------|
-| Pages | `.pages` | 🔄 | 🚧 | 🚧 | 🚧 | Apple word processor |
-| Numbers | `.numbers` | 🔄 | 🚧 | 🚧 | 🚧 | Apple spreadsheet |
-| Keynote | `.key` | 🔄 | 🚧 | 🚧 | 🚧 | Apple presentations |
+| Pages | `.pages` | 🔄* | 🚧 | 🚧 | 🚧 | Extractable package text → structured document blocks. **Native `.iwa` layout decoding not supported** — see Known Partials. *Synthetic-sample verified on Samsung SM-E346B (Android 16). |
+| Numbers | `.numbers` | 🔄* | 🚧 | 🚧 | 🚧 | Extractable tabular text → spreadsheet grid. Native `.iwa` layout decoding not supported. *Synthetic-sample verified on Samsung SM-E346B (Android 16). |
+| Keynote | `.key` | 🔄* | 🚧 | 🚧 | 🚧 | Extractable package text → slide model. Native `.iwa` layout decoding not supported. *Synthetic-sample verified on Samsung SM-E346B (Android 16). |
 
 ---
 
@@ -384,9 +384,9 @@ ViewIt is a universal file viewer supporting 250+ file formats across text, code
 | FLAC | `.flac` | ✅ | 🚧 | 🚧 | 🚧 | Lossless compression |
 | OGG | `.ogg`, `.oga` | ✅ | 🚧 | 🚧 | 🚧 | Ogg Vorbis |
 | WAV | `.wav` | ✅ | 🚧 | 🚧 | 🚧 | Uncompressed audio |
-| WMA | `.wma` | ✅ | 🚧 | 🚧 | 🚧 | Windows Media Audio |
+| WMA | `.wma` | ⚠️ | 🚧 | 🚧 | 🚧 | Windows Media Audio. Routed through the runtime chooser (native Android player / external open); no in-process FFmpeg in the base app. See Known Partials. |
 | Opus | `.opus` | ✅ | 🚧 | 🚧 | 🚧 | Modern codec |
-| AIFF | `.aiff` | ✅ | 🚧 | 🚧 | 🚧 | Apple audio format |
+| AIFF | `.aiff`, `.aif` | ⚠️ | 🚧 | 🚧 | 🚧 | PCM AIFF/AIF converted client-side to WAV for in-app playback; compressed/non-PCM AIFF variants unsupported. See Known Partials. |
 | AU | `.au` | ✅ | 🚧 | 🚧 | 🚧 | Sun/Unix audio |
 | MP2 | `.mp2` | ✅ | 🚧 | 🚧 | 🚧 | MPEG-1 Audio Layer II |
 | AC3 | `.ac3` | ✅ | 🚧 | 🚧 | 🚧 | Dolby Digital |
@@ -482,6 +482,31 @@ ViewIt is a universal file viewer supporting 250+ file formats across text, code
 3. **Text Encoding**: Automatic detection of UTF-8, Latin-1, and other encodings via `chardetng`
 4. **Large Files**: 32 MB memory cap for in-memory parsing; larger files show "Open with..." prompt
 5. **Encryption**: Password-protected files (encrypted ZIP, Office docs) show appropriate error messages
+
+## Known Partial Support
+
+The base app is **honest** about formats it cannot fully render: it shows a fidelity banner, partial notice, or runtime chooser instead of pretending anything that fails silently or falls back to plain text. The currently-known partials are:
+
+| Format | What works | What does not | Why we don't fix it in the base app |
+|--------|-----------|---------------|-------------------------------------|
+| **iWork `.pages` / `.numbers` / `.key`** | Extractable package text → structured Docx/Xlsx/Pptx blocks (no archive-listing fallback). Synthetic-sample verified on Android 16. | Native `.iwa` Snappy+protobuf layout decoding. Real Apple iWork files with binary `.iwa` payloads show an honest partial-notice, not a full render. | Native layout requires a produced `litchi` (iWork protobuf schemas) decoder. Until those schemas are production-ready, full fidelity belongs in an optional iWork plugin or external conversion service — see `crates/fmt-iwork/src/lib.rs` ADR 0006 deferral. |
+| **Legacy PowerPoint `.ppt`** | Extracted text → lightweight slide model with `.pptx-root` / `.slide-text` in the presentation viewer. Slide navigation and titles/bodies preserved. | Layout, formatting, embedded images/animations for binary `.ppt`. | A high-fidelity binary `.ppt` parser is large and low-leverage. Add an optional Office plugin or host-owned conversion service if you need pixel-accurate PPT. The legacy text-to-slide mapping in `crates/fmt-office/src/lib.rs` (`legacy_ppt_slides`) is the honest base-app fallback. |
+| **WMA `audio/x-ms-wma`** | Routes to the runtime chooser — native Android player + external open. No broken `<audio>` source is attached. | In-app WebView playback (Android WebView does not decode WMA). | per ADR: do not bundle FFmpeg/transcoding into the base app. In-app playback belongs in an optional codec plugin or a host-owned transcoding service. |
+| **AIFF/AIF (compressed)** | PCM AIFF/AIF (8/16/24/32-bit) is converted client-side to WAV (`packages/ui/src/MediaViewer.svelte::aiffToWav`) for in-app `<audio>` playback. Sample verified on Android 16. | Compressed/non-PCM AIFF variants (e.g. AIFF-C with IMA ADPCM) are surfaced as external-only. | Decompressing every AIFF-C codec in the base app would add significant binary size. Add an optional codec plugin if you need it. |
+| **OpenDocument** | ODT emits Docx blocks with tables and image placeholders; ODS emits an Xlsx grid; ODP emits a slide model. Sample verified on Android 16. | Full LibreOffice/ODF layout fidelity (advanced styling, embedded objects). | Layout-faithful ODF rendering is large. The structured-text approach keeps the base app under the Android size budget while being visually richer than plain-text extraction. Upgrade fidelity through an optional ODF plugin. |
+
+### Reproducing the partial-format verification
+
+All assertions above are checked automatically by `scripts/android-format-smoke.py` against a connected Android 16 device:
+
+```bash
+bash scripts/android-release.sh                                  # canonical 16 KB build
+adb -s <serial> install -r dist/viewit-android-universal-debug.apk
+bash scripts/verify-installed-apk.sh <serial>                     # pull + re-verify installed APK
+ADB_SERIAL=<serial> python3 scripts/android-format-smoke.py --json /tmp/viewit-smoke.jsonl
+```
+
+CI: `.github/workflows/android-release-gate.yml` runs `cargo test` for the relevant format crates and `scripts/verify-android-16kb.sh` on every PR — that catches regressions for the **routing**, **slide-model**, and **16 KB ELF alignment** assertions. The device smoke is a manual or release-tagging step, because it needs a physical Android 16 device.
 
 ## Related Documentation
 

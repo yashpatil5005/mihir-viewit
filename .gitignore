@@ -46,6 +46,8 @@ src-tauri/gen/
 src-tauri/target/
 apps/mobile/src-tauri/gen/android/app/src/main/assets/
 apps/mobile/src-tauri/gen/android/app/src/main/jniLibs/
+apps/mobile/src-tauri/gen/android/app/src/*/jniLibs/
+apps/mobile/src-tauri/gen/android/apps/
 *.apk
 *.aab
 *.ipa

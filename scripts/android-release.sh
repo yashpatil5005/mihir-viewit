@@ -9,6 +9,7 @@ JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-21-openjdk-amd64}"
 export JAVA_HOME
 PDFIUM_CACHE="${ROOT}/.cache/pdfium-android-arm64"
 JNI="$GEN/app/src/main/jniLibs/arm64-v8a"
+FLAVOR_JNI="$GEN/app/src/arm64/jniLibs/arm64-v8a"
 
 chmod +x "$ROOT/scripts/patch-pdfium-render.sh" "$ROOT/scripts/patch-tauri-android-protocol.sh"
 "$ROOT/scripts/patch-pdfium-render.sh"
@@ -50,11 +51,30 @@ fi
 LINKER="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
 export ANDROID_NDK_HOME="$NDK"
 export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$LINKER"
+export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384"
 export PATH="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+BUILD_TOOLS=$(ls -d "$HOME/Android/Sdk/build-tools/"* 2>/dev/null | sort -V | tail -1)
 
 echo "[android] cargo release lib ($CARGO_FEATURES)"
 (cd "$MOBILE" && cargo build --target aarch64-linux-android --release -p viewit-mobile --lib \
   --features "$CARGO_FEATURES")
+
+TARGET_DIR=$(cd "$ROOT" && cargo metadata --format-version 1 --no-deps | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')
+RUST_LIB="$TARGET_DIR/aarch64-linux-android/release/libviewit_mobile_lib.so"
+if [[ ! -f "$RUST_LIB" ]]; then
+  echo "[android] missing Rust shared library: $RUST_LIB" >&2
+  exit 1
+fi
+if ! "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" -l "$RUST_LIB" | awk '/LOAD/ && $NF != "0x4000" { bad=1 } END { exit bad }'; then
+  echo "[android] Rust shared library is not 16 KB ELF-aligned: $RUST_LIB" >&2
+  exit 1
+fi
+mkdir -p "$JNI" "$FLAVOR_JNI"
+for DEST in "$JNI/libviewit_mobile_lib.so" "$FLAVOR_JNI/libviewit_mobile_lib.so"; do
+  if [[ "$(realpath "$RUST_LIB")" != "$(realpath -m "$DEST")" ]]; then
+    cp "$RUST_LIB" "$DEST"
+  fi
+done
 
 echo "[android] sync frontend into APK assets (WebViewAssetLoader fallback)"
 ASSETS="$GEN/app/src/main/assets"
@@ -63,12 +83,15 @@ rsync -a --delete "$MOBILE/build/" "$ASSETS/"
 
 echo "[android] gradle arm64-only APK (~11 MB, not 4-ABI universal)"
 (cd "$GEN" && ./gradlew :app:assembleArm64Release \
-  -PabiList=arm64-v8a -x rustBuildArm64Release -x rustBuildUniversalRelease --no-daemon)
+  -PabiList=arm64-v8a \
+  -x rustBuildArm64Release -x rustBuildUniversalRelease -x stripArm64ReleaseDebugSymbols --no-daemon)
 
 echo "[android] size gate"
 (cd "$ROOT" && npx tsx scripts/size-budget.ts)
 
 APK_UNSIGNED="$GEN/app/build/outputs/apk/arm64/release/app-arm64-release-unsigned.apk"
+APK_WITH_LIB="$ROOT/dist/viewit-android-arm64-release-with-lib.apk"
+APK_ALIGNED="$ROOT/dist/viewit-android-arm64-release-aligned.apk"
 APK_SIGNED="$ROOT/dist/viewit-android-universal-debug.apk"
 mkdir -p "$ROOT/dist"
 
@@ -80,9 +103,18 @@ if [[ ! -f "$KEYSTORE" ]]; then
     -dname "CN=Android Debug,O=Android,C=US"
 fi
 
-BUILD_TOOLS=$(ls -d "$HOME/Android/Sdk/build-tools/"* 2>/dev/null | sort -V | tail -1)
+rm -f "$APK_WITH_LIB" "$APK_ALIGNED" "$APK_SIGNED"
+cp "$APK_UNSIGNED" "$APK_WITH_LIB"
+TMP_LIB_DIR="$ROOT/dist/android-native-lib"
+rm -rf "$TMP_LIB_DIR"
+mkdir -p "$TMP_LIB_DIR/lib/arm64-v8a"
+cp "$RUST_LIB" "$TMP_LIB_DIR/lib/arm64-v8a/libviewit_mobile_lib.so"
+(cd "$TMP_LIB_DIR" && zip -0 -q "$APK_WITH_LIB" lib/arm64-v8a/libviewit_mobile_lib.so)
+"$BUILD_TOOLS/zipalign" -P 16 -f 4 "$APK_WITH_LIB" "$APK_ALIGNED"
 "$BUILD_TOOLS/apksigner" sign --ks "$KEYSTORE" --ks-pass pass:android --key-pass pass:android \
-  --out "$APK_SIGNED" "$APK_UNSIGNED"
+  --out "$APK_SIGNED" "$APK_ALIGNED"
+
+"$ROOT/scripts/verify-android-16kb.sh" "$APK_SIGNED"
 
 echo ""
 echo "Signed APK (USB install): $APK_SIGNED"
