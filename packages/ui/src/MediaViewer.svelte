@@ -198,7 +198,9 @@
   }
 
   async function useBuiltInRuntime() {
-    if (isAndroidTauri && (media_kind === 'video' || ext === 'wma')) {
+    // On Android, audio formats like WMA aren't supported by <audio>.
+    // Launch native player directly for audio — it supports more formats.
+    if (media_kind === 'audio') {
       await launchNativePlayer();
       return;
     }
@@ -248,8 +250,8 @@
 
     loadStart = Date.now();
 
-    // On Android/Tauri: let the user choose built-in/native/plugin/external.
-    if (isAndroidTauri && (media_kind === 'video' || ext === 'wma')) {
+    // On Android/Tauri: let the user choose built-in/native/plugin/external for video and audio.
+    if (isAndroidTauri && (media_kind === 'video' || media_kind === 'audio')) {
       runtimeChooserOpen = true;
       return;
     }
@@ -316,9 +318,7 @@
   <aside class="meta">
     <strong>{name}</strong>
     <span class="tag">{format}</span>
-    {#if currentStrategy}
-      <span class="hint">{currentStrategy}</span>
-    {/if}
+
   </aside>
   <div class="frame">
     {#if nativePlayerLaunched}

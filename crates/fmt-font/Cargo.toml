@@ -12,3 +12,4 @@ description = "ViewIt font metadata parser (TTF/OTF/WOFF)"
 viewit-core-types = { path = "../core-types" }
 thiserror.workspace = true
 ttf-parser = "0.20"
+base64 = "0.22"

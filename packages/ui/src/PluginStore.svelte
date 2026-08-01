@@ -1,10 +1,14 @@
 <script lang="ts">
   import {
     formatPluginSize,
+    fetchPluginCatalogSources,
+    getCustomCatalogUrls,
     hasAndroidBridge,
     installPlugin,
-    pluginInventory,
+    isInstallablePlugin,
     removePlugin,
+    saveCustomCatalogUrls,
+    type PluginCatalogSource,
     type PluginInfo,
   } from './pluginBridge';
 
@@ -17,6 +21,7 @@
   } = $props();
 
   let catalog = $state<PluginInfo[]>([]);
+  let catalogSources = $state<PluginCatalogSource[]>([]);
   let installed = $state<PluginInfo[]>([]);
   let loading = $state(true);
   let installing = $state<string | null>(null);
@@ -24,6 +29,8 @@
   let errorMsg = $state('');
   let showPrivacy = $state(false);
   let acceptedPrivacy = $state(false);
+  let customCatalogUrl = $state('');
+  let wasOpen = $state(false);
 
   const isAndroid = $derived(hasAndroidBridge());
 
@@ -53,9 +60,23 @@
         loading = false;
         return;
       }
-      const inventory = await pluginInventory();
-      installed = inventory.installed;
-      catalog = inventory.catalog;
+      installed = JSON.parse((window as any).AndroidBridge.listPlugins()) as PluginInfo[];
+      const installedById = new Map(installed.map((plugin) => [plugin.id, plugin]));
+      catalogSources = (await fetchPluginCatalogSources()).map((source) => ({
+        ...source,
+        plugins: source.plugins.filter(isInstallablePlugin).map((plugin) => {
+          const installedPlugin = installedById.get(plugin.id);
+          const installedVersion = installedPlugin?.version;
+          const versionMatches = installedVersion === plugin.version;
+          return {
+            ...plugin,
+            installed: Boolean(installedPlugin && versionMatches),
+            installedVersion,
+            updateAvailable: Boolean(installedPlugin && !versionMatches),
+          };
+        }),
+      }));
+      catalog = catalogSources.flatMap((source) => source.plugins);
       if (typeof localStorage !== 'undefined' && localStorage.getItem('viewit-plugin-privacy-accepted') === '1') {
         acceptedPrivacy = true;
       }
@@ -93,8 +114,30 @@
     }
   }
 
+  async function addCustomCatalog() {
+    const url = customCatalogUrl.trim();
+    if (!url) return;
+    if (!/^https?:\/\//i.test(url)) {
+      errorMsg = 'Catalog URL must start with http:// or https://';
+      return;
+    }
+    saveCustomCatalogUrls([...getCustomCatalogUrls(), url]);
+    customCatalogUrl = '';
+    await refresh();
+  }
+
+  async function removeCustomCatalog(url: string) {
+    saveCustomCatalogUrls(getCustomCatalogUrls().filter((item) => item !== url));
+    await refresh();
+  }
+
   $effect(() => {
-    if (open) refresh();
+    if (open && !wasOpen) {
+      wasOpen = true;
+      void refresh();
+    } else if (!open) {
+      wasOpen = false;
+    }
   });
 </script>
 
@@ -130,7 +173,20 @@
         {#if catalog.length === 0}
           <div class="empty">No plugins available yet.</div>
         {:else}
-          {#each catalog as plugin}
+          {#each catalogSources as source}
+            <div class="source-heading">
+              <div>
+                <strong>{source.name}</strong>
+                {#if source.url}<span>Custom catalog</span>{:else}<span>Default catalog</span>{/if}
+              </div>
+              {#if source.url}<button class="remove-source" type="button" onclick={() => removeCustomCatalog(source.url!)}>Remove</button>{/if}
+            </div>
+            {#if source.error}
+              <div class="error">Could not load catalog: {source.error}</div>
+            {:else if source.plugins.length === 0}
+              <div class="empty compact">No installable plugins in this catalog.</div>
+            {/if}
+            {#each source.plugins as plugin}
             <div class="plugin-card" class:installed={plugin.installed} class:update={plugin.updateAvailable}>
               <div class="plugin-info">
                 <strong>{plugin.name}</strong>
@@ -140,6 +196,7 @@
                 <p class="description">{plugin.description}</p>
                 <span class="formats">{plugin.formats.join(', ')}</span>
                 <span class="size">{formatPluginSize(plugin.sizeBytes)} download{plugin.installedSizeBytes ? ` · ${formatPluginSize(plugin.installedSizeBytes)} installed` : ''}</span>
+                {#if plugin.sourceUrl}<span class="source-url">From {plugin.sourceUrl}</span>{/if}
               </div>
               {#if installing === plugin.id}
                 <div class="progress">
@@ -160,8 +217,18 @@
                 <button class="install-btn" onclick={() => install(plugin)}>Install</button>
               {/if}
             </div>
+            {/each}
           {/each}
         {/if}
+      </section>
+
+      <section class="custom-catalogs">
+        <h3>Add Custom Catalog</h3>
+        <p>Custom public catalog URLs are shown separately from the ViewIt default catalog.</p>
+        <div class="catalog-form">
+          <input bind:value={customCatalogUrl} placeholder="https://example.com/catalog.json" />
+          <button type="button" onclick={addCustomCatalog}>Add</button>
+        </div>
       </section>
     {/if}
   </div>
@@ -203,6 +270,7 @@
     color: var(--text-secondary, #666); padding: 0.25rem;
   }
   .loading, .empty { text-align: center; padding: 2rem; color: var(--text-secondary, #666); }
+  .empty.compact { padding: 0.75rem; font-size: 0.8rem; }
   .error { color: var(--error, #e53e3e); padding: 0.75rem; background: var(--bg-secondary, #f5f5f5); border-radius: 8px; margin-bottom: 1rem; font-size: 0.85rem; }
   .plugin-card {
     display: flex; align-items: center; justify-content: space-between;
@@ -217,6 +285,11 @@
   .description { font-size: 0.8rem; margin: 0.25rem 0; color: var(--text-secondary, #666); }
   .formats { display: block; font-size: 0.7rem; font-family: monospace; color: var(--text-secondary, #888); margin-top: 0.25rem; }
   .size { font-size: 0.7rem; color: var(--text-secondary, #888); }
+  .source-url { display: block; margin-top: 0.25rem; font-size: 0.68rem; color: var(--text-secondary, #888); overflow-wrap: anywhere; }
+  .source-heading { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; margin: 1rem 0 0.5rem; padding-top: 0.75rem; border-top: 1px solid var(--border, #ccc); }
+  .source-heading strong { display: block; font-size: 0.84rem; overflow-wrap: anywhere; }
+  .source-heading span { display: block; color: var(--text-secondary, #666); font-size: 0.72rem; }
+  .remove-source { border: 1px solid var(--error, #e53e3e); color: var(--error, #e53e3e); background: transparent; border-radius: 6px; padding: 0.3rem 0.55rem; cursor: pointer; }
   .install-btn, .remove-btn {
     padding: 0.4rem 1rem; border-radius: 6px; font-size: 0.8rem;
     font-weight: 600; cursor: pointer; white-space: nowrap;
@@ -248,4 +321,9 @@
     font-weight: 600; cursor: pointer; background: var(--link, #3182ce);
     color: #fff; border: none;
   }
+  .custom-catalogs { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--border, #ccc); }
+  .custom-catalogs p { margin: 0 0 0.7rem; color: var(--text-secondary, #666); font-size: 0.78rem; line-height: 1.4; }
+  .catalog-form { display: flex; gap: 0.5rem; }
+  .catalog-form input { flex: 1; min-width: 0; border: 1px solid var(--border, #ccc); background: var(--bg-secondary, #f5f5f5); color: var(--text-primary, #000); border-radius: 6px; padding: 0.48rem 0.6rem; }
+  .catalog-form button { border: 0; border-radius: 6px; padding: 0.48rem 0.8rem; background: var(--link, #3182ce); color: white; font-weight: 700; cursor: pointer; }
 </style>

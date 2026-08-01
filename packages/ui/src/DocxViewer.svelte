@@ -94,7 +94,7 @@
           {:else if block.kind === 'image'}
             <figure class="img-block" id={`block-${index}`}>
               {#if block.src}
-                <img src={block.src} alt="" style="max-width:100%;height:auto;border-radius:0.4rem;" />
+                <img src={block.src} alt={block.name ?? 'Embedded image'} title={block.name ?? 'Embedded image'} style="max-width:100%;height:auto;border-radius:0.4rem;" />
               {:else}
                 <span class="img-placeholder">Embedded image</span>
               {/if}

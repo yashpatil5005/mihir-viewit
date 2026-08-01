@@ -31,7 +31,11 @@ pub fn parse_pptx(bytes: &[u8], _format: Format, _name: &str) -> Result<Document
             f.read_to_string(&mut slide_xml).ok();
         }
         let (title, body) = extract_slide_text(&slide_xml);
-        slides.push(PptxSlide { title, body });
+        slides.push(PptxSlide {
+            title,
+            body,
+            elements: Vec::new(),
+        });
     }
 
     Ok(Document::Pptx {
@@ -120,7 +124,9 @@ fn extract_slide_text(xml: &str) -> (String, String) {
                     if in_title && title.is_empty() {
                         title = current_text.clone();
                     } else if in_body {
-                        if !body.is_empty() { body.push('\n'); }
+                        if !body.is_empty() {
+                            body.push('\n');
+                        }
                         body.push_str(&current_text);
                     }
                     current_text.clear();

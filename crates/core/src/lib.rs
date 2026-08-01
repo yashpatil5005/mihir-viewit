@@ -73,6 +73,10 @@ pub fn ext_from_sniff(bytes: &[u8], ext_hint: &str) -> Option<&'static str> {
         Format::ImageGif => "gif",
         Format::ImageWebp => "webp",
         Format::ImageRaw => "dng",
+        Format::ImageHeic => "heic",
+        Format::ImageBmp => "bmp",
+        Format::ImageTiff => "tiff",
+        Format::ImagePsd => "psd",
         Format::Video => "mp4",
         Format::Audio => "mp3",
         Format::ArchiveZip => "zip",
@@ -153,6 +157,13 @@ fn sniff_magic(bytes: &[u8], ext: &str) -> Option<Format> {
     }
     // ISO BMFF (MP4/MOV/M4V/3GP/F4V/HEVC/MJPEG)
     if bytes.len() >= 12 && bytes[4..8] == *b"ftyp" {
+        // Check for AVIF/AVIS brands first (image, not video)
+        if bytes.len() >= 12 {
+            let brand = &bytes[8..12];
+            if brand == b"avif" || brand == b"avis" {
+                return Some(Format::ImageHeic);
+            }
+        }
         return Some(Format::Video);
     }
     // RIFF container — AVI or WAVE audio
@@ -177,7 +188,9 @@ fn sniff_magic(bytes: &[u8], ext: &str) -> Option<Format> {
         // JPEG SOI
         [0xFF, 0xD8, 0xFF, ..] => Format::ImageJpg,
         // GIF87a / GIF89a
-        [0x47, 0x49, 0x46, 0x38, 0x37, 0x61, ..] | [0x47, 0x49, 0x46, 0x38, 0x39, 0x61, ..] => Format::ImageGif,
+        [0x47, 0x49, 0x46, 0x38, 0x37, 0x61, ..] | [0x47, 0x49, 0x46, 0x38, 0x39, 0x61, ..] => {
+            Format::ImageGif
+        }
         // BMP "BM"
         [0x42, 0x4D, ..] => Format::ImageBmp,
         // WebP: "RIFF....WEBP"
@@ -190,8 +203,14 @@ fn sniff_magic(bytes: &[u8], ext: &str) -> Option<Format> {
         | [_, _, _, _, 0x66, 0x74, 0x79, 0x70, 0x6D, 0x69, 0x66, 0x31, ..] => Format::ImageHeic,
         // PSD: "8BPS"
         [0x38, 0x42, 0x50, 0x53, ..] => Format::ImagePsd,
-        // TIFF LE / BE
-        [0x49, 0x49, 0x2A, 0x00, ..] | [0x4D, 0x4D, 0x00, 0x2A, ..] => Format::ImageTiff,
+        // TIFF LE / BE (but check for RAW extensions first)
+        [0x49, 0x49, 0x2A, 0x00, ..] | [0x4D, 0x4D, 0x00, 0x2A, ..] => {
+            if matches!(ext, "nef" | "cr2" | "cr3" | "arw" | "orf" | "rw2" | "raf" | "srw" | "pef" | "dng") {
+                Format::ImageRaw
+            } else {
+                Format::ImageTiff
+            }
+        }
         // ICO
         [0x00, 0x00, 0x01, 0x00, ..] => Format::ImagePng,
         // FLV: "FLV\x01"
@@ -202,6 +221,8 @@ fn sniff_magic(bytes: &[u8], ext: &str) -> Option<Format> {
         [0x66, 0x4C, 0x61, 0x43, ..] => Format::Audio,
         // MP3 frame sync (0xFF 0xFB or 0xFF 0xF3 or ID3 tag)
         [0xFF, 0xFB, ..] | [0xFF, 0xF3, ..] | [0xFF, 0xF2, ..] => Format::Audio,
+        // ADTS AAC frame sync (0xFF 0xF1 = MPEG-4 no CRC, 0xFF 0xF9 = MPEG-4 with CRC)
+        [0xFF, 0xF1, ..] | [0xFF, 0xF9, ..] => Format::Audio,
         // ID3 tag (MP3)
         [0x49, 0x44, 0x33, ..] => Format::Audio,
         // ASF/WMV: 0x30 0x26 0xB2 0x75 0x8E 0x66 0xCF 0x11
@@ -231,21 +252,92 @@ fn sniff_magic(bytes: &[u8], ext: &str) -> Option<Format> {
 pub fn is_video_ext(ext: &str) -> bool {
     matches!(
         ext,
-        "mp4" | "m4v" | "webm" | "mkv" | "mov" | "avi" | "mpg" | "mpeg" | "3gp" | "wmv" | "flv"
-        | "ts" | "asf" | "f4v" | "hevc" | "m2ts" | "m2v" | "mjpeg" | "mts" | "mxf" | "ogv"
-        | "rm" | "swf" | "vob" | "wtv"
+        "mp4"
+            | "m4v"
+            | "webm"
+            | "mkv"
+            | "mov"
+            | "avi"
+            | "mpg"
+            | "mpeg"
+            | "3gp"
+            | "wmv"
+            | "flv"
+            | "ts"
+            | "asf"
+            | "f4v"
+            | "hevc"
+            | "m2ts"
+            | "m2v"
+            | "mjpeg"
+            | "mts"
+            | "mxf"
+            | "ogv"
+            | "rm"
+            | "swf"
+            | "vob"
+            | "wtv"
     )
 }
 
 pub fn is_audio_ext(ext: &str) -> bool {
     matches!(
         ext,
-        "mp3" | "m4a" | "aac" | "flac" | "ogg" | "wav" | "wma" | "opus" | "8svx" | "ac3"
-        | "aif" | "aiff" | "amb" | "au" | "avr" | "caf" | "cdda" | "cvs" | "cvsd" | "cvu" | "dts"
-        | "dvms" | "fap" | "fssd" | "gsrt" | "hcom" | "htk" | "ima" | "ircam" | "m4r" | "maud"
-        | "mp2" | "nist" | "oga" | "paf" | "prc" | "pvf" | "ra" | "sd2" | "sln" | "smp"
-        | "snd" | "sndr" | "sndt" | "sou" | "sph" | "spx" | "tta" | "txw" | "vms" | "voc"
-        | "vox" | "w64" | "wv" | "wve"
+        "mp3"
+            | "m4a"
+            | "aac"
+            | "flac"
+            | "ogg"
+            | "wav"
+            | "wma"
+            | "opus"
+            | "8svx"
+            | "ac3"
+            | "aif"
+            | "aiff"
+            | "amb"
+            | "au"
+            | "avr"
+            | "caf"
+            | "cdda"
+            | "cvs"
+            | "cvsd"
+            | "cvu"
+            | "dts"
+            | "dvms"
+            | "fap"
+            | "fssd"
+            | "gsrt"
+            | "hcom"
+            | "htk"
+            | "ima"
+            | "ircam"
+            | "m4r"
+            | "maud"
+            | "mp2"
+            | "nist"
+            | "oga"
+            | "paf"
+            | "prc"
+            | "pvf"
+            | "ra"
+            | "sd2"
+            | "sln"
+            | "smp"
+            | "snd"
+            | "sndr"
+            | "sndt"
+            | "sou"
+            | "sph"
+            | "spx"
+            | "tta"
+            | "txw"
+            | "vms"
+            | "voc"
+            | "vox"
+            | "w64"
+            | "wv"
+            | "wve"
     )
 }
 
@@ -292,8 +384,8 @@ pub fn open_stream(ext: &str, name: &str) -> Result<Document, Error> {
 fn sniff_ext(ext: &str) -> Format {
     match ext {
         "txt" | "log" | "text" | "readme" | "gitignore" | "gitattributes" | "editorconfig"
-        | "dockerignore" | "npmignore" | "nfo" | "srt" | "vtt" | "sub" | "rst" | "adoc"
-        | "asc" | "strings" => Format::PlainText,
+        | "dockerignore" | "npmignore" | "nfo" | "srt" | "vtt" | "sub" | "rst" | "adoc" | "asc"
+        | "strings" => Format::PlainText,
         "md" | "markdown" | "mdown" | "mkdn" | "mdx" => Format::Markdown,
         "json" | "jsonc" | "json5" | "ipynb" | "jsonl" | "ndjson" | "lock" => Format::Json,
         "csv" | "tsv" => Format::Csv,
@@ -312,13 +404,15 @@ fn sniff_ext(ext: &str) -> Format {
         "svg" | "svgz" => Format::ImageSvg,
         "heic" | "heif" | "avif" => Format::ImageHeic,
         "psd" => Format::ImagePsd,
-        "dng" | "cr2" | "cr3" | "nef" | "arw" | "orf" | "rw2" | "raf" | "srw" | "pef" => Format::ImageRaw,
+        "dng" | "cr2" | "cr3" | "nef" | "arw" | "orf" | "rw2" | "raf" | "srw" | "pef" => {
+            Format::ImageRaw
+        }
         "ico" | "icns" | "jfif" => Format::ImagePng,
         // Additional image formats — mapped to ImageRaw for webview best-effort
         "cur" | "dds" | "erf" | "exr" | "fts" | "hdr" | "jp2" | "jpe" | "jps" | "mng" | "nrw"
-        | "pam" | "pbm" | "pcd" | "pcx" | "pes" | "pfm" | "pgm" | "picon" | "pict" | "pnm" | "ppm"
-        | "ras" | "sfw" | "sgi" | "tga" | "wbmp" | "wpg" | "x3f" | "xbm" | "xcf" | "xpm"
-        | "xwd" => Format::ImageRaw,
+        | "pam" | "pbm" | "pcd" | "pcx" | "pes" | "pfm" | "pgm" | "picon" | "pict" | "pnm"
+        | "ppm" | "ras" | "sfw" | "sgi" | "tga" | "wbmp" | "wpg" | "x3f" | "xbm" | "xcf"
+        | "xpm" | "xwd" => Format::ImageRaw,
         "epub" => Format::Epub,
         "mobi" => Format::Mobi,
         "azw3" => Format::Azw3,
@@ -353,19 +447,19 @@ fn sniff_ext(ext: &str) -> Format {
         | "ts" | "asf" | "f4v" | "hevc" | "m2ts" | "m2v" | "mjpeg" | "mts" | "mxf" | "ogv"
         | "rm" | "swf" | "vob" | "wtv" => Format::Video,
         "mp3" | "m4a" | "aac" | "flac" | "ogg" | "wav" | "wma" | "opus" | "8svx" | "ac3"
-        | "aif" | "aiff" | "amb" | "au" | "avr" | "caf" | "cdda" | "cvs" | "cvsd" | "cvu" | "dts"
-        | "dvms" | "fap" | "fssd" | "gsrt" | "hcom" | "htk" | "ima" | "ircam" | "m4r" | "maud"
-        | "mp2" | "nist" | "oga" | "paf" | "prc" | "pvf" | "ra" | "sd2" | "sln" | "smp"
-        | "snd" | "sndr" | "sndt" | "sou" | "sph" | "spx" | "tta" | "txw" | "vms" | "voc"
-        | "vox" | "w64" | "wv" | "wve" => Format::Audio,
-        "rs" | "tsx" | "jsx" | "mjs" | "cjs" | "js" | "py" | "pyw" | "go" | "c" | "cc"
-        | "cpp" | "cxx" | "h" | "hpp" | "hh" | "java" | "kt" | "kts" | "swift" | "sh" | "bash"
-        | "zsh" | "fish" | "sql" | "lua" | "php" | "rb" | "ex" | "exs" | "erl" | "hrl" | "hs"
-        | "ml" | "mli" | "clj" | "cljs" | "scala" | "sc" | "r" | "jl" | "vim" | "ps1" | "bat"
-        | "cmd" | "cs" | "fs" | "fsx" | "dart" | "zig" | "nim" | "v" | "sv" | "vhd" | "vhdl"
-        | "asm" | "s" | "gradle" | "cmake" | "make" | "mk" | "dockerfile" | "proto" | "graphql"
-        | "gql" | "vue" | "svelte" | "astro" | "wasm" | "wat" | "patch" | "diff" | "class"
-        | "htaccess" | "kml" | "kmz" => Format::Code,
+        | "aif" | "aiff" | "amb" | "au" | "avr" | "caf" | "cdda" | "cvs" | "cvsd" | "cvu"
+        | "dts" | "dvms" | "fap" | "fssd" | "gsrt" | "hcom" | "htk" | "ima" | "ircam" | "m4r"
+        | "maud" | "mp2" | "nist" | "oga" | "paf" | "prc" | "pvf" | "ra" | "sd2" | "sln"
+        | "smp" | "snd" | "sndr" | "sndt" | "sou" | "sph" | "spx" | "tta" | "txw" | "vms"
+        | "voc" | "vox" | "w64" | "wv" | "wve" => Format::Audio,
+        "rs" | "tsx" | "jsx" | "mjs" | "cjs" | "js" | "py" | "pyw" | "go" | "c" | "cc" | "cpp"
+        | "cxx" | "h" | "hpp" | "hh" | "java" | "kt" | "kts" | "swift" | "sh" | "bash" | "zsh"
+        | "fish" | "sql" | "lua" | "php" | "rb" | "ex" | "exs" | "erl" | "hrl" | "hs" | "ml"
+        | "mli" | "clj" | "cljs" | "scala" | "sc" | "r" | "jl" | "vim" | "ps1" | "bat" | "cmd"
+        | "cs" | "fs" | "fsx" | "dart" | "zig" | "nim" | "v" | "sv" | "vhd" | "vhdl" | "asm"
+        | "s" | "gradle" | "cmake" | "make" | "mk" | "dockerfile" | "proto" | "graphql" | "gql"
+        | "vue" | "svelte" | "astro" | "wasm" | "wat" | "patch" | "diff" | "class" | "htaccess"
+        | "kml" | "kmz" => Format::Code,
         _ => Format::Unsupported,
     }
 }
@@ -378,8 +472,12 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
         Format::PlainText | Format::Code => {
             return parse_text_like(bytes, format, name);
         }
-        Format::Markdown | Format::Json | Format::Csv
-        | Format::Plist | Format::Ics | Format::Vcf => {
+        Format::Markdown
+        | Format::Json
+        | Format::Csv
+        | Format::Plist
+        | Format::Ics
+        | Format::Vcf => {
             return parse_text_like(bytes, format, name);
         }
         Format::Pdf => {
@@ -413,9 +511,16 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
                 stream_url: None,
             });
         }
-        Format::ImagePng | Format::ImageJpg | Format::ImageWebp | Format::ImageGif
-        | Format::ImageBmp | Format::ImageTiff | Format::ImageSvg | Format::ImageHeic
-        | Format::ImagePsd | Format::ImageRaw => {
+        Format::ImagePng
+        | Format::ImageJpg
+        | Format::ImageWebp
+        | Format::ImageGif
+        | Format::ImageBmp
+        | Format::ImageTiff
+        | Format::ImageSvg
+        | Format::ImageHeic
+        | Format::ImagePsd
+        | Format::ImageRaw => {
             // Per plan §5: native webview decoder. Rust emits the `Image`
             // variant; the frontend uses `<img src=...>` directly.
             // (Phase 2.1 — zero Rust deps added.)
@@ -427,17 +532,25 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
                 stream_url: None,
             });
         }
-        Format::Epub | Format::Mobi => {
+        Format::Epub | Format::Mobi | Format::Azw3 => {
             #[cfg(feature = "fmt-ebook")]
             {
                 return viewit_fmt_ebook::parse(bytes, format, name).map_err(Error::from_parse);
             }
             #[cfg(not(feature = "fmt-ebook"))]
-            return Ok(Document::Placeholder { format, name: name.to_string(), byte_len: bytes.len() });
+            return Ok(Document::Placeholder {
+                format,
+                name: name.to_string(),
+                byte_len: bytes.len(),
+            });
         }
-        Format::Azw3 | Format::FictionBook | Format::PalmDoc => {
+        Format::FictionBook | Format::PalmDoc => {
             // Non-EPUB/MOBI ebooks — show placeholder with format info
-            return Ok(Document::Placeholder { format, name: name.to_string(), byte_len: bytes.len() });
+            return Ok(Document::Placeholder {
+                format,
+                name: name.to_string(),
+                byte_len: bytes.len(),
+            });
         }
         Format::Font => {
             #[cfg(feature = "fmt-font")]
@@ -445,7 +558,11 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
                 return viewit_fmt_font::parse(bytes, format, name).map_err(Error::from_parse);
             }
             #[cfg(not(feature = "fmt-font"))]
-            return Ok(Document::Placeholder { format, name: name.to_string(), byte_len: bytes.len() });
+            return Ok(Document::Placeholder {
+                format,
+                name: name.to_string(),
+                byte_len: bytes.len(),
+            });
         }
         Format::ArchiveZip | Format::ArchiveTar | Format::ArchiveTarGz | Format::Archive7z => {
             #[cfg(feature = "fmt-archive")]
@@ -453,7 +570,11 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
                 return viewit_fmt_archive::parse(bytes, format, name).map_err(Error::from_parse);
             }
             #[cfg(not(feature = "fmt-archive"))]
-            return Ok(Document::Placeholder { format, name: name.to_string(), byte_len: bytes.len() });
+            return Ok(Document::Placeholder {
+                format,
+                name: name.to_string(),
+                byte_len: bytes.len(),
+            });
         }
         Format::ArchiveRar => {
             // Per ADR 0004: RAR5 omitted entirely from v1 with friendly hand-off.
@@ -463,14 +584,25 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
                 suggestion: Suggestion::OpenWithExternal,
             });
         }
-        Format::Docx | Format::Xlsx | Format::Xls | Format::Pptx | Format::Odt | Format::Ods
-        | Format::Odp | Format::Doc | Format::Ppt => {
+        Format::Docx
+        | Format::Xlsx
+        | Format::Xls
+        | Format::Pptx
+        | Format::Odt
+        | Format::Ods
+        | Format::Odp
+        | Format::Doc
+        | Format::Ppt => {
             #[cfg(feature = "fmt-office")]
             {
                 return viewit_fmt_office::parse(bytes, format, name).map_err(Error::from_parse);
             }
             #[cfg(not(feature = "fmt-office"))]
-            return Ok(Document::Placeholder { format, name: name.to_string(), byte_len: bytes.len() });
+            return Ok(Document::Placeholder {
+                format,
+                name: name.to_string(),
+                byte_len: bytes.len(),
+            });
         }
         Format::Rtf => {
             #[cfg(feature = "fmt-text")]
@@ -478,7 +610,11 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
                 return viewit_fmt_text::parse_text(bytes, format, name).map_err(Error::from_parse);
             }
             #[cfg(not(feature = "fmt-text"))]
-            return Ok(Document::Placeholder { format, name: name.to_string(), byte_len: bytes.len() });
+            return Ok(Document::Placeholder {
+                format,
+                name: name.to_string(),
+                byte_len: bytes.len(),
+            });
         }
         Format::IworkPages | Format::IworkNumbers | Format::IworkKey => {
             #[cfg(feature = "fmt-iwork")]
@@ -486,7 +622,11 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
                 return viewit_fmt_iwork::parse(bytes, format, name).map_err(Error::from_parse);
             }
             #[cfg(not(feature = "fmt-iwork"))]
-            return Ok(Document::Placeholder { format, name: name.to_string(), byte_len: bytes.len() });
+            return Ok(Document::Placeholder {
+                format,
+                name: name.to_string(),
+                byte_len: bytes.len(),
+            });
         }
         // `Format` is `#[non_exhaustive]`, so a future variant MUST be handled
         // explicitly. Falling back to Unsupported here is the safety net.
@@ -506,11 +646,13 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
                 },
             });
         }
-        _ => return Ok(Document::Unsupported {
-            format,
-            reason: format!("Unknown format in this build: {:?}", format),
-            suggestion: Suggestion::None,
-        }),
+        _ => {
+            return Ok(Document::Unsupported {
+                format,
+                reason: format!("Unknown format in this build: {:?}", format),
+                suggestion: Suggestion::None,
+            })
+        }
     }
 }
 

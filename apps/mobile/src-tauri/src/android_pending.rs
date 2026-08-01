@@ -45,7 +45,11 @@ impl PendingUrisWithMime {
     pub fn get_mime(&self, uri: &str) -> Option<String> {
         let lock = self.0.lock().unwrap();
         lock.iter().find(|p| p.uri == uri).and_then(|p| {
-            if p.mime_type.is_empty() { None } else { Some(p.mime_type.clone()) }
+            if p.mime_type.is_empty() {
+                None
+            } else {
+                Some(p.mime_type.clone())
+            }
         })
     }
 }
@@ -75,11 +79,7 @@ pub fn drain_into_opened_urls(app: &AppHandle) -> Vec<(String, String)> {
         let display_name = parts.next().unwrap_or("");
         let mime_type = parts.next().unwrap_or("");
         if let Ok(url) = Url::parse(uri_str) {
-            app.state::<OpenedUrls>()
-                .0
-                .lock()
-                .unwrap()
-                .push(url);
+            app.state::<OpenedUrls>().0.lock().unwrap().push(url);
             added.push((uri_str.to_string(), display_name.to_string()));
         }
         // Store MIME hint for warm-start path
@@ -128,7 +128,11 @@ pub fn read_pending_mimes(app: &AppHandle) {
         let mime_type = parts.next().unwrap_or("");
         if !display_name.is_empty() {
             if let Some(state) = app.try_state::<crate::PendingDisplayNames>() {
-                state.0.lock().unwrap().insert(uri_str.to_string(), display_name.to_string());
+                state
+                    .0
+                    .lock()
+                    .unwrap()
+                    .insert(uri_str.to_string(), display_name.to_string());
             }
         }
         if !mime_type.is_empty() {

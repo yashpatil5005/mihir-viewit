@@ -7,7 +7,7 @@
 //! Produces `Document::Docx` with structured blocks for the DocxViewer.
 
 use std::io::{Cursor, Read};
-use viewit_core_types::{DocxBlock, Document, Error, Format};
+use viewit_core_types::{Document, DocxBlock, Error, Format};
 use zip::ZipArchive;
 
 pub fn parse_odt(bytes: &[u8], _format: Format, _name: &str) -> Result<Document, Error> {
@@ -105,7 +105,10 @@ fn extract_odt_blocks(xml: &str) -> Vec<DocxBlock> {
                     current_text.clear();
                 }
                 if tag_ref == b"draw:image" && in_office_text && !in_table_cell {
-                    blocks.push(DocxBlock::Image { name: image_name(&e) });
+                    blocks.push(DocxBlock::Image {
+                        name: image_name(&e),
+                        src: None,
+                    });
                 }
             }
             Ok(Event::Empty(e)) => {
@@ -124,7 +127,10 @@ fn extract_odt_blocks(xml: &str) -> Vec<DocxBlock> {
                         }
                         cell_text.push_str("[Image]");
                     } else {
-                        blocks.push(DocxBlock::Image { name: image_name(&e) });
+                        blocks.push(DocxBlock::Image {
+                            name: image_name(&e),
+                            src: None,
+                        });
                     }
                 }
             }
@@ -180,7 +186,9 @@ fn extract_odt_blocks(xml: &str) -> Vec<DocxBlock> {
                 }
                 if tag_ref == b"table:table" && in_table {
                     if !table_rows.is_empty() {
-                        blocks.push(DocxBlock::Table { rows: table_rows.clone() });
+                        blocks.push(DocxBlock::Table {
+                            rows: table_rows.clone(),
+                        });
                     }
                     in_table = false;
                 }
@@ -241,9 +249,17 @@ mod tests {
         "#;
 
         let blocks = extract_odt_blocks(xml);
-        assert!(matches!(blocks[0], DocxBlock::Paragraph { heading: Some(1), .. }));
+        assert!(matches!(
+            blocks[0],
+            DocxBlock::Paragraph {
+                heading: Some(1),
+                ..
+            }
+        ));
         assert!(matches!(blocks[2], DocxBlock::ListItem { .. }));
-        assert!(matches!(&blocks[3], DocxBlock::Table { rows } if rows == &vec![vec!["A1".to_string(), "B1".to_string()]]));
-        assert!(matches!(&blocks[4], DocxBlock::Image { name } if name == "Pictures/pic.png"));
+        assert!(
+            matches!(&blocks[3], DocxBlock::Table { rows } if rows == &vec![vec!["A1".to_string(), "B1".to_string()]])
+        );
+        assert!(matches!(&blocks[4], DocxBlock::Image { name, .. } if name == "Pictures/pic.png"));
     }
 }

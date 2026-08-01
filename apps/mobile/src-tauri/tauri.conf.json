@@ -53,6 +53,7 @@
       { "ext": ["ppt"], "mimeType": "application/vnd.ms-powerpoint", "role": "Viewer" },
       { "ext": ["odp"], "mimeType": "application/vnd.oasis.opendocument.presentation", "role": "Viewer" },
       { "ext": ["mp4", "mkv", "webm", "mov", "3gp", "avi"], "mimeType": "video/*", "role": "Viewer" },
+      { "ext": ["aac", "mp3", "m4a", "flac", "ogg", "wav", "wma", "opus"], "mimeType": "audio/*", "role": "Viewer" },
       { "ext": ["rtf"], "mimeType": "application/rtf", "role": "Viewer" },
       { "ext": ["odt"], "mimeType": "application/vnd.oasis.opendocument.text", "role": "Viewer" },
       { "ext": ["ods"], "mimeType": "application/vnd.oasis.opendocument.spreadsheet", "role": "Viewer" }

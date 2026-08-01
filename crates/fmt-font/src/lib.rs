@@ -1,6 +1,7 @@
 //! Font metadata extraction for TTF/OTF/WOFF via `ttf-parser`.
 
 use viewit_core_types::{Document, Error, Format};
+use base64::{Engine as _, engine::general_purpose};
 
 pub fn parse(bytes: &[u8], format: Format, _name: &str) -> Result<Document, Error> {
     let face = ttf_parser::Face::parse(bytes, 0)
@@ -23,11 +24,15 @@ pub fn parse(bytes: &[u8], format: Format, _name: &str) -> Result<Document, Erro
     // Check italic style
     let is_italic = face.is_italic();
 
+    // Encode font data as base64 for @font-face
+    let font_data = general_purpose::STANDARD.encode(bytes);
+
     Ok(Document::Font {
         family_name,
         weight,
         is_italic,
         format,
         byte_len: bytes.len(),
+        font_data: Some(font_data),
     })
 }

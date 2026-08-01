@@ -90,7 +90,11 @@ fn extract_odp_slides(xml: &str) -> Vec<PptxSlide> {
                     } else {
                         String::new()
                     };
-                    slides.push(PptxSlide { title, body });
+                    slides.push(PptxSlide {
+                        title,
+                        body,
+                        elements: Vec::new(),
+                    });
                 }
             }
             Ok(Event::Eof) => break,

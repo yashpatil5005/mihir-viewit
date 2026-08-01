@@ -6,6 +6,7 @@ BUILD_DIR="$PLUGIN_DIR/build"
 FFMPEGKIT_VERSION="6.1.4"
 FFMPEGKIT_URL="https://repo1.maven.org/maven2/com/mrljdx/ffmpeg-kit-full/$FFMPEGKIT_VERSION/ffmpeg-kit-full-$FFMPEGKIT_VERSION.aar"
 SMART_EXCEPTION_VERSION="0.2.1"
+SMART_EXCEPTION_COMMON_URL="https://repo1.maven.org/maven2/com/arthenica/smart-exception-common/$SMART_EXCEPTION_VERSION/smart-exception-common-$SMART_EXCEPTION_VERSION.jar"
 SMART_EXCEPTION_URL="https://repo1.maven.org/maven2/com/mrljdx/smart-exception-java/$SMART_EXCEPTION_VERSION/smart-exception-java-$SMART_EXCEPTION_VERSION.jar"
 ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
 BUILD_TOOLS="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
@@ -25,6 +26,7 @@ mkdir -p "$BUILD_DIR"/{aar,native/dex,classes}
 # 1. Download FFmpegKit AAR
 echo "--- Downloading FFmpegKit AAR ---"
 curl -L -o "$BUILD_DIR/aar/ffmpeg-kit.aar" "$FFMPEGKIT_URL"
+curl -L -o "$BUILD_DIR/aar/smart-exception-common.jar" "$SMART_EXCEPTION_COMMON_URL"
 curl -L -o "$BUILD_DIR/aar/smart-exception-java.jar" "$SMART_EXCEPTION_URL"
 
 # 2. Extract native .so files
@@ -34,22 +36,14 @@ unzip -qo ffmpeg-kit.aar -d extracted
 cp -r extracted/jni/* "$BUILD_DIR/native/"
 rm -rf "$BUILD_DIR/native/armeabi-v7a" "$BUILD_DIR/native/x86" "$BUILD_DIR/native/x86_64"
 
-# 3. Extract FFmpegKit classes (for DEX)
-echo "--- Extracting FFmpegKit classes ---"
-if [ -f extracted/classes.jar ]; then
-    cd "$BUILD_DIR/classes"
-    jar xf ../aar/extracted/classes.jar
-fi
-jar xf "$BUILD_DIR/aar/smart-exception-java.jar"
-
-# 4. Compile plugin Java source
+# 3. Compile plugin Java source
 echo "--- Compiling plugin source ---"
 mkdir -p "$BUILD_DIR/plugin_classes"
 
 # Find all FFmpegKit classes we need
 FFMPEGKIT_CP=""
 if [ -f "$BUILD_DIR/aar/extracted/classes.jar" ]; then
-    FFMPEGKIT_CP="$BUILD_DIR/aar/extracted/classes.jar:$BUILD_DIR/aar/smart-exception-java.jar"
+            FFMPEGKIT_CP="$BUILD_DIR/aar/extracted/classes.jar:$BUILD_DIR/aar/smart-exception-common.jar:$BUILD_DIR/aar/smart-exception-java.jar"
 fi
 
 "$JAVAC" \
@@ -60,15 +54,14 @@ fi
     "$PLUGIN_DIR/src/ViewItPlugin.java" \
     "$PLUGIN_DIR/src/PluginProgress.java"
 
-# 5. Create DEX
+# 4. Create DEX
 echo "--- Creating DEX ---"
 "$BUILD_TOOLS/d8" \
     --min-api 24 \
     --output "$BUILD_DIR/native/dex/" \
-    $(find "$BUILD_DIR/plugin_classes" -name "*.class" ! -path "*/ai/viewit/app/*") \
-    $(find "$BUILD_DIR/classes" -name "*.class" 2>/dev/null)
+    $(find "$BUILD_DIR/plugin_classes" -name "*.class" ! -path "*/ai/viewit/app/*")
 
-# 6. Package plugin ZIP
+# 5. Package plugin ZIP
 echo "--- Packaging plugin ZIP ---"
 cd "$BUILD_DIR/native"
 cp "$PLUGIN_DIR/plugin.json" .

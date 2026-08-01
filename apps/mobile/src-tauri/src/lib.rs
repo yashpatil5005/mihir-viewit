@@ -17,6 +17,7 @@ mod uri_util;
 use std::io::Read;
 use std::sync::Mutex;
 
+use base64::{engine::general_purpose, Engine as _};
 use tauri::{Manager, Url};
 use viewit_core::Document;
 
@@ -34,14 +35,11 @@ fn opened_urls(app: tauri::AppHandle) -> Vec<String> {
     #[cfg(target_os = "android")]
     {
         // Check if setup() already drained the pending file into OpenedUrls state.
-        let cached: Vec<String> = app
-            .state::<OpenedUrls>()
-            .0
-            .lock()
-            .unwrap()
-            .iter()
-            .map(|u| u.to_string())
-            .collect();
+        let cached: Vec<String> = {
+            let state = app.state::<OpenedUrls>();
+            let mut lock = state.0.lock().unwrap();
+            lock.drain(..).map(|u| u.to_string()).collect()
+        };
         if !cached.is_empty() {
             return cached;
         }
@@ -50,13 +48,11 @@ fn opened_urls(app: tauri::AppHandle) -> Vec<String> {
         entries.iter().map(|(uri, _)| uri.clone()).collect()
     }
     #[cfg(not(target_os = "android"))]
-    app.state::<OpenedUrls>()
-        .0
-        .lock()
-        .unwrap()
-        .iter()
-        .map(|u| u.to_string())
-        .collect()
+    {
+        let state = app.state::<OpenedUrls>();
+        let mut lock = state.0.lock().unwrap();
+        lock.drain(..).map(|u| u.to_string()).collect()
+    }
 }
 
 #[tauri::command]
@@ -64,13 +60,56 @@ async fn open_uri(
     app: tauri::AppHandle,
     uri: String,
     name: Option<String>,
+    mime_type: Option<String>,
 ) -> Result<Document, String> {
     #[cfg(target_os = "android")]
     {
         // Read pending file for warm-start (app already running, onNewIntent fired)
         android_pending::read_pending_mimes(&app);
     }
-    uri_util::open_from_uri(&app, uri, name)
+    uri_util::open_from_uri(&app, uri, name, mime_type)
+}
+
+#[tauri::command]
+async fn decode_heic_to_data_url(app: tauri::AppHandle, asset_path: String, uri: Option<String>) -> Result<String, String> {
+    use tauri_plugin_fs::{FsExt, FilePath};
+    use std::str::FromStr;
+    use std::io::Read;
+    let data = if !asset_path.is_empty() && !asset_path.starts_with("content://") {
+        let fp = std::path::PathBuf::from(&asset_path);
+        std::fs::read(&fp).map_err(|e| format!("read HEIC: {e}"))?
+    } else if let Some(ref u) = uri {
+        if u.starts_with("file://") {
+            let path = u.strip_prefix("file://").unwrap_or(u);
+            std::fs::read(path).map_err(|e| format!("read HEIC: {e}"))?
+        } else {
+            let fp = FilePath::from_str(u).map_err(|e| format!("parse URI: {e}"))?;
+            let mut opts = tauri_plugin_fs::OpenOptions::new();
+            opts.read(true);
+            let mut reader = app.fs().open(fp, opts).map_err(|e| format!("open HEIC via ContentResolver: {e}"))?;
+            let mut buf = Vec::new();
+            reader.read_to_end(&mut buf).map_err(|e| format!("read HEIC via ContentResolver: {e}"))?;
+            buf
+        }
+    } else {
+        return Err("no path or URI for HEIC file".into());
+    };
+    let output = heic::DecoderConfig::new()
+        .decode(&data, heic::PixelLayout::Rgba8)
+        .map_err(|e| format!("decode HEIC: {e}"))?;
+    let rgba = output.data;
+    let w = output.width as u32;
+    let h = output.height as u32;
+    let img = image::RgbaImage::from_raw(w, h, rgba)
+        .ok_or("failed to create RgbaImage from HEIC pixels")?;
+    let mut jpeg_buf = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgba8(img)
+        .write_to(&mut jpeg_buf, image::ImageFormat::Jpeg)
+        .map_err(|e| format!("encode JPEG: {e}"))?;
+    let jpeg_bytes = jpeg_buf.into_inner();
+    use base64::{engine::general_purpose, Engine as _};
+    let b64 = general_purpose::STANDARD.encode(&jpeg_bytes);
+    Ok(format!("data:image/jpeg;base64,{b64}"))
 }
 
 /// Desktop / iOS: raw bytes via `tauri::ipc::Response` (optimal, no JSON encoding).
@@ -78,7 +117,10 @@ async fn open_uri(
 /// uses `read_materialized_bytes_b64` instead.
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
-fn read_materialized_bytes(app: tauri::AppHandle, asset_path: String) -> Result<tauri::ipc::Response, String> {
+fn read_materialized_bytes(
+    app: tauri::AppHandle,
+    asset_path: String,
+) -> Result<tauri::ipc::Response, String> {
     let bytes = materialize::read_materialized_file(&app, &asset_path)?;
     Ok(tauri::ipc::Response::new(bytes))
 }
@@ -87,7 +129,10 @@ fn read_materialized_bytes(app: tauri::AppHandle, asset_path: String) -> Result<
 /// (one byte → one JS number would be ~3-4x raw size and 4-byte ints).
 /// Frontend decodes via `fetch('data:application/octet-stream;base64,...')` or `atob`.
 #[tauri::command]
-fn read_materialized_bytes_b64(app: tauri::AppHandle, asset_path: String) -> Result<String, String> {
+fn read_materialized_bytes_b64(
+    app: tauri::AppHandle,
+    asset_path: String,
+) -> Result<String, String> {
     use base64::Engine;
     let bytes = materialize::read_materialized_file(&app, &asset_path)?;
     Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
@@ -143,7 +188,11 @@ fn open_bytes_b64(b64: String, name: String) -> Result<Document, String> {
 /// a `http://127.0.0.1:{port}/{id}` URL. The WebView's `<video>` / `<audio>`
 /// can seek natively via HTTP Range requests — no base64 IPC needed.
 #[tauri::command]
-fn media_stream_url(app: tauri::AppHandle, asset_path: String, ext: String) -> Result<String, String> {
+fn media_stream_url(
+    app: tauri::AppHandle,
+    asset_path: String,
+    ext: String,
+) -> Result<String, String> {
     let file_path = if asset_path.starts_with("file://") {
         url::Url::parse(&asset_path)
             .map_err(|e| e.to_string())?
@@ -157,7 +206,10 @@ fn media_stream_url(app: tauri::AppHandle, asset_path: String, ext: String) -> R
     }
     let slots = app.state::<stream_protocol::StreamSlots>();
     let id = stream_protocol::insert_cached(&slots, file_path, ext);
-    let port = app.state::<HttpPort>().0.load(std::sync::atomic::Ordering::Relaxed);
+    let port = app
+        .state::<HttpPort>()
+        .0
+        .load(std::sync::atomic::Ordering::Relaxed);
     if port > 0 {
         Ok(format!("http://127.0.0.1:{}/{}", port, id))
     } else {
@@ -171,7 +223,10 @@ fn media_stream_url(app: tauri::AppHandle, asset_path: String, ext: String) -> R
 fn register_stream_uri(app: tauri::AppHandle, uri: String) -> Result<String, String> {
     let registry = app.state::<stream_server::StreamRegistry>();
     let id = stream_server::register_uri(&registry, uri);
-    let port = app.state::<HttpPort>().0.load(std::sync::atomic::Ordering::Relaxed);
+    let port = app
+        .state::<HttpPort>()
+        .0
+        .load(std::sync::atomic::Ordering::Relaxed);
     if port > 0 {
         Ok(format!("http://127.0.0.1:{}/{}", port, id))
     } else {
@@ -267,6 +322,39 @@ async fn archive_extract(
             }
             Err(format!("entry not found: {}", entry_name))
         }
+        "gz" => {
+            // Try tar.gz first: decompress and look for entry
+            use flate2::read::GzDecoder;
+            use std::io::Read;
+            let mut decoder = GzDecoder::new(cursor.clone());
+            let mut header = [0u8; 512];
+            let n = decoder.read(&mut header).unwrap_or(0);
+            if n >= 268 && header.starts_with(b"ustar") {
+                // It's a tar.gz — find the entry
+                let mut archive = tar::Archive::new(GzDecoder::new(cursor));
+                for entry in archive.entries().map_err(|e| e.to_string())? {
+                    let Ok(mut entry) = entry else {
+                        continue;
+                    };
+                    if entry
+                        .path()
+                        .map(|p| p.to_string_lossy() == entry_name)
+                        .unwrap_or(false)
+                    {
+                        let mut out = Vec::new();
+                        entry.read_to_end(&mut out).map_err(|e| e.to_string())?;
+                        return Ok(out);
+                    }
+                }
+                Err(format!("entry not found: {}", entry_name))
+            } else {
+                // Plain gz — decompress and return raw bytes
+                let mut decoder = GzDecoder::new(cursor);
+                let mut out = Vec::new();
+                decoder.read_to_end(&mut out).map_err(|e| e.to_string())?;
+                Ok(out)
+            }
+        }
         _ => Err(format!("extraction not supported for .{} archive", ext)),
     }
 }
@@ -298,7 +386,98 @@ async fn epub_chapter(app: tauri::AppHandle, uri: String, index: usize) -> Resul
     if let Ok(mut f) = archive.by_name(chapter_path) {
         f.read_to_string(&mut chapter).ok();
     }
-    Ok(chapter)
+    Ok(inline_epub_images(&mut archive, chapter_path, &chapter))
+}
+
+fn inline_epub_images<R>(archive: &mut zip::ZipArchive<R>, chapter_path: &str, html: &str) -> String
+where
+    R: Read + std::io::Seek,
+{
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+    while let Some((attr_start, attr_len, quote, value_start)) = find_image_attr(rest) {
+        out.push_str(&rest[..attr_start + attr_len]);
+        let Some(value_end_rel) = rest[value_start..].find(quote) else {
+            out.push_str(&rest[attr_start + attr_len..]);
+            return out;
+        };
+        let value_end = value_start + value_end_rel;
+        let src = &rest[value_start..value_end];
+        out.push(quote);
+        out.push_str(
+            &image_data_url(archive, chapter_path, src).unwrap_or_else(|| src.to_string()),
+        );
+        out.push(quote);
+        rest = &rest[value_end + quote.len_utf8()..];
+    }
+    out.push_str(rest);
+    out
+}
+
+fn find_image_attr(text: &str) -> Option<(usize, usize, char, usize)> {
+    let lower = text.to_ascii_lowercase();
+    ["src=", "href=", "xlink:href="]
+        .iter()
+        .filter_map(|attr| lower.find(attr).map(|idx| (idx, attr.len())))
+        .min_by_key(|(idx, _)| *idx)
+        .and_then(|(idx, len)| {
+            let quote_idx = idx + len;
+            let quote = *text.as_bytes().get(quote_idx)? as char;
+            if quote != '\'' && quote != '"' {
+                return None;
+            }
+            Some((idx, len, quote, quote_idx + 1))
+        })
+}
+
+fn image_data_url<R>(
+    archive: &mut zip::ZipArchive<R>,
+    chapter_path: &str,
+    src: &str,
+) -> Option<String>
+where
+    R: Read + std::io::Seek,
+{
+    if src.starts_with("data:") || src.starts_with("http:") || src.starts_with("https:") {
+        return None;
+    }
+    let src = src.split('#').next().unwrap_or(src);
+    let path = normalize_relative_path(chapter_path, src);
+    let mime = image_mime(&path)?;
+    let mut file = archive.by_name(&path).ok()?;
+    let mut bytes = Vec::with_capacity(file.size() as usize);
+    file.read_to_end(&mut bytes).ok()?;
+    Some(format!(
+        "data:{};base64,{}",
+        mime,
+        general_purpose::STANDARD.encode(bytes)
+    ))
+}
+
+fn normalize_relative_path(base_file: &str, rel: &str) -> String {
+    let mut parts: Vec<&str> = base_file.split('/').collect();
+    parts.pop();
+    for part in rel.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            _ => parts.push(part),
+        }
+    }
+    parts.join("/")
+}
+
+fn image_mime(path: &str) -> Option<&'static str> {
+    match path.rsplit('.').next()?.to_ascii_lowercase().as_str() {
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "png" => Some("image/png"),
+        "gif" => Some("image/gif"),
+        "webp" => Some("image/webp"),
+        "svg" => Some("image/svg+xml"),
+        _ => None,
+    }
 }
 
 fn extract_opf_path(container_xml: &str) -> Option<String> {
@@ -424,6 +603,7 @@ pub fn run() {
             register_stream_uri,
             epub_chapter,
             archive_extract,
+            decode_heic_to_data_url,
             #[cfg(feature = "fmt-pdf")]
             pdf_page
         ])
@@ -443,11 +623,19 @@ pub fn run() {
                 // Start the new unified stream server
                 match stream_server::start(app.handle().clone()) {
                     Ok(port) => {
-                        app.state::<HttpPort>().0.store(port, std::sync::atomic::Ordering::Relaxed);
-                        android_log_write_info("viewit", &format!("[viewit] HTTP stream server on 127.0.0.1:{}", port));
+                        app.state::<HttpPort>()
+                            .0
+                            .store(port, std::sync::atomic::Ordering::Relaxed);
+                        android_log_write_info(
+                            "viewit",
+                            &format!("[viewit] HTTP stream server on 127.0.0.1:{}", port),
+                        );
                     }
                     Err(e) => {
-                        android_log_write_info("viewit", &format!("[viewit] HTTP stream server FAILED: {}", e));
+                        android_log_write_info(
+                            "viewit",
+                            &format!("[viewit] HTTP stream server FAILED: {}", e),
+                        );
                     }
                 }
             }
@@ -486,7 +674,11 @@ fn android_log_write_info(tag: &str, msg: &str) {
             fn __android_log_write(prio: i32, tag: *const i8, text: *const i8) -> i32;
         }
         const ANDROID_LOG_INFO: i32 = 4;
-        let r = __android_log_write(ANDROID_LOG_INFO, tag_c.as_ptr() as *const i8, msg_c.as_ptr() as *const i8);
+        let r = __android_log_write(
+            ANDROID_LOG_INFO,
+            tag_c.as_ptr() as *const i8,
+            msg_c.as_ptr() as *const i8,
+        );
         // sink the return value so LTO doesn't drop the call.
         std::hint::black_box(r);
     }

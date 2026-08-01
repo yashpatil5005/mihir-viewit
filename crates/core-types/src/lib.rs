@@ -245,6 +245,8 @@ pub enum Document {
         format: Format,
         #[serde(rename = "byte_len")]
         byte_len: usize,
+        /// Base64-encoded font data for @font-face loading
+        font_data: Option<String>,
     },
 }
 
@@ -266,16 +268,45 @@ pub struct ArchiveEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", tag = "kind")]
 pub enum DocxBlock {
-    Paragraph { text: String, heading: Option<u8> },
-    ListItem { text: String, level: u8 },
-    Table { rows: Vec<Vec<String>> },
-    Image { name: String },
+    Paragraph {
+        text: String,
+        heading: Option<u8>,
+    },
+    ListItem {
+        text: String,
+        level: u8,
+    },
+    Table {
+        rows: Vec<Vec<String>>,
+    },
+    Image {
+        name: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        src: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PptxSlide {
     pub title: String,
     pub body: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub elements: Vec<PptxElement>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PptxElement {
+    pub kind: String,
+    pub x: u64,
+    pub y: u64,
+    pub w: u64,
+    pub h: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub src: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font_size: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

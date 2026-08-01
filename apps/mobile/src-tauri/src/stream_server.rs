@@ -82,6 +82,21 @@ pub fn register_cached(registry: &StreamRegistry, cache_path: PathBuf, ext_hint:
     id
 }
 
+/// Register a cached file path via AppHandle (convenience wrapper).
+pub fn register_cached_path(app: &AppHandle, cache_path: PathBuf, ext_hint: String) -> String {
+    let registry = app.state::<StreamRegistry>();
+    let id = register_cached(&registry, cache_path, ext_hint);
+    let port = app
+        .state::<crate::HttpPort>()
+        .0
+        .load(std::sync::atomic::Ordering::Relaxed);
+    if port > 0 {
+        format!("http://127.0.0.1:{}/{}", port, id)
+    } else {
+        String::new()
+    }
+}
+
 pub fn guess_mime(uri: &str, ext_hint: &str) -> String {
     if !ext_hint.is_empty() {
         if let Some(m) = from_path(format!("file.{}", ext_hint)).first() {
@@ -135,10 +150,7 @@ pub fn read_file_range(path: &PathBuf, start: usize, end: usize) -> Result<Vec<u
 }
 
 /// Open a stream from a `content://` URI via tauri-plugin-fs.
-fn open_content_stream(
-    app: &AppHandle,
-    uri: &str,
-) -> Result<Box<dyn Read + Send>, String> {
+fn open_content_stream(app: &AppHandle, uri: &str) -> Result<Box<dyn Read + Send>, String> {
     let fp = FilePath::from_str(uri).map_err(|e| e.to_string())?;
     let mut opts = tauri_plugin_fs::OpenOptions::new();
     opts.read(true);
@@ -156,7 +168,11 @@ fn build_headers(mime: &str, len: usize, extra: Option<(&str, &str)>) -> Vec<tin
         tiny_http::Header::from_bytes(&b"Content-Length"[..], len.to_string().as_bytes()).unwrap(),
         tiny_http::Header::from_bytes(&b"Accept-Ranges"[..], &b"bytes"[..]).unwrap(),
         tiny_http::Header::from_bytes(&b"Access-Control-Allow-Origin"[..], &b"*"[..]).unwrap(),
-        tiny_http::Header::from_bytes(&b"Access-Control-Allow-Methods"[..], &b"GET, HEAD, OPTIONS"[..]).unwrap(),
+        tiny_http::Header::from_bytes(
+            &b"Access-Control-Allow-Methods"[..],
+            &b"GET, HEAD, OPTIONS"[..],
+        )
+        .unwrap(),
         tiny_http::Header::from_bytes(&b"Access-Control-Allow-Headers"[..], &b"Range"[..]).unwrap(),
     ];
     if let Some((key, val)) = extra {
@@ -183,7 +199,9 @@ fn handle_request(
         }
     };
 
-    let mime = entry.mime_override.clone()
+    let mime = entry
+        .mime_override
+        .clone()
         .unwrap_or_else(|| guess_mime(&entry.source_uri, &entry.ext_hint));
 
     // If we have a cached file path, serve it directly with Range support
@@ -194,7 +212,11 @@ fn handle_request(
                 .unwrap_or(0);
 
             // Check for Range header
-            if let Some(range_val) = request.headers().iter().find(|h| h.field.as_str() == "range") {
+            if let Some(range_val) = request
+                .headers()
+                .iter()
+                .find(|h| h.field.as_str() == "range")
+            {
                 let range_str = range_val.value.as_str();
                 if let Some((start, end)) = parse_range_header(range_str, len) {
                     match read_file_range(cache_path, start, end) {
@@ -203,7 +225,11 @@ fn handle_request(
                             let slice_len = slice.len();
                             return tiny_http::Response::new(
                                 206.into(),
-                                build_headers(&mime, slice_len, Some(("Content-Range", &content_range))),
+                                build_headers(
+                                    &mime,
+                                    slice_len,
+                                    Some(("Content-Range", &content_range)),
+                                ),
                                 std::io::Cursor::new(slice),
                                 Some(slice_len),
                                 None,
@@ -249,7 +275,11 @@ fn handle_request(
             let len = buf.len();
 
             // Check for Range header
-            if let Some(range_val) = request.headers().iter().find(|h| h.field.as_str() == "range") {
+            if let Some(range_val) = request
+                .headers()
+                .iter()
+                .find(|h| h.field.as_str() == "range")
+            {
                 let range_str = range_val.value.as_str();
                 if let Some((start, end)) = parse_range_header(range_str, len) {
                     let content_range = format!("bytes {}-{}/{}", start, end, len);
@@ -274,8 +304,7 @@ fn handle_request(
             );
         }
         Err(e) => {
-            tiny_http::Response::from_string(format!("stream error: {}", e))
-                .with_status_code(500)
+            tiny_http::Response::from_string(format!("stream error: {}", e)).with_status_code(500)
         }
     }
 }
@@ -306,8 +335,7 @@ pub fn start(app: AppHandle) -> Result<u16, String> {
                 Ok(id) => id,
                 Err(_) => {
                     let _ = request.respond(
-                        tiny_http::Response::from_string("bad stream id")
-                            .with_status_code(400)
+                        tiny_http::Response::from_string("bad stream id").with_status_code(400),
                     );
                     continue;
                 }

@@ -10,7 +10,7 @@
 //! `chardetng` + `encoding_rs` to sniff the file's encoding instead of
 //! always settling for UTF-8 lossy.
 
-use viewit_core_types::{Document, Format, Error};
+use viewit_core_types::{Document, Error, Format};
 
 /// Number of CSV rows we ship in the first payload. The frontend asks for
 /// later pages as the user scrolls near the bottom of the virtualized table.
@@ -29,7 +29,11 @@ pub fn parse_text(bytes: &[u8], format: Format, _name: &str) -> Result<Document,
             let html = rtf_to_html(&text);
             let truncated = html.len() > TEXT_EAGER_CAP;
             Ok(Document::Markdown {
-                html: if truncated { html[..TEXT_EAGER_CAP].to_string() } else { html },
+                html: if truncated {
+                    html[..TEXT_EAGER_CAP].to_string()
+                } else {
+                    html
+                },
                 byte_len: bytes.len(),
             })
         }
@@ -92,41 +96,62 @@ fn rtf_to_text(rtf: &str) -> String {
             '\\' => {
                 let next = match chars.peek() {
                     Some(&n) => n,
-                    None => break
+                    None => break,
                 };
                 if next == '\\' || next == '{' || next == '}' {
                     out.push(next);
                     chars.next();
                 } else if next == '*' {
                     // destination control — skip group
-                    if skip_group == -1 { skip_group = depth; }
+                    if skip_group == -1 {
+                        skip_group = depth;
+                    }
                     chars.next();
                     // consume rest of control word
                     while let Some(&w) = chars.peek() {
-                        if w.is_alphabetic() { chars.next(); } else { break; }
+                        if w.is_alphabetic() {
+                            chars.next();
+                        } else {
+                            break;
+                        }
                     }
                 } else if next.is_alphabetic() {
                     // control word
                     let mut word = String::new();
                     chars.next();
                     while let Some(&w) = chars.peek() {
-                        if w.is_alphabetic() { word.push(w); chars.next(); } else { break; }
+                        if w.is_alphabetic() {
+                            word.push(w);
+                            chars.next();
+                        } else {
+                            break;
+                        }
                     }
                     // optional digit parameter
                     if let Some(&w) = chars.peek() {
                         if w == '-' || w.is_ascii_digit() {
                             chars.next();
                             while let Some(&d) = chars.peek() {
-                                if d.is_ascii_digit() { chars.next(); } else { break; }
+                                if d.is_ascii_digit() {
+                                    chars.next();
+                                } else {
+                                    break;
+                                }
                             }
                         }
                     }
                     // space after control word is consumed
-                    if let Some(&' ') = chars.peek() { chars.next(); }
+                    if let Some(&' ') = chars.peek() {
+                        chars.next();
+                    }
                     // insert paragraph break for \par, line break for \line
-                    if word == "par" { out.push_str("\n\n"); }
-                    else if word == "line" { out.push('\n'); }
-                    else if word == "tab" { out.push('\t'); }
+                    if word == "par" {
+                        out.push_str("\n\n");
+                    } else if word == "line" {
+                        out.push('\n');
+                    } else if word == "tab" {
+                        out.push('\t');
+                    }
                 } else if next == '\'' {
                     // hex escape \'XX
                     chars.next();
@@ -157,10 +182,7 @@ fn rtf_to_text(rtf: &str) -> String {
             _ => {}
         }
     }
-    out
-        .replace("\n{3,}", "\n\n")
-        .trim_matches('\n')
-        .to_string()
+    out.replace("\n{3,}", "\n\n").trim_matches('\n').to_string()
 }
 
 // --- RTF → HTML conversion with formatting support ---------------------------
@@ -186,37 +208,63 @@ fn rtf_to_html(rtf: &str) -> String {
             '\\' => {
                 let next = match chars.peek() {
                     Some(&n) => n,
-                    None => break
+                    None => break,
                 };
                 if next == '\\' || next == '{' || next == '}' {
                     push_escaped(&mut out, next, &mut in_paragraph);
                     chars.next();
                 } else if next == '*' {
-                    if skip_group == -1 { skip_group = depth; }
+                    if skip_group == -1 {
+                        skip_group = depth;
+                    }
                     chars.next();
                     while let Some(&w) = chars.peek() {
-                        if w.is_alphabetic() { chars.next(); } else { break; }
+                        if w.is_alphabetic() {
+                            chars.next();
+                        } else {
+                            break;
+                        }
                     }
                 } else if next.is_alphabetic() {
                     let mut word = String::new();
                     chars.next();
                     while let Some(&w) = chars.peek() {
-                        if w.is_alphabetic() { word.push(w); chars.next(); } else { break; }
+                        if w.is_alphabetic() {
+                            word.push(w);
+                            chars.next();
+                        } else {
+                            break;
+                        }
                     }
                     // optional numeric parameter
                     let param = if let Some(&w) = chars.peek() {
                         if w == '-' || w.is_ascii_digit() {
                             let negative = w == '-';
-                            if negative { chars.next(); }
+                            if negative {
+                                chars.next();
+                            }
                             let mut num = String::new();
                             while let Some(&d) = chars.peek() {
-                                if d.is_ascii_digit() { num.push(d); chars.next(); } else { break; }
+                                if d.is_ascii_digit() {
+                                    num.push(d);
+                                    chars.next();
+                                } else {
+                                    break;
+                                }
                             }
-                            num.parse::<i32>().ok().map(|n| if negative { -n } else { n })
-                        } else { None }
-                    } else { None };
+                            num.parse::<i32>()
+                                .ok()
+                                .map(|n| if negative { -n } else { n })
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
                     // consume trailing space
-                    if let Some(&' ') = chars.peek() { chars.next(); }
+                    if let Some(&' ') = chars.peek() {
+                        chars.next();
+                    }
 
                     match word.as_str() {
                         "par" | "pard" => {
@@ -233,13 +281,17 @@ fn rtf_to_html(rtf: &str) -> String {
                             let new_val = word == "b";
                             bold = if new_val {
                                 param.map_or(true, |p| p != 0)
-                            } else { false };
+                            } else {
+                                false
+                            };
                         }
                         "i" | "i0" => {
                             let new_val = word == "i";
                             italic = if new_val {
                                 param.map_or(true, |p| p != 0)
-                            } else { false };
+                            } else {
+                                false
+                            };
                         }
                         "ul" | "ul0" | "ulnone" => {
                             underline = word == "ul";
@@ -249,7 +301,9 @@ fn rtf_to_html(rtf: &str) -> String {
                                 font_size = if p > 0 { Some(p as u32 / 2) } else { None };
                             }
                         }
-                        "fs0" => { font_size = None; }
+                        "fs0" => {
+                            font_size = None;
+                        }
                         _ => {}
                     }
                 } else if next == '\'' {
@@ -260,8 +314,18 @@ fn rtf_to_html(rtf: &str) -> String {
                         let s = format!("{}{}", a, b);
                         if let Ok(byte_val) = u8::from_str_radix(&s, 16) {
                             let ch = byte_val as char;
-                            if ch.is_control() { continue; }
-                            push_char_html(&mut out, ch, bold, italic, underline, font_size, &mut in_paragraph);
+                            if ch.is_control() {
+                                continue;
+                            }
+                            push_char_html(
+                                &mut out,
+                                ch,
+                                bold,
+                                italic,
+                                underline,
+                                font_size,
+                                &mut in_paragraph,
+                            );
                         }
                     }
                 } else {
@@ -284,7 +348,15 @@ fn rtf_to_html(rtf: &str) -> String {
                 underline = underline_stack.pop().unwrap_or(false);
             }
             c if skip_group == -1 && !c.is_control() => {
-                push_char_html(&mut out, c, bold, italic, underline, font_size, &mut in_paragraph);
+                push_char_html(
+                    &mut out,
+                    c,
+                    bold,
+                    italic,
+                    underline,
+                    font_size,
+                    &mut in_paragraph,
+                );
             }
             _ => {}
         }
@@ -309,7 +381,15 @@ fn push_escaped(out: &mut String, ch: char, in_paragraph: &mut bool) {
     }
 }
 
-fn push_char_html(out: &mut String, ch: char, bold: bool, italic: bool, underline: bool, font_size: Option<u32>, in_paragraph: &mut bool) {
+fn push_char_html(
+    out: &mut String,
+    ch: char,
+    bold: bool,
+    italic: bool,
+    underline: bool,
+    font_size: Option<u32>,
+    in_paragraph: &mut bool,
+) {
     if !*in_paragraph {
         out.push_str("<p>");
         *in_paragraph = true;
@@ -317,9 +397,15 @@ fn push_char_html(out: &mut String, ch: char, bold: bool, italic: bool, underlin
     let needs_open = bold || italic || underline || font_size.is_some();
     if needs_open {
         out.push('<');
-        if bold { out.push_str("strong"); }
-        if italic { out.push_str("em"); }
-        if underline { out.push_str("u"); }
+        if bold {
+            out.push_str("strong");
+        }
+        if italic {
+            out.push_str("em");
+        }
+        if underline {
+            out.push_str("u");
+        }
         out.push('>');
     }
     match ch {
@@ -332,9 +418,15 @@ fn push_char_html(out: &mut String, ch: char, bold: bool, italic: bool, underlin
     }
     if needs_open {
         out.push_str("</");
-        if underline { out.push_str("u"); }
-        if italic { out.push_str("em"); }
-        if bold { out.push_str("strong"); }
+        if underline {
+            out.push_str("u");
+        }
+        if italic {
+            out.push_str("em");
+        }
+        if bold {
+            out.push_str("strong");
+        }
         out.push('>');
     }
 }
@@ -387,9 +479,7 @@ fn decode(bytes: &[u8]) -> (String, String) {
 #[cfg(not(feature = "encoding_detect"))]
 fn decode(bytes: &[u8]) -> (String, String) {
     // No chardetng; just strip BOM and lossy.
-    let stripped: &[u8] = bytes
-        .strip_prefix(b"\xEF\xBB\xBF")
-        .unwrap_or(bytes);
+    let stripped: &[u8] = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes);
     let s = String::from_utf8_lossy(stripped).into_owned();
     (s, "utf-8".to_string())
 }
@@ -397,7 +487,7 @@ fn decode(bytes: &[u8]) -> (String, String) {
 // --- Phase 2.4 — Markdown via pulldown-cmark ---------------------------------
 
 fn markdown_to_html(text: &str) -> String {
-    use pulldown_cmark::{Parser, Options, html};
+    use pulldown_cmark::{html, Options, Parser};
 
     // CommonMark + a conservative set of extensions. We avoid raw-HTML pass-through
     // because the frontend renders user-supplied files; unexpected inline <script> /
@@ -420,8 +510,8 @@ fn markdown_to_html(text: &str) -> String {
 // --- Phase 2.5 — JSON pretty print ------------------------------------------
 
 fn pretty_json(text: &str) -> Result<String, Error> {
-    let value: serde_json::Value = serde_json::from_str(text)
-        .map_err(|e| Error::Parse(format!("JSON parse: {}", e)))?;
+    let value: serde_json::Value =
+        serde_json::from_str(text).map_err(|e| Error::Parse(format!("JSON parse: {}", e)))?;
     Ok(serde_json::to_string_pretty(&value)
         .map_err(|e| Error::Parse(format!("JSON encode: {}", e)))?)
 }

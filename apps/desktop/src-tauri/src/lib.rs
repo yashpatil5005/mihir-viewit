@@ -3,6 +3,8 @@
 //! Per ADR 0005: install RunEvent::Opened plumbing for file-associations.
 //! Phase 1.10: invoke `viewit_core::open(bytes, ext, name)` to dispatch.
 use std::sync::Mutex;
+
+use base64::{engine::general_purpose, Engine as _};
 use tauri::{Manager, Url};
 use viewit_core::{is_stream_ext, open, open_stream, Document, Format, Suggestion, OPEN_BYTES_CAP};
 
@@ -47,7 +49,10 @@ async fn open_uri(uri: String, name: Option<String>) -> Result<Document, String>
     }
     let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
     if bytes.len() > OPEN_BYTES_CAP {
-        return Err(format!("file exceeds {} MB cap", OPEN_BYTES_CAP / 1_048_576));
+        return Err(format!(
+            "file exceeds {} MB cap",
+            OPEN_BYTES_CAP / 1_048_576
+        ));
     }
     open(&bytes, &ext, &display_name).map_err(|e| e.to_string())
 }
@@ -70,12 +75,12 @@ fn pdf_page_render(bytes: &[u8], index: usize) -> Result<String, String> {
 
 #[tauri::command]
 fn open_bytes(bytes: Vec<u8>, name: String) -> Result<Document, String> {
-    let ext = name
-        .rsplit('.')
-        .next()
-        .unwrap_or("")
-        .to_lowercase();
-    let display = if name.is_empty() { "file".to_string() } else { name.clone() };
+    let ext = name.rsplit('.').next().unwrap_or("").to_lowercase();
+    let display = if name.is_empty() {
+        "file".to_string()
+    } else {
+        name.clone()
+    };
     if is_stream_ext(&ext) && bytes.len() > OPEN_BYTES_CAP {
         return open_stream(&ext, &display).map_err(|e| e.to_string());
     }
@@ -114,8 +119,13 @@ async fn csv_page(uri: String, skip: usize, take: usize) -> Result<Vec<Vec<Strin
     let mut rows: Vec<Vec<String>> = Vec::with_capacity(take);
     let mut idx = 0;
     for result in rdr.records() {
-        if idx < skip { idx += 1; continue; }
-        if rows.len() >= take { break; }
+        if idx < skip {
+            idx += 1;
+            continue;
+        }
+        if rows.len() >= take {
+            break;
+        }
         match result {
             Ok(r) => rows.push(r.iter().map(|c| c.to_string()).collect()),
             Err(_) => break,
@@ -131,7 +141,11 @@ async fn csv_page(uri: String, skip: usize, take: usize) -> Result<Vec<Vec<Strin
 async fn archive_extract(uri: String, entry_name: String) -> Result<Vec<u8>, String> {
     let path = parse_file_uri(&uri).ok_or_else(|| format!("not a file:// URI: {}", uri))?;
     let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
-    let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+    let ext = path
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_lowercase();
     let cursor = std::io::Cursor::new(bytes);
     match ext.as_str() {
         "zip" => {
@@ -146,7 +160,11 @@ async fn archive_extract(uri: String, entry_name: String) -> Result<Vec<u8>, Str
             let mut archive = tar::Archive::new(cursor);
             for entry in archive.entries().map_err(|e| e.to_string())? {
                 let Ok(mut entry) = entry else { continue };
-                if entry.path().map(|p| p.to_string_lossy() == entry_name).unwrap_or(false) {
+                if entry
+                    .path()
+                    .map(|p| p.to_string_lossy() == entry_name)
+                    .unwrap_or(false)
+                {
                     let mut out = Vec::new();
                     use std::io::Read;
                     entry.read_to_end(&mut out).map_err(|e| e.to_string())?;
@@ -180,7 +198,11 @@ async fn epub_chapter(uri: String, index: usize) -> Result<String, String> {
     }
     let spine = extract_spine_hrefs(&opf, &opf_path);
     if index >= spine.len() {
-        return Err(format!("chapter index {} out of range (spine len {})", index, spine.len()));
+        return Err(format!(
+            "chapter index {} out of range (spine len {})",
+            index,
+            spine.len()
+        ));
     }
     let chapter_path = &spine[index];
     let mut chapter = String::new();
@@ -188,7 +210,98 @@ async fn epub_chapter(uri: String, index: usize) -> Result<String, String> {
         use std::io::Read;
         f.read_to_string(&mut chapter).ok();
     }
-    Ok(chapter)
+    Ok(inline_epub_images(&mut archive, chapter_path, &chapter))
+}
+
+fn inline_epub_images<R>(archive: &mut zip::ZipArchive<R>, chapter_path: &str, html: &str) -> String
+where
+    R: std::io::Read + std::io::Seek,
+{
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+    while let Some((attr_start, attr_len, quote, value_start)) = find_image_attr(rest) {
+        out.push_str(&rest[..attr_start + attr_len]);
+        let Some(value_end_rel) = rest[value_start..].find(quote) else {
+            out.push_str(&rest[attr_start + attr_len..]);
+            return out;
+        };
+        let value_end = value_start + value_end_rel;
+        let src = &rest[value_start..value_end];
+        out.push(quote);
+        out.push_str(
+            &image_data_url(archive, chapter_path, src).unwrap_or_else(|| src.to_string()),
+        );
+        out.push(quote);
+        rest = &rest[value_end + quote.len_utf8()..];
+    }
+    out.push_str(rest);
+    out
+}
+
+fn find_image_attr(text: &str) -> Option<(usize, usize, char, usize)> {
+    let lower = text.to_ascii_lowercase();
+    ["src=", "href=", "xlink:href="]
+        .iter()
+        .filter_map(|attr| lower.find(attr).map(|idx| (idx, attr.len())))
+        .min_by_key(|(idx, _)| *idx)
+        .and_then(|(idx, len)| {
+            let quote_idx = idx + len;
+            let quote = *text.as_bytes().get(quote_idx)? as char;
+            if quote != '\'' && quote != '"' {
+                return None;
+            }
+            Some((idx, len, quote, quote_idx + 1))
+        })
+}
+
+fn image_data_url<R>(
+    archive: &mut zip::ZipArchive<R>,
+    chapter_path: &str,
+    src: &str,
+) -> Option<String>
+where
+    R: std::io::Read + std::io::Seek,
+{
+    if src.starts_with("data:") || src.starts_with("http:") || src.starts_with("https:") {
+        return None;
+    }
+    let src = src.split('#').next().unwrap_or(src);
+    let path = normalize_relative_path(chapter_path, src);
+    let mime = image_mime(&path)?;
+    let mut file = archive.by_name(&path).ok()?;
+    let mut bytes = Vec::with_capacity(file.size() as usize);
+    std::io::Read::read_to_end(&mut file, &mut bytes).ok()?;
+    Some(format!(
+        "data:{};base64,{}",
+        mime,
+        general_purpose::STANDARD.encode(bytes)
+    ))
+}
+
+fn normalize_relative_path(base_file: &str, rel: &str) -> String {
+    let mut parts: Vec<&str> = base_file.split('/').collect();
+    parts.pop();
+    for part in rel.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            _ => parts.push(part),
+        }
+    }
+    parts.join("/")
+}
+
+fn image_mime(path: &str) -> Option<&'static str> {
+    match path.rsplit('.').next()?.to_ascii_lowercase().as_str() {
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "png" => Some("image/png"),
+        "gif" => Some("image/gif"),
+        "webp" => Some("image/webp"),
+        "svg" => Some("image/svg+xml"),
+        _ => None,
+    }
 }
 
 fn extract_opf_path(container_xml: &str) -> Option<String> {
@@ -209,13 +322,25 @@ fn extract_spine_hrefs(opf: &str, opf_path: &str) -> Vec<String> {
     let mut spine_idrefs: Vec<String> = Vec::new();
     let mut chars = opf.chars().peekable();
     let _ = chars.by_ref().count(); // drain into iter? Not needed; we just tokenize raw.
-    // Simple regex-like scan with split on '<'
+                                    // Simple regex-like scan with split on '<'
     for token in opf.split('<') {
         let lower = token.to_lowercase();
-        if lower.starts_with("manifest") { in_manifest = true; continue; }
-        if lower.starts_with("/manifest") { in_manifest = false; continue; }
-        if lower.starts_with("spine") { in_spine = true; continue; }
-        if lower.starts_with("/spine") { in_spine = false; continue; }
+        if lower.starts_with("manifest") {
+            in_manifest = true;
+            continue;
+        }
+        if lower.starts_with("/manifest") {
+            in_manifest = false;
+            continue;
+        }
+        if lower.starts_with("spine") {
+            in_spine = true;
+            continue;
+        }
+        if lower.starts_with("/spine") {
+            in_spine = false;
+            continue;
+        }
         if in_manifest && lower.starts_with("item ") {
             let mut id = None;
             let mut href = None;
@@ -225,28 +350,41 @@ fn extract_spine_hrefs(opf: &str, opf_path: &str) -> Vec<String> {
             // simpler: capture id="..." href="..." patterns
             if let Some(i) = token.find("id=\"") {
                 let s = i + 4;
-                if let Some(e) = token[s..].find('"') { id = Some(token[s..s+e].to_string()); }
+                if let Some(e) = token[s..].find('"') {
+                    id = Some(token[s..s + e].to_string());
+                }
             }
             if let Some(i) = token.find("href=\"") {
                 let s = i + 6;
-                if let Some(e) = token[s..].find('"') { href = Some(token[s..s+e].to_string()); }
+                if let Some(e) = token[s..].find('"') {
+                    href = Some(token[s..s + e].to_string());
+                }
             }
-            if let (Some(i), Some(h)) = (id, href) { manifest.insert(i, resolve_relative(h, opf_path)); }
+            if let (Some(i), Some(h)) = (id, href) {
+                manifest.insert(i, resolve_relative(h, opf_path));
+            }
         }
         if in_spine && lower.starts_with("itemref ") {
             if let Some(i) = token.find("idref=\"") {
                 let s = i + 7;
                 if let Some(e) = token[s..].find('"') {
-                    spine_idrefs.push(token[s..s+e].to_string());
+                    spine_idrefs.push(token[s..s + e].to_string());
                 }
             }
         }
     }
-    spine_idrefs.iter().filter_map(|id| manifest.get(id).cloned()).collect()
+    spine_idrefs
+        .iter()
+        .filter_map(|id| manifest.get(id).cloned())
+        .collect()
 }
 
 fn resolve_relative(href: String, base: &str) -> String {
-    if let Some(idx) = base.rfind('/') { format!("{}/{}", &base[..idx], href) } else { href }
+    if let Some(idx) = base.rfind('/') {
+        format!("{}/{}", &base[..idx], href)
+    } else {
+        href
+    }
 }
 
 fn parse_file_uri(uri: &str) -> Option<std::path::PathBuf> {
@@ -265,7 +403,16 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .manage(OpenedUrls(Mutex::new(vec![])))
-        .invoke_handler(tauri::generate_handler![opened_urls, open_uri, open_bytes, text_page, csv_page, epub_chapter, archive_extract, pdf_page])
+        .invoke_handler(tauri::generate_handler![
+            opened_urls,
+            open_uri,
+            open_bytes,
+            text_page,
+            csv_page,
+            epub_chapter,
+            archive_extract,
+            pdf_page
+        ])
         .build(tauri::generate_context!())
         .expect("error while building viewit-desktop Tauri application")
         .run(|app, event| {

@@ -20,7 +20,7 @@ class PluginManager(private val context: Context) {
     companion object {
         private const val TAG = "PluginManager"
         private const val CATALOG_URL_DEBUG = "http://127.0.0.1:8888/catalog.json"
-        private const val CATALOG_URL_RELEASE = "https://cdn.jsdelivr.net/gh/mihir0209/ViewIt@main/plugins/catalog.signed.json"
+        private const val CATALOG_URL_RELEASE = "https://viewit-plugin-catalog-temp.pages.dev/catalog.signed.json"
 
         private const val SUPPORTED_ABI_VERSION = 1
 
@@ -74,15 +74,12 @@ class PluginManager(private val context: Context) {
         }
 
         fun runtimeAbi(): String {
-            return when (System.getProperty("os.arch")?.lowercase()) {
-                "aarch64", "arm64" -> "arm64-v8a"
-                "x86_64", "amd64" -> "x86_64"
-                else -> android.os.Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a"
-            }
+            return android.os.Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a"
         }
 
         fun getCatalogUrl(): String {
-            return if (BuildConfig.DEBUG) CATALOG_URL_DEBUG else CATALOG_URL_RELEASE
+            val configured = BuildConfig.VIEWIT_PLUGIN_CATALOG_URL
+            return if (configured.isNotBlank()) configured else if (BuildConfig.DEBUG) CATALOG_URL_DEBUG else CATALOG_URL_RELEASE
         }
     }
 
@@ -219,9 +216,9 @@ class PluginManager(private val context: Context) {
         }
     }
 
-    fun fetchCatalog(): Result<List<PluginManifest>> {
+    fun fetchCatalog(url: String = getCatalogUrl()): Result<List<PluginManifest>> {
         return try {
-            val conn = URL(getCatalogUrl()).openConnection() as HttpURLConnection
+            val conn = URL(url).openConnection() as HttpURLConnection
             conn.connectTimeout = 10_000
             conn.readTimeout = 10_000
             val body = conn.inputStream.bufferedReader().readText()
@@ -232,13 +229,14 @@ class PluginManager(private val context: Context) {
                 val signature = obj.getString("signature")
                 val catalogObj = obj.getJSONObject("catalog")
                 if (!verifyCatalogSignature(canonicalJson(catalogObj), signature)) {
+                    Log.e(TAG, "Catalog signature verification failed")
                     return Result.failure(Exception("Catalog signature verification failed"))
                 }
                 val arr = catalogObj.getJSONArray("plugins")
                 val list = mutableListOf<PluginManifest>()
                 for (i in 0 until arr.length()) {
                     val manifest = parseManifest(arr.getJSONObject(i))
-                    if (isCompatible(manifest)) {
+                    if (isCompatible(manifest) && isInstallable(manifest)) {
                         list.add(manifest)
                     }
                 }
@@ -250,7 +248,7 @@ class PluginManager(private val context: Context) {
                 val list = mutableListOf<PluginManifest>()
                 for (i in 0 until arr.length()) {
                     val manifest = parseManifest(arr.getJSONObject(i))
-                    if (isCompatible(manifest)) {
+                    if (isCompatible(manifest) && isInstallable(manifest)) {
                         list.add(manifest)
                     }
                 }
@@ -286,6 +284,10 @@ class PluginManager(private val context: Context) {
         return abiMatches && manifest.minAppVersion <= BuildConfig.VERSION_CODE
     }
 
+    private fun isInstallable(manifest: PluginManifest): Boolean {
+        return manifest.downloadUrl.isNotBlank() && manifest.checksum.isNotBlank() && manifest.sizeBytes > 0
+    }
+
     private fun ed25519SubjectPublicKeyInfo(rawKey: ByteArray): ByteArray {
         if (rawKey.size != 32) return rawKey
         val prefix = byteArrayOf(
@@ -312,7 +314,7 @@ class PluginManager(private val context: Context) {
                     canonicalJson(value.get(i))
                 }
             }
-            is String -> JSONObject.quote(value)
+            is String -> JSONObject.quote(value).replace("\\/", "/")
             is Number, is Boolean -> value.toString()
             else -> JSONObject.quote(value.toString())
         }
@@ -421,8 +423,6 @@ class PluginManager(private val context: Context) {
             if (!archDir.isDirectory) continue
             val soFiles = archDir.listFiles { f ->
                 f.isFile && f.extension == "so" &&
-                    f.name != "libffmpegkit.so" &&
-                    f.name != "libffmpegkit_abidetect.so" &&
                     !f.name.startsWith("libviewit_plugin_")
             }?.toMutableList() ?: continue
             // Retry loop: FFmpeg libs have a dependency chain (avcodec→swresample→avutil etc).

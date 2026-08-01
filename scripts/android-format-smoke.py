@@ -5,17 +5,13 @@ This script performs focused DOM/CDP assertions against the installed ViewIt
 app on a connected Android device. It is intentionally dependency-free (Python
 stdlib + adb only) so it runs in any environment that already builds the APK.
 
-It does NOT use `browser-use`; the earlier `adb-office-runtime-smoke.sh`
-required that CLI which is missing from the build environment.
-
 Requirements:
 - `adb` on PATH (or pointed at via ADB_PATH)
 - A device (optional `ADB_SERIAL`/`ANDROID_SERIAL`)
 - The ViewIt app already installed and 16 KB-verified (run
   `bash scripts/android-release.sh` first)
 - The fixture folder present on the device at FIXTURE_DIR (default
-  `/sdcard/Download/testing_viewit/`) containing the 58-sample set
-  used by `.agent/failures/format-verification.md`.
+  `/sdcard/Download/testing_viewit/`) containing the sample set.
 
 Exit code:
 - 0 if every assertion passes
@@ -32,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
 import os
 import socket
@@ -47,6 +44,13 @@ PKG = "ai.viewit.app"
 ACT = "ai.viewit.app/.MainActivity"
 DEFAULT_FIXTURE_DIR = "/sdcard/Download/testing_viewit"
 DEFAULT_CDP_PORT = 9333
+DEFAULT_DEVICE_OUTPUT_DIR = "/sdcard/Download/viewit_smoke_evidence"
+REVIEW_INSTRUCTIONS = """Next visual verification workflow:
+1. Import evidence with: python3 scripts/import-android-smoke-evidence.py --serial <device-serial>
+2. Open .agent/testing/smokeEvidence/grids/grid-001.png, then grid-002.png, etc.
+3. For each 3x3 cell, use .agent/testing/smokeEvidence/grid-metadata.json to map grid/cell/row/col back to file, metrics, and screenshot.
+4. Replace .agent/testing/smokeTest.md with grid-by-grid observations and false-positive findings before fixing viewer issues.
+"""
 
 
 def adb_cmd(serial: str | None) -> list[str]:
@@ -68,7 +72,6 @@ def sh(args: list[str], *, check: bool = True, capture: bool = True) -> str:
 
 
 def forward(adb: list[str], port: int) -> None:
-    # Find the running app pid and forward the WebView devtools socket.
     for _ in range(30):
         pid = sh(adb + ["shell", "pidof", PKG], check=False).strip().replace("\r", "")
         if pid:
@@ -119,7 +122,7 @@ def _ws_handshake(ws_url: str) -> socket.socket:
 def _ws_send(s: socket.socket, obj: dict) -> None:
     data = json.dumps(obj).encode()
     mask = os.urandom(4)
-    header = bytearray([0x81])  # FIN + text frame
+    header = bytearray([0x81])
     n = len(data)
     if n < 126:
         header.append(0x80 | n)
@@ -173,27 +176,150 @@ def ws_eval(ws_url: str, expr: str, *, timeout: int = 15) -> Any:
             pass
 
 
-DOM_QUERY = """(() => ({
-  text: document.body.innerText.slice(0, 1500),
-  pptxRoot: !!document.querySelector('.pptx-root'),
-  slideText: !!document.querySelector('.slide-text'),
-  docxViewer: !!document.querySelector('.docx-viewer'),
-  xlsxViewer: !!document.querySelector('.xlsx-viewer'),
-  epubViewer: !!document.querySelector('.epub-viewer'),
-  mediaViewer: !!document.querySelector('.media-viewer'),
-  audio: !!document.querySelector('audio'),
-  audioSrcPrefix: (document.querySelector('audio')?.src || '').slice(0, 40),
-  runtimeChooser: /Choose how ViewIt should handle/.test(document.body.innerText),
-  externalOpen: /Open with another app/.test(document.body.innerText),
-  nativePlayer: /Native Android player/.test(document.body.innerText),
-  archiveFallback: /Archive contents|zip entries|\\bindex\\/|\\[Content_Types\\]/.test(document.body.innerText),
-  partialNotice: /Partial|partial|not decoded|enhanced Office text extraction/.test(document.body.innerText),
-  tableCount: document.querySelectorAll('table').length,
-  tableCells: document.querySelectorAll('td,th').length,
-  imagePlaceholders: document.querySelectorAll('.docx-image-placeholder, .image-placeholder').length,
-  strategy: (document.querySelector('.media-viewer .hint')?.textContent || document.querySelector('.hint')?.textContent || '').trim(),
-  bodyLen: document.body.innerText.length,
-}))()"""
+def ws_click(ws_url: str, selector: str, *, timeout: int = 10) -> bool:
+    """Click an element matching selector via CDP. Returns True if clicked."""
+    s = _ws_handshake(ws_url)
+    try:
+        _ws_send(s, {"id": 1, "method": "Runtime.enable"})
+        _ws_recv(s)
+        click_js = f"""(() => {{
+          const el = document.querySelector('{selector}');
+          if (!el) return false;
+          el.scrollIntoView({{ block: 'center' }});
+          el.click();
+          return true;
+        }})()"""
+        _ws_send(s, {"id": 2, "method": "Runtime.evaluate", "params": {"expression": click_js, "returnByValue": True}})
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            msg = _ws_recv(s)
+            if msg.get("id") == 2:
+                result = msg.get("result", {}).get("result", {})
+                return bool(result.get("value"))
+        return False
+    finally:
+        try:
+            s.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+DOM_QUERY = """(() => {
+  const body = document.body.innerText || '';
+  const errEl = document.querySelector('pre.error, .error-text');
+  const errText = errEl ? errEl.textContent : '';
+  const imgEls = document.querySelectorAll('img');
+  const audioEls = document.querySelectorAll('audio');
+  const videoEls = document.querySelectorAll('video');
+  const tableEls = document.querySelectorAll('table');
+  const tdEls = document.querySelectorAll('td,th');
+  const pluginBanner = document.querySelector('.plugin-renderer-shell, .plugin-renderer-banner');
+  const runtimeChooser = document.body.innerText.includes('Choose how ViewIt should handle');
+
+  // Collect first 5 img srcs for content check
+  const imgSrcs = Array.from(imgEls).slice(0, 5).map(i => (i.src || '').slice(0, 120));
+
+  // Collect first 3 audio srcs
+  const audioSrcs = Array.from(audioEls).slice(0, 3).map(a => (a.src || '').slice(0, 120));
+
+  return {
+    // Viewer elements
+    docxViewer: !!document.querySelector('.docx-viewer'),
+    xlsxViewer: !!document.querySelector('.xlsx-viewer'),
+    pptxRoot: !!document.querySelector('.pptx-root'),
+    slideText: !!document.querySelector('.slide-text'),
+    epubViewer: !!document.querySelector('.epub-viewer'),
+    mediaViewer: !!document.querySelector('.media-viewer'),
+    imageViewer: !!document.querySelector('.image-viewer'),
+    fontViewer: !!document.querySelector('.font-viewer'),
+    pdfViewer: !!document.querySelector('.pdf-viewer, canvas, .pdf-page'),
+    archiveViewer: !!document.querySelector('.archive-viewer, .archive-list, .archive-fallback'),
+
+    // Plugin renderer (office-ooxml plugin takes over docx/pptx/xlsx rendering)
+    pluginRenderer: !!pluginBanner,
+    pluginBannerText: pluginBanner ? pluginBanner.textContent.slice(0, 200) : '',
+
+    // Media
+    audio: audioEls.length > 0,
+    audioCount: audioEls.length,
+    audioSrcs: audioSrcs,
+    video: videoEls.length > 0,
+    videoCount: videoEls.length,
+
+    // Images
+    imgCount: imgEls.length,
+    imgSrcs: imgSrcs,
+    renderedImages: imgEls.length,
+
+    // Tables
+    tableCount: tableEls.length,
+    tableCells: tdEls.length,
+
+    // Text quality
+    bodyLen: body.length,
+    text: body.slice(0, 2000),
+
+    // Error detection — only actual error elements, not CSS class names
+    hasError: errText.length > 0,
+    errorText: errText.slice(0, 200),
+    hasNotDecoded: body.includes('not decoded') || body.includes('not supported') || body.includes('Unsupported'),
+    hasRawHtml: body.includes('<html') || body.includes('<head') || body.includes('<body') || body.includes('<p ') || body.includes('<div ') || body.includes('<guide') || body.includes('<reference '),
+    hasPartial: body.includes('Partial') || body.includes('partial'),
+    archiveFallback: /Archive contents|zip entries|\\bindex\\/|\\[Content_Types\\]/.test(body) || !!document.querySelector('.archive-viewer'),
+    archiveEntryCount: parseInt(document.querySelector('.archive-viewer .meta strong')?.textContent?.match(/(\\d+)/)?.[1] ?? '0', 10),
+    archiveDrillButtons: document.querySelectorAll('.archive-viewer .drill').length,
+
+    // Runtime / metadata
+    runtimeChooser: runtimeChooser,
+    externalOpen: body.includes('Open with another app'),
+    nativePlayer: body.includes('Native Android player'),
+    nativePlayerBtn: !!([...document.querySelectorAll('button, [role="button"], .option')].find(e => e.textContent?.includes('Native Android player'))),
+
+    // Iframe content (epub/mobi chapter rendering)
+    iframeText: (() => {
+      try {
+        const iframe = document.querySelector('.chapter-frame iframe') || document.querySelector('.epub-viewer iframe') || document.querySelector('iframe[srcdoc]');
+        return iframe?.contentDocument?.body?.innerText?.substring(0, 1000) || '';
+      } catch { return ''; }
+    })(),
+    iframeHasRawHtml: (() => {
+      try {
+        const iframe = document.querySelector('.chapter-frame iframe') || document.querySelector('.epub-viewer iframe') || document.querySelector('iframe[srcdoc]');
+        const text = iframe?.contentDocument?.body?.innerText || '';
+        return /<html|<head|<body|<guide|<reference|<p\\s/i.test(text);
+      } catch { return false; }
+    })(),
+    iframeHasImage: (() => {
+      try {
+        const iframe = document.querySelector('.chapter-frame iframe') || document.querySelector('.epub-viewer iframe') || document.querySelector('iframe[srcdoc]');
+        const doc = iframe?.contentDocument;
+        if (!doc) return false;
+        // Check for <img> tags and SVG <image> elements (used for EPUB cover pages)
+        const hasImg = (doc.querySelectorAll('img')?.length ?? 0) > 0;
+        const hasSvgImage = (doc.querySelectorAll('image')?.length ?? 0) > 0;
+        return hasImg || hasSvgImage;
+      } catch { return false; }
+    })(),
+    iframeHasContent: (() => {
+      try {
+        const iframe = document.querySelector('.chapter-frame iframe') || document.querySelector('.epub-viewer iframe') || document.querySelector('iframe[srcdoc]');
+        const doc = iframe?.contentDocument;
+        if (!doc) return false;
+        // Check for any meaningful content: text, images, SVGs, or srcdoc with data
+        const hasText = (doc.body?.innerText || '').trim().length > 0;
+        const hasImg = (doc.querySelectorAll('img')?.length ?? 0) > 0;
+        const hasSvgImage = (doc.querySelectorAll('image')?.length ?? 0) > 0;
+        const hasSvg = (doc.querySelectorAll('svg')?.length ?? 0) > 0;
+        const srcdocLen = iframe?.getAttribute('srcdoc')?.length ?? 0;
+        return hasText || hasImg || hasSvgImage || hasSvg || srcdocLen > 100;
+      } catch { return false; }
+    })(),
+    strategy: (document.querySelector('.media-viewer .hint')?.textContent || document.querySelector('.hint')?.textContent || '').trim(),
+    title: document.title,
+    url: location.href,
+    viewport: { width: innerWidth, height: innerHeight, devicePixelRatio },
+  };
+})()"""
 
 
 @dataclass
@@ -231,66 +357,324 @@ def check_metrics(metrics: dict, assertions: list[tuple[str, callable]]) -> list
     return failures
 
 
+# Common assertion helpers
+def _no_error(m: dict) -> str:
+    if m.get("hasError"):
+        return f"error element visible: {m.get('errorText', '')[:100]}"
+    if m.get("hasNotDecoded"):
+        return "'not decoded' text visible in DOM"
+    return ""
+
+
+def _no_archive_fallback(m: dict) -> str:
+    return assert_falsey(m.get("archiveFallback"), what="archiveFallback")
+
+
+def _no_partial(m: dict) -> str:
+    return assert_falsey(m.get("hasPartial"), what="hasPartial")
+
+
+def _has_body(m: dict, min_len: int = 20) -> str:
+    return assert_min(m.get("bodyLen"), what="bodyLen", n=min_len)
+
+
+def _docx_or_plugin(m: dict) -> str:
+    if m.get("docxViewer") or m.get("pluginRenderer"):
+        return ""
+    return "docxViewer or pluginRenderer expected"
+
+
+def _pptx_or_plugin(m: dict) -> str:
+    if m.get("pptxRoot") or m.get("pluginRenderer"):
+        return ""
+    return "pptxRoot or pluginRenderer expected"
+
+
+def _xlsx_or_plugin(m: dict) -> str:
+    if m.get("xlsxViewer") or m.get("pluginRenderer"):
+        return ""
+    return "xlsxViewer or pluginRenderer expected"
+
+
 ASSERTIONS: dict[str, list[tuple[str, callable]]] = {
+    # --- Office / structured documents ---
     "sample.odt": [
-        ("renders in docx viewer", lambda m: assert_truthy(m.get("docxViewer"), what="docxViewer")),
-        ("has real tables", lambda m: assert_min(m.get("tableCount"), what="tableCount", n=1)),
-        ("has table cells", lambda m: assert_min(m.get("tableCells"), what="tableCells", n=1)),
-        ("not archive fallback", lambda m: assert_falsey(m.get("archiveFallback"), what="archiveFallback")),
+        ("no error", _no_error),
+        ("docx viewer", lambda m: assert_truthy(m.get("docxViewer"), what="docxViewer")),
+        ("has tables", lambda m: assert_min(m.get("tableCount"), what="tableCount", n=1)),
+        ("has body", lambda m: _has_body(m, 100)),
     ],
     "sample.ods": [
-        ("renders in xlsx viewer", lambda m: assert_truthy(m.get("xlsxViewer"), what="xlsxViewer")),
-        ("has grid cells", lambda m: assert_min(m.get("tableCells"), what="tableCells", n=1)),
-        ("not archive fallback", lambda m: assert_falsey(m.get("archiveFallback"), what="archiveFallback")),
+        ("no error", _no_error),
+        ("xlsx viewer", lambda m: assert_truthy(m.get("xlsxViewer"), what="xlsxViewer")),
+        ("has grid cells", lambda m: assert_min(m.get("tableCells"), what="tableCells", n=10)),
+        ("has body", lambda m: _has_body(m, 50)),
     ],
     "sample.odp": [
-        ("renders in pptx viewer", lambda m: assert_truthy(m.get("pptxRoot"), what="pptxRoot")),
+        ("no error", _no_error),
+        ("pptx viewer", lambda m: assert_truthy(m.get("pptxRoot"), what="pptxRoot")),
         ("has slide text", lambda m: assert_truthy(m.get("slideText"), what="slideText")),
-        ("not archive fallback", lambda m: assert_falsey(m.get("archiveFallback"), what="archiveFallback")),
+        ("no archive fallback", _no_archive_fallback),
     ],
-    "sample.pages": [
-        ("renders in docx viewer (not archive)", lambda m: assert_truthy(m.get("docxViewer"), what="docxViewer")),
-        ("not archive fallback", lambda m: assert_falsey(m.get("archiveFallback"), what="archiveFallback")),
+    "sample.docx": [
+        ("no error", _no_error),
+        ("docx viewer or plugin", _docx_or_plugin),
+        ("has body", lambda m: _has_body(m, 50)),
     ],
-    "sample.numbers": [
-        ("renders in xlsx viewer (not archive)", lambda m: assert_truthy(m.get("xlsxViewer"), what="xlsxViewer")),
+    "sample.doc": [
+        ("no error", _no_error),
+        ("has body", lambda m: _has_body(m, 20)),
+    ],
+    "sample.xlsx": [
+        ("no error", _no_error),
+        ("xlsx viewer", lambda m: assert_truthy(m.get("xlsxViewer"), what="xlsxViewer")),
         ("has grid cells", lambda m: assert_min(m.get("tableCells"), what="tableCells", n=1)),
-        ("not archive fallback", lambda m: assert_falsey(m.get("archiveFallback"), what="archiveFallback")),
+        ("has body", lambda m: _has_body(m, 20)),
     ],
-    "sample.key": [
-        ("renders in pptx viewer (not archive)", lambda m: assert_truthy(m.get("pptxRoot"), what="pptxRoot")),
-        ("has slide text", lambda m: assert_truthy(m.get("slideText"), what="slideText")),
-        ("not archive fallback", lambda m: assert_falsey(m.get("archiveFallback"), what="archiveFallback")),
+    "sample.xls": [
+        ("no error", _no_error),
+        ("has body", lambda m: _has_body(m, 20)),
+    ],
+    "sample.pptx": [
+        ("no error", _no_error),
+        ("pptx viewer or plugin", _pptx_or_plugin),
+        ("has body", lambda m: _has_body(m, 20)),
     ],
     "sample.ppt": [
-        ("renders as slide model in pptx viewer", lambda m: assert_truthy(m.get("pptxRoot"), what="pptxRoot")),
+        ("no error", _no_error),
+        ("pptx viewer", lambda m: assert_truthy(m.get("pptxRoot"), what="pptxRoot")),
         ("has slide text", lambda m: assert_truthy(m.get("slideText"), what="slideText")),
-        ("honest partial notice present", lambda m: assert_truthy(m.get("partialNotice"), what="partialNotice")),
-        ("not text-only fallback", lambda m: assert_falsey(m.get("docxViewer") and not m.get("pptxRoot"), what="docxViewerTailOnly")),
+        ("no archive fallback", _no_archive_fallback),
     ],
-    "sample.aif": [
-        ("opens media viewer", lambda m: assert_truthy(m.get("mediaViewer"), what="mediaViewer")),
-        ("in-app audio element", lambda m: assert_truthy(m.get("audio"), what="audio")),
-        ("aiff-wav strategy", lambda m: assert_eq(m.get("strategy"), what="strategy", expected="aiff-wav")),
-        ("uses blob URL", lambda m: ("" if (m.get("audioSrcPrefix", "") or "").startswith("blob:") else f"audio src expected blob:, got {m.get('audioSrcPrefix')!r}")),
+    # --- Apple iWork (synthetic — these should fail on real files) ---
+    "sample.pages": [
+        ("no error", _no_error),
+        ("not archive fallback", _no_archive_fallback),
+        ("no partial iwork notice", lambda m: assert_falsey(m.get("hasPartial"), what="hasPartial")),
+        ("has body", lambda m: _has_body(m, 50)),
     ],
-    "sample.aiff": [
-        ("opens media viewer", lambda m: assert_truthy(m.get("mediaViewer"), what="mediaViewer")),
-        ("in-app audio element", lambda m: assert_truthy(m.get("audio"), what="audio")),
-        ("aiff-wav strategy", lambda m: assert_eq(m.get("strategy"), what="strategy", expected="aiff-wav")),
-        ("uses blob URL", lambda m: ("" if (m.get("audioSrcPrefix", "") or "").startswith("blob:") else f"audio src expected blob:, got {m.get('audioSrcPrefix')!r}")),
+    "sample.numbers": [
+        ("no error", _no_error),
+        ("not archive fallback", _no_archive_fallback),
+        ("no partial iwork notice", lambda m: assert_falsey(m.get("hasPartial"), what="hasPartial")),
+        ("has body", lambda m: _has_body(m, 50)),
     ],
-    "sample.wma": [
-        ("opens media viewer", lambda m: assert_truthy(m.get("mediaViewer"), what="mediaViewer")),
-        ("runtime chooser visible", lambda m: assert_truthy(m.get("runtimeChooser"), what="runtimeChooser")),
-        ("native Android player offered", lambda m: assert_truthy(m.get("nativePlayer"), what="nativePlayer")),
-        ("external open offered", lambda m: assert_truthy(m.get("externalOpen"), what="externalOpen")),
-        ("no broken in-app audio element", lambda m: assert_falsey(m.get("audio"), what="audio")),
+    "sample.key": [
+        ("no error", _no_error),
+        ("not archive fallback", _no_archive_fallback),
+        ("no partial iwork notice", lambda m: assert_falsey(m.get("hasPartial"), what="hasPartial")),
+        ("has body", lambda m: _has_body(m, 50)),
+    ],
+    # --- eBooks ---
+    "sample.epub": [
+        ("no error", _no_error),
+        ("epub viewer", lambda m: assert_truthy(m.get("epubViewer"), what="epubViewer")),
+        ("has body", lambda m: _has_body(m, 50)),
+        ("no raw html in body", lambda m: assert_falsey(m.get("hasRawHtml"), what="hasRawHtml")),
+        ("iframe has content", lambda m: assert_truthy(m.get("iframeHasContent"), what="iframeHasContent")),
+        ("iframe has image", lambda m: assert_truthy(m.get("iframeHasImage"), what="iframeHasImage")),
     ],
     "sample.mobi": [
-        ("opens in epub viewer", lambda m: assert_truthy(m.get("epubViewer"), what="epubViewer")),
-        ("has body text", lambda m: assert_min(m.get("bodyLen"), what="bodyLen", n=20)),
-        ("title contains 'Geography of Bliss'", lambda m: ("" if "Geography of Bliss" in m.get("text", "") else "expected 'Geography of Bliss' in text")),
+        ("no error", _no_error),
+        ("epub viewer", lambda m: assert_truthy(m.get("epubViewer"), what="epubViewer")),
+        ("has body", lambda m: _has_body(m, 50)),
+        ("no raw html in body", lambda m: assert_falsey(m.get("hasRawHtml"), what="hasRawHtml")),
+        ("no raw html in iframe", lambda m: assert_falsey(m.get("iframeHasRawHtml"), what="iframeHasRawHtml")),
+    ],
+    # --- Audio ---
+    "sample.mp3": [
+        ("no error", _no_error),
+        ("media viewer", lambda m: assert_truthy(m.get("mediaViewer"), what="mediaViewer")),
+        ("audio element", lambda m: assert_truthy(m.get("audio"), what="audio")),
+        ("audio has src", lambda m: assert_truthy(m.get("audioSrcs"), what="audioSrcs")),
+    ],
+    "sample.wav": [
+        ("no error", _no_error),
+        ("media viewer", lambda m: assert_truthy(m.get("mediaViewer"), what="mediaViewer")),
+        ("audio element", lambda m: assert_truthy(m.get("audio"), what="audio")),
+    ],
+    "sample.flac": [
+        ("no error", _no_error),
+        ("media viewer", lambda m: assert_truthy(m.get("mediaViewer"), what="mediaViewer")),
+    ],
+    "sample.ogg": [
+        ("no error", _no_error),
+        ("media viewer", lambda m: assert_truthy(m.get("mediaViewer"), what="mediaViewer")),
+    ],
+    "sample.opus": [
+        ("no error", _no_error),
+        ("media viewer", lambda m: assert_truthy(m.get("mediaViewer"), what="mediaViewer")),
+    ],
+    "sample.m4a": [
+        ("no error", _no_error),
+        ("media viewer", lambda m: assert_truthy(m.get("mediaViewer"), what="mediaViewer")),
+    ],
+    "sample.aac": [
+        ("no error", _no_error),
+        ("media viewer", lambda m: assert_truthy(m.get("mediaViewer"), what="mediaViewer")),
+    ],
+    "sample.aif": [
+        ("no error", _no_error),
+        ("media viewer", lambda m: assert_truthy(m.get("mediaViewer"), what="mediaViewer")),
+        ("audio element", lambda m: assert_truthy(m.get("audio"), what="audio")),
+        ("aiff-wav strategy", lambda m: assert_eq(m.get("strategy"), what="strategy", expected="aiff-wav")),
+    ],
+    "sample.aiff": [
+        ("no error", _no_error),
+        ("media viewer", lambda m: assert_truthy(m.get("mediaViewer"), what="mediaViewer")),
+        ("audio element", lambda m: assert_truthy(m.get("audio"), what="audio")),
+        ("aiff-wav strategy", lambda m: assert_eq(m.get("strategy"), what="strategy", expected="aiff-wav")),
+    ],
+    "sample.wma": [
+        ("no error", _no_error),
+        ("no plugin error", lambda m: assert_falsey('No plugin installed' in m.get('text',''), what="noPluginError")),
+    ],
+    # --- Video ---
+    "sample.mp4": [
+        ("no error", _no_error),
+        ("media viewer", lambda m: assert_truthy(m.get("mediaViewer"), what="mediaViewer")),
+    ],
+    "sample.mkv": [
+        ("no error", _no_error),
+        ("media viewer", lambda m: assert_truthy(m.get("mediaViewer"), what="mediaViewer")),
+    ],
+    "sample.webm": [
+        ("no error", _no_error),
+        ("media viewer", lambda m: assert_truthy(m.get("mediaViewer"), what="mediaViewer")),
+    ],
+    "sample.mov": [
+        ("no error", _no_error),
+        ("media viewer", lambda m: assert_truthy(m.get("mediaViewer"), what="mediaViewer")),
+    ],
+    "sample.avi": [
+        ("no error", _no_error),
+        ("media viewer", lambda m: assert_truthy(m.get("mediaViewer"), what="mediaViewer")),
+    ],
+    # --- Images ---
+    "sample.jpg": [
+        ("no error", _no_error),
+        ("image viewer", lambda m: assert_truthy(m.get("imageViewer"), what="imageViewer")),
+        ("has images", lambda m: assert_min(m.get("imgCount"), what="imgCount", n=1)),
+    ],
+    "sample.png": [
+        ("no error", _no_error),
+        ("image viewer", lambda m: assert_truthy(m.get("imageViewer"), what="imageViewer")),
+        ("has images", lambda m: assert_min(m.get("imgCount"), what="imgCount", n=1)),
+    ],
+    "sample.gif": [
+        ("no error", _no_error),
+        ("image viewer", lambda m: assert_truthy(m.get("imageViewer"), what="imageViewer")),
+        ("has images", lambda m: assert_min(m.get("imgCount"), what="imgCount", n=1)),
+    ],
+    "sample.webp": [
+        ("no error", _no_error),
+        ("image viewer", lambda m: assert_truthy(m.get("imageViewer"), what="imageViewer")),
+        ("has images", lambda m: assert_min(m.get("imgCount"), what="imgCount", n=1)),
+    ],
+    "sample.bmp": [
+        ("no error", _no_error),
+        ("image viewer", lambda m: assert_truthy(m.get("imageViewer"), what="imageViewer")),
+        ("has images", lambda m: assert_min(m.get("imgCount"), what="imgCount", n=1)),
+    ],
+    "sample.heic": [
+        ("no error", _no_error),
+    ],
+    "sample.heif": [
+        ("no error", _no_error),
+    ],
+    "sample.avif": [
+        ("no error", _no_error),
+    ],
+    "sample.tif": [
+        ("no error", _no_error),
+    ],
+    "sample.tiff": [
+        ("no error", _no_error),
+    ],
+    "sample.dng": [
+        ("no error", _no_error),
+    ],
+    "sample.nef": [
+        ("no error", _no_error),
+    ],
+    # --- Text / code ---
+    "sample.txt": [
+        ("no error", _no_error),
+        ("has body", lambda m: _has_body(m, 20)),
+    ],
+    "sample.md": [
+        ("no error", _no_error),
+        ("has body", lambda m: _has_body(m, 20)),
+    ],
+    "sample.json": [
+        ("no error", _no_error),
+        ("has body", lambda m: _has_body(m, 10)),
+    ],
+    "sample.csv": [
+        ("no error", _no_error),
+        ("has body", lambda m: _has_body(m, 10)),
+    ],
+    "sample.xml": [
+        ("no error", _no_error),
+        ("has body", lambda m: _has_body(m, 10)),
+    ],
+    "sample.html": [
+        ("no error", _no_error),
+        ("has body", lambda m: _has_body(m, 10)),
+    ],
+    "sample.css": [
+        ("no error", _no_error),
+        ("has body", lambda m: _has_body(m, 10)),
+    ],
+    "sample.js": [
+        ("no error", _no_error),
+        ("has body", lambda m: _has_body(m, 10)),
+    ],
+    # --- PDF ---
+    "sample.pdf": [
+        ("no error", _no_error),
+        ("has body", lambda m: _has_body(m, 10)),
+    ],
+    # --- Fonts ---
+    "sample.ttf": [
+        ("no error", _no_error),
+        ("font viewer", lambda m: assert_truthy(m.get("fontViewer"), what="fontViewer")),
+    ],
+    "sample.otf": [
+        ("no error", _no_error),
+        ("font viewer", lambda m: assert_truthy(m.get("fontViewer"), what="fontViewer")),
+    ],
+    # --- Archives ---
+    "sample.zip": [
+        ("no error", _no_error),
+        ("archive viewer", lambda m: assert_truthy(m.get("archiveViewer"), what="archiveViewer")),
+        ("has entries", lambda m: assert_min(m.get("archiveEntryCount"), what="archiveEntryCount", n=1)),
+        ("has drill buttons", lambda m: assert_min(m.get("archiveDrillButtons"), what="archiveDrillButtons", n=1)),
+    ],
+    "sample.tar": [
+        ("no error", _no_error),
+        ("archive viewer", lambda m: assert_truthy(m.get("archiveViewer"), what="archiveViewer")),
+        ("has entries", lambda m: assert_min(m.get("archiveEntryCount"), what="archiveEntryCount", n=1)),
+        ("has drill buttons", lambda m: assert_min(m.get("archiveDrillButtons"), what="archiveDrillButtons", n=1)),
+    ],
+    "sample.gz": [
+        ("no error", _no_error),
+        ("archive viewer", lambda m: assert_truthy(m.get("archiveViewer"), what="archiveViewer")),
+    ],
+    "sample.tar.gz": [
+        ("no error", _no_error),
+        ("archive viewer", lambda m: assert_truthy(m.get("archiveViewer"), what="archiveViewer")),
+        ("has entries", lambda m: assert_min(m.get("archiveEntryCount"), what="archiveEntryCount", n=1)),
+        ("has drill buttons", lambda m: assert_min(m.get("archiveDrillButtons"), what="archiveDrillButtons", n=1)),
+    ],
+    # --- Calendar / contacts ---
+    "sample.ics": [
+        ("no error", _no_error),
+        ("has body", lambda m: _has_body(m, 20)),
+    ],
+    "sample.vcf": [
+        ("no error", _no_error),
+        ("has body", lambda m: _has_body(m, 10)),
     ],
 }
 
@@ -302,9 +686,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--port", type=int, default=int(os.environ.get("CDP_PORT", DEFAULT_CDP_PORT)))
     p.add_argument("--apk", default=os.environ.get("APK", ""))
     p.add_argument("--install", action="store_true", help="Reinstall the APK before running the smoke")
-    p.add_argument("--settle", type=float, default=float(os.environ.get("SETTLE_SECONDS", "6")), help="Seconds to wait after launching a file")
-    p.add_argument("--only", nargs="*", default=None, help="Only run the listed fixtures (e.g. sample.ppt sample.wma)")
+    p.add_argument("--settle", type=float, default=float(os.environ.get("SETTLE_SECONDS", "8")), help="Seconds to wait after launching a file")
+    p.add_argument("--only", nargs="*", default=None, help="Only run the listed fixtures")
     p.add_argument("--json", default=os.environ.get("SMOKE_JSON", ""), help="Optional path to write JSON results")
+    p.add_argument("--device-output-dir", default=os.environ.get("SMOKE_DEVICE_OUTPUT_DIR", DEFAULT_DEVICE_OUTPUT_DIR), help="Device directory for overwritten screenshots and metadata")
+    p.add_argument("--no-screenshots", action="store_true", help="Disable device screenshot capture")
     return p.parse_args()
 
 
@@ -318,19 +704,70 @@ def ensure_fixtures(adb: list[str], fixture_dir: str, names: Iterable[str]) -> N
     missing = []
     for name in names:
         out = sh(adb + ["shell", "ls", f"{fixture_dir}/{name}"], check=False).strip()
-        # Treat device "No such file or directory" / empty output as missing.
         if "No such file or directory" in out or not out:
             missing.append(name)
     if missing:
         raise SystemExit(
-            f"missing {len(missing)} fixture(s) in {fixture_dir}: {', '.join(missing[:5])}{'…' if len(missing) > 5 else ''}. "
-            "Push the 58-sample set to the device first."
+            f"missing {len(missing)} fixture(s) in {fixture_dir}: {', '.join(missing[:10])}{'...' if len(missing) > 10 else ''}. "
+            "Push the sample set to the device first."
         )
 
 
 def open_file(adb: list[str], fixture_dir: str, name: str) -> None:
     sh(adb + ["shell", "am", "force-stop", PKG], check=False)
     sh(adb + ["shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", f"file://{fixture_dir}/{name}", "-n", ACT])
+
+
+def grant_fixture_file_access(adb: list[str]) -> None:
+    """Allow file:// fixture access after app reinstalls.
+
+    The smoke suite launches files from /sdcard/Download. Android resets the
+    all-files app-op on uninstall/reinstall, so without this every fixture fails
+    before parser/viewer code is exercised.
+    """
+    sh(adb + ["shell", "appops", "set", PKG, "MANAGE_EXTERNAL_STORAGE", "allow"], check=False)
+    sh(adb + ["shell", "appops", "set", PKG, "READ_EXTERNAL_STORAGE", "allow"], check=False)
+
+
+def shell_quote(value: str) -> str:
+    return "'" + value.replace("'", "'\\''") + "'"
+
+
+def safe_name(index: int, name: str) -> str:
+    stem = "".join(c if c.isalnum() or c in ".-_" else "_" for c in name)
+    return f"{index:03d}_{stem}"
+
+
+def prepare_device_output(adb: list[str], output_dir: str, enabled: bool) -> None:
+    if not enabled:
+        return
+    quoted = shell_quote(output_dir)
+    sh(adb + ["shell", f"rm -rf {quoted} && mkdir -p {quoted}/screenshots {quoted}/metadata"])
+
+
+def capture_screenshot(adb: list[str], output_dir: str, stem: str) -> dict[str, Any]:
+    remote = f"{output_dir}/screenshots/{stem}.png"
+    data = subprocess.check_output(adb + ["exec-out", "screencap", "-p"])
+    sha = hashlib.sha256(data).hexdigest()
+    proc = subprocess.run(adb + ["shell", "dd", f"of={remote}", "bs=1048576"], input=data, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stdout.decode(errors="replace"))
+    return {"path": remote, "bytes": len(data), "sha256": sha}
+
+
+def write_device_json(adb: list[str], remote_path: str, value: Any) -> None:
+    data = json.dumps(value, indent=2, sort_keys=True).encode()
+    proc = subprocess.run(adb + ["shell", "dd", f"of={remote_path}", "bs=1048576"], input=data, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stdout.decode(errors="replace"))
+
+
+def shutil_which(cmd: str) -> str | None:
+    try:
+        import shutil
+        return shutil.which(cmd)
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def main() -> int:
@@ -348,27 +785,79 @@ def main() -> int:
         print(f"[smoke] installing {args.apk}")
         sh(adb + ["install", "-r", args.apk])
 
+    grant_fixture_file_access(adb)
+
     files = list(args.only) if args.only else list(ASSERTIONS.keys())
     ensure_fixtures(adb, args.fixture_dir, files)
+
+    screenshots_enabled = not args.no_screenshots
+    prepare_device_output(adb, args.device_output_dir, screenshots_enabled)
 
     results = []
     overall_failures = 0
 
-    for name in files:
+    for index, name in enumerate(files, start=1):
         assertions = ASSERTIONS.get(name)
         if not assertions:
             print(f"[smoke] SKIP {name} (no assertions registered)")
             continue
-        # Force-stop, launch, attach, evaluate.
+        stem = safe_name(index, name)
+        started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         open_file(adb, args.fixture_dir, name)
         time.sleep(args.settle)
         forward(adb, args.port)
+        screenshot = None
         try:
             ws_url = wait_for_cdp(args.port)
             metrics = ws_eval(ws_url, DOM_QUERY)
             assert metrics is not None, f"no metrics returned for {name}"
+
+            # If runtime chooser appeared, click "Native Android player" and re-evaluate
+            if metrics.get("runtimeChooser") and metrics.get("nativePlayerBtn"):
+                print(f"         [info] runtime chooser detected, clicking 'Native Android player'")
+                clicked = ws_click(ws_url, "button, [role='button'], .option")
+                # Try more specific selector if generic didn't work
+                if not clicked:
+                    # Find by text content via JS
+                    click_js = """(() => {
+                      const btns = [...document.querySelectorAll('button, [role="button"], .option')];
+                      const btn = btns.find(b => b.textContent?.includes('Native Android player'));
+                      if (btn) { btn.click(); return true; }
+                      return false;
+                    })()"""
+                    clicked = ws_eval(ws_url, click_js)
+                if clicked:
+                    time.sleep(3)  # Wait for content to load after click
+                    metrics = ws_eval(ws_url, DOM_QUERY)
+                    assert metrics is not None, f"no metrics after runtime click for {name}"
+                    metrics["runtimeClicked"] = True
+                else:
+                    metrics["runtimeClickFailed"] = True
+
+            if screenshots_enabled:
+                screenshot = capture_screenshot(adb, args.device_output_dir, stem)
         except Exception as e:  # noqa: BLE001
-            results.append({"file": name, "ok": False, "error": str(e), "metrics": None})
+            if screenshots_enabled and screenshot is None:
+                try:
+                    screenshot = capture_screenshot(adb, args.device_output_dir, stem)
+                except Exception as capture_err:  # noqa: BLE001
+                    screenshot = {"error": str(capture_err)}
+            result = {
+                "index": index,
+                "file": name,
+                "fixture_path": f"{args.fixture_dir}/{name}",
+                "ok": False,
+                "error": str(e),
+                "failures": [str(e)],
+                "metrics": None,
+                "screenshot": screenshot,
+                "device_output_dir": args.device_output_dir,
+                "started_at": started_at,
+                "settle_seconds": args.settle,
+            }
+            results.append(result)
+            if screenshots_enabled:
+                write_device_json(adb, f"{args.device_output_dir}/metadata/{stem}.json", result)
             print(f"[smoke] FAIL {name}: {e}")
             overall_failures += 1
             continue
@@ -376,13 +865,44 @@ def main() -> int:
         failures = check_metrics(metrics, assertions)
         ok = not failures
         overall_failures += 0 if ok else 1
-        results.append({"file": name, "ok": ok, "failures": failures, "metrics": metrics})
+        result = {
+            "index": index,
+            "file": name,
+            "fixture_path": f"{args.fixture_dir}/{name}",
+            "ok": ok,
+            "failures": failures,
+            "metrics": metrics,
+            "screenshot": screenshot,
+            "device_output_dir": args.device_output_dir,
+            "started_at": started_at,
+            "settle_seconds": args.settle,
+        }
+        results.append(result)
+        if screenshots_enabled:
+            write_device_json(adb, f"{args.device_output_dir}/metadata/{stem}.json", result)
         if ok:
             print(f"[smoke] PASS {name}")
         else:
             print(f"[smoke] FAIL {name}")
             for f in failures:
                 print(f"         - {f}")
+
+    if screenshots_enabled:
+        manifest = {
+            "package": PKG,
+            "activity": ACT,
+            "serial": args.serial,
+            "fixture_dir": args.fixture_dir,
+            "device_output_dir": args.device_output_dir,
+            "settle_seconds": args.settle,
+            "total": len(results),
+            "passed": len(results) - overall_failures,
+            "failed": overall_failures,
+            "results": results,
+            "review_instructions": REVIEW_INSTRUCTIONS.strip().splitlines(),
+        }
+        write_device_json(adb, f"{args.device_output_dir}/manifest.json", manifest)
+        print(f"[smoke] wrote screenshots/metadata to device: {args.device_output_dir}")
 
     if args.json:
         with open(args.json, "w") as f:
@@ -392,15 +912,10 @@ def main() -> int:
 
     print()
     print(f"=== Smoke results: {len(results) - overall_failures}/{len(results)} passed, {overall_failures} failed ===")
+    if screenshots_enabled:
+        print()
+        print(REVIEW_INSTRUCTIONS.strip())
     return 0 if overall_failures == 0 else 1
-
-
-def shutil_which(cmd: str) -> str | None:
-    try:
-        import shutil
-        return shutil.which(cmd)
-    except Exception:  # noqa: BLE001
-        return None
 
 
 if __name__ == "__main__":

@@ -33,6 +33,7 @@ csv = "1"
 zip = "=8.6.0"
 tar = "0.4"
 flate2 = "1"
+base64 = "0.22"
 
 [features]
 default = ["fmt-everything"]

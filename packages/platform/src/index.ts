@@ -118,7 +118,11 @@ export async function openFile(uri: string): Promise<Document> {
     const { debugLog } = await import('./debugLog');
     debugLog(`openFile ${uri.slice(0, 80)}…`);
     try {
-      const doc = await invokeOpenUri(uri, displayNameFromUri(uri));
+      let mimeType: string | null = null;
+      if (typeof window !== 'undefined' && 'AndroidBridge' in window && typeof (window as any).AndroidBridge.getMimeType === 'function') {
+        try { mimeType = (window as any).AndroidBridge.getMimeType(uri) || null; } catch { /* ignore */ }
+      }
+      const doc = await invokeOpenUri(uri, displayNameFromUri(uri), mimeType);
       debugLog(`ok kind=${(doc as Document).kind}`);
       return doc;
     } catch (e) {
@@ -273,10 +277,10 @@ export async function openWithExternal(uri: string): Promise<void> {
 // ---------------------------------------------------------------------------
 // Internal: Tauri invoke adapter
 // ---------------------------------------------------------------------------
-async function invokeOpenUri(uri: string, name?: string | null): Promise<Document> {
+async function invokeOpenUri(uri: string, name?: string | null, mimeType?: string | null): Promise<Document> {
   const { invoke } = await import('@tauri-apps/api/core');
   return invoking(async () => {
-    const doc = await invoke<Document>('open_uri', { uri, name: name ?? null });
+    const doc = await invoke<Document>('open_uri', { uri, name: name ?? null, mimeType: mimeType ?? null });
     return doc;
   });
 }

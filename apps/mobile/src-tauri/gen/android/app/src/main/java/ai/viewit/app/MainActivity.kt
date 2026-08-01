@@ -84,6 +84,21 @@ class MainActivity : TauriActivity() {
     }
   }
 
+  private fun drainPendingOpenUris(): JSONArray {
+    val result = JSONArray()
+    val f = File(applicationContext.filesDir, "viewit_pending_opens.txt")
+    if (!f.exists()) return result
+    try {
+      f.readLines().forEach { line ->
+        val uri = line.substringBefore('\t').trim()
+        if (uri.isNotEmpty()) result.put(uri)
+      }
+    } finally {
+      f.delete()
+    }
+    return result
+  }
+
   private fun grantWithDisplayName(uri: Uri, mimeType: String?): String {
     try {
       val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -104,17 +119,34 @@ class MainActivity : TauriActivity() {
   }
 
   private fun queryDisplayName(uri: Uri): String? {
+    if (uri.scheme == "file") return uri.lastPathSegment
     val projection = arrayOf(MediaStore.MediaColumns.DISPLAY_NAME)
-    val cursor: Cursor? = contentResolver.query(uri, projection, null, null, null)
-    return cursor?.use {
-      if (it.moveToFirst()) {
-        val idx = it.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME)
-        if (idx >= 0) it.getString(idx) else null
-      } else null
+    return try {
+      val cursor: Cursor? = contentResolver.query(uri, projection, null, null, null)
+      cursor?.use {
+        if (it.moveToFirst()) {
+          val idx = it.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME)
+          if (idx >= 0) it.getString(idx) else null
+        } else null
+      }
+    } catch (_: Exception) {
+      uri.lastPathSegment
     }
   }
 
   inner class AndroidBridge(private val webView: WebView) {
+    @JavascriptInterface
+    fun drainPendingOpenUris(): String = this@MainActivity.drainPendingOpenUris().toString()
+
+    @JavascriptInterface
+    fun getMimeType(uri: String): String {
+      return try {
+        contentResolver.getType(Uri.parse(uri)) ?: ""
+      } catch (_: Exception) {
+        ""
+      }
+    }
+
     @JavascriptInterface
     fun launchVideoPlayer(uri: String, title: String, ext: String) {
       runOnUiThread {
@@ -146,9 +178,7 @@ class MainActivity : TauriActivity() {
         .take(12)
         .joinToString("") { "%02x".format(it) }
       val dest = File(applicationContext.filesDir, "external-$digest.$safeExt")
-      if (dest.exists() && dest.length() > 0) {
-        return Uri.fromFile(dest).toString()
-      }
+      if (dest.exists()) dest.delete()
 
       val input = if (parsed.scheme == "content") {
         contentResolver.openInputStream(parsed)
@@ -158,7 +188,12 @@ class MainActivity : TauriActivity() {
 
       input.use { source ->
         FileOutputStream(dest).use { output ->
-          source.copyTo(output)
+          val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+          while (true) {
+            val read = source.read(buffer)
+            if (read <= 0) break
+            output.write(buffer, 0, read)
+          }
         }
       }
       return Uri.fromFile(dest).toString()
@@ -207,11 +242,44 @@ class MainActivity : TauriActivity() {
           }
           if (result.isSuccess) {
             android.util.Log.i("ViewIt", "Plugin installed: ${manifest.id}")
+            val msg = JSONObject().apply {
+              put("id", callbackId)
+              put("event", "complete")
+            }
+            runOnUiThread {
+              webView.evaluateJavascript(
+                "window._pluginCallback && window._pluginCallback($msg)",
+                null
+              )
+            }
           } else {
-            android.util.Log.e("ViewIt", "Plugin install failed: ${result.exceptionOrNull()?.message}")
+            val reason = result.exceptionOrNull()?.message ?: "Install failed"
+            android.util.Log.e("ViewIt", "Plugin install failed: $reason")
+            val msg = JSONObject().apply {
+              put("id", callbackId)
+              put("event", "error")
+              put("error", reason)
+            }
+            runOnUiThread {
+              webView.evaluateJavascript(
+                "window._pluginCallback && window._pluginCallback($msg)",
+                null
+              )
+            }
           }
         } catch (e: Exception) {
           android.util.Log.e("ViewIt", "Plugin install error", e)
+          val msg = JSONObject().apply {
+            put("id", callbackId)
+            put("event", "error")
+            put("error", e.message ?: e.javaClass.simpleName)
+          }
+          runOnUiThread {
+            webView.evaluateJavascript(
+              "window._pluginCallback && window._pluginCallback($msg)",
+              null
+            )
+          }
         }
       }.start()
     }
@@ -252,6 +320,42 @@ class MainActivity : TauriActivity() {
           val escaped = json.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n")
           webView.evaluateJavascript(
             "window._catalogCallback && window._catalogCallback('$callbackId', '$escaped')",
+            null
+          )
+        }
+      }.start()
+    }
+
+    @JavascriptInterface
+    fun fetchPluginCatalogFromUrl(url: String, callbackId: String) {
+      val pm = (application as? ViewItApp)?.pluginManager ?: return
+      Thread {
+        val result = pm.fetchCatalog(url)
+        val payload = JSONObject().apply { put("id", callbackId) }
+        if (result.isSuccess) {
+          val arr = JSONArray()
+          result.getOrNull()?.forEach { m ->
+            arr.put(JSONObject().apply {
+              put("id", m.id)
+              put("name", m.name)
+              put("version", m.version)
+              put("description", m.description)
+              put("entryClass", m.entryClass)
+              put("formats", JSONArray(m.supportedFormats))
+              put("downloadUrl", m.downloadUrl)
+              put("sizeBytes", m.sizeBytes)
+              put("installedSizeBytes", m.installedSizeBytes)
+              put("checksum", m.checksum)
+              put("abi", m.abi)
+            })
+          }
+          payload.put("plugins", arr)
+        } else {
+          payload.put("error", result.exceptionOrNull()?.message ?: "Failed to fetch catalog")
+        }
+        runOnUiThread {
+          webView.evaluateJavascript(
+            "window._customCatalogCallback && window._customCatalogCallback($payload)",
             null
           )
         }

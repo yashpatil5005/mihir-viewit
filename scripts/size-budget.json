@@ -6,7 +6,7 @@
   "_pre_release_note": "Starting budgets per plan §5. Last measurement: 2026-07-13 — web bundle 135 KB (45 KB gz). Mobile/desktop artifacts still unmeasured pending interactive tauri android/ios init runs.",
   "budgets": {
     "android-aab-arm64-v8a": 18000000,
-    "android-apk-arm64-v8a": 20000000,
+    "android-apk-arm64-v8a": 15000000,
     "ios-ipa": 20000000,
     "desktop-linux": 15000000,
     "windows-msi": 18000000,
@@ -15,14 +15,14 @@
     "web-wasm-bundle-gz": 3000000
   },
   "last_measured": {
-    "_status": "measured 2026-07-27T11:54:36.554Z",
+    "_status": "measured 2026-08-01T22:19:18.694Z",
     "android-aab-arm64-v8a": 9818545,
-    "android-apk-arm64-v8a": 4947816,
+    "android-apk-arm64-v8a": 14339804,
     "ios-ipa": null,
     "desktop-linux": null,
     "windows-msi": null,
     "macos-dmg": null,
-    "web-wasm-bundle": 4564911,
-    "web-wasm-bundle-gz": 1272792
+    "web-wasm-bundle": 4620264,
+    "web-wasm-bundle-gz": 1287405
   }
 }

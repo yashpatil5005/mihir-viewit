@@ -51,7 +51,7 @@ fi
 LINKER="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
 export ANDROID_NDK_HOME="$NDK"
 export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$LINKER"
-export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384"
+export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C force-unwind-tables=no"
 export PATH="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
 BUILD_TOOLS=$(ls -d "$HOME/Android/Sdk/build-tools/"* 2>/dev/null | sort -V | tail -1)
 
@@ -84,15 +84,13 @@ rsync -a --delete "$MOBILE/build/" "$ASSETS/"
 echo "[android] gradle arm64-only APK (~11 MB, not 4-ABI universal)"
 (cd "$GEN" && ./gradlew :app:assembleArm64Release \
   -PabiList=arm64-v8a \
-  -x rustBuildArm64Release -x rustBuildUniversalRelease -x stripArm64ReleaseDebugSymbols --no-daemon)
-
-echo "[android] size gate"
-(cd "$ROOT" && npx tsx scripts/size-budget.ts)
+  -x rustBuildArm64Release -x rustBuildUniversalRelease --no-daemon)
 
 APK_UNSIGNED="$GEN/app/build/outputs/apk/arm64/release/app-arm64-release-unsigned.apk"
 APK_WITH_LIB="$ROOT/dist/viewit-android-arm64-release-with-lib.apk"
 APK_ALIGNED="$ROOT/dist/viewit-android-arm64-release-aligned.apk"
-APK_SIGNED="$ROOT/dist/viewit-android-universal-debug.apk"
+APK_SIGNED="$ROOT/dist/viewit-android-arm64-release.apk"
+APK_LEGACY="$ROOT/dist/viewit-android-universal-debug.apk"
 mkdir -p "$ROOT/dist"
 
 KEYSTORE="${ANDROID_DEBUG_KEYSTORE:-$HOME/.android/debug.keystore}"
@@ -103,7 +101,7 @@ if [[ ! -f "$KEYSTORE" ]]; then
     -dname "CN=Android Debug,O=Android,C=US"
 fi
 
-rm -f "$APK_WITH_LIB" "$APK_ALIGNED" "$APK_SIGNED"
+rm -f "$APK_WITH_LIB" "$APK_ALIGNED" "$APK_SIGNED" "$APK_LEGACY"
 cp "$APK_UNSIGNED" "$APK_WITH_LIB"
 TMP_LIB_DIR="$ROOT/dist/android-native-lib"
 rm -rf "$TMP_LIB_DIR"
@@ -115,6 +113,17 @@ cp "$RUST_LIB" "$TMP_LIB_DIR/lib/arm64-v8a/libviewit_mobile_lib.so"
   --out "$APK_SIGNED" "$APK_ALIGNED"
 
 "$ROOT/scripts/verify-android-16kb.sh" "$APK_SIGNED"
+
+MAX_APK_BYTES="${MAX_APK_BYTES:-15000000}"
+APK_BYTES=$(stat -c '%s' "$APK_SIGNED")
+if (( APK_BYTES > MAX_APK_BYTES )); then
+  echo "[android] APK size gate failed: $APK_BYTES bytes > $MAX_APK_BYTES bytes" >&2
+  exit 1
+fi
+echo "[android] APK size OK: $APK_BYTES bytes <= $MAX_APK_BYTES bytes"
+
+echo "[android] size budget"
+(cd "$ROOT" && npx tsx scripts/size-budget.ts)
 
 echo ""
 echo "Signed APK (USB install): $APK_SIGNED"

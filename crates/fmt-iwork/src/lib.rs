@@ -16,7 +16,7 @@
 //! → skipped: .iwa Snappy+protobuf decode, add when litchi crate matures (ADR 0006)
 
 use std::io::{Cursor, Read};
-use viewit_core_types::{DocxBlock, Document, Error, Format, PptxSlide, XlsxSheet};
+use viewit_core_types::{Document, DocxBlock, Error, Format, PptxElement, PptxSlide, XlsxSheet};
 use zip::ZipArchive;
 
 pub fn parse(bytes: &[u8], format: Format, _name: &str) -> Result<Document, Error> {
@@ -24,7 +24,8 @@ pub fn parse(bytes: &[u8], format: Format, _name: &str) -> Result<Document, Erro
     let mut archive = ZipArchive::new(cursor).map_err(|e| Error::Parse(format!("zip: {}", e)))?;
 
     let mut text_parts: Vec<(String, String)> = Vec::new();
-    let mut preview_jpg: Option<Vec<u8>> = None;
+    let mut preview_image: Option<(String, Vec<u8>)> = None;
+    let mut preview_pdf: Option<String> = None;
 
     for i in 0..archive.len() {
         let Ok(mut entry) = archive.by_index(i) else {
@@ -40,9 +41,15 @@ pub fn parse(bytes: &[u8], format: Format, _name: &str) -> Result<Document, Erro
             // Snappy-compressed protobuf — needs litchi (ADR 0006 deferred).
             continue;
         }
-        if entry_name.ends_with("preview.jpg") || entry_name.ends_with("preview.jpg-medium") {
-            if preview_jpg.is_none() {
-                preview_jpg = Some(buf);
+        if is_preview_image(&entry_name) {
+            if preview_image.is_none() {
+                preview_image = Some((entry_name, buf));
+            }
+            continue;
+        }
+        if is_preview_pdf(&entry_name) {
+            if preview_pdf.is_none() {
+                preview_pdf = Some(entry_name);
             }
             continue;
         }
@@ -56,25 +63,34 @@ pub fn parse(bytes: &[u8], format: Format, _name: &str) -> Result<Document, Erro
 
     Ok(match format {
         Format::IworkPages => Document::Docx {
-            blocks: iwork_pages_blocks(&text_parts, preview_jpg.is_some()),
+            blocks: iwork_pages_blocks(&text_parts, preview_image.as_ref(), preview_pdf.as_deref()),
             byte_len: bytes.len(),
         },
         Format::IworkNumbers => Document::Xlsx {
-            sheets: iwork_numbers_sheets(&text_parts),
+            sheets: iwork_numbers_sheets(&text_parts, preview_image.as_ref()),
             byte_len: bytes.len(),
         },
         Format::IworkKey => Document::Pptx {
             slide_count: 1,
             slides: vec![PptxSlide {
                 title: "Apple Keynote preview".into(),
-                body: iwork_text_body(format, &text_parts, preview_jpg.is_some()),
+                body: iwork_text_body(
+                    format,
+                    &text_parts,
+                    preview_image.as_ref().is_some() || preview_pdf.is_some(),
+                ),
+                elements: iwork_key_elements(preview_image.as_ref()),
             }],
             byte_len: bytes.len(),
             asset_path: String::new(),
             stream_url: None,
         },
         _ => Document::Text {
-            content: iwork_text_body(format, &text_parts, preview_jpg.is_some()),
+            content: iwork_text_body(
+                format,
+                &text_parts,
+                preview_image.as_ref().is_some() || preview_pdf.is_some(),
+            ),
             encoding: "utf-8".into(),
             byte_len: bytes.len(),
             truncated: false,
@@ -83,11 +99,29 @@ pub fn parse(bytes: &[u8], format: Format, _name: &str) -> Result<Document, Erro
     })
 }
 
-fn iwork_pages_blocks(text_parts: &[(String, String)], has_preview: bool) -> Vec<DocxBlock> {
+fn iwork_pages_blocks(
+    text_parts: &[(String, String)],
+    preview_image: Option<&(String, Vec<u8>)>,
+    preview_pdf: Option<&str>,
+) -> Vec<DocxBlock> {
     let mut blocks = vec![DocxBlock::Paragraph {
-        text: partial_notice(has_preview),
+        text: partial_notice(preview_image.is_some() || preview_pdf.is_some()),
         heading: Some(1),
     }];
+    if let Some((name, bytes)) = preview_image {
+        blocks.push(DocxBlock::Image {
+            name: name.clone(),
+            src: Some(data_url_for_image(name, bytes)),
+        });
+    }
+    if let Some(name) = preview_pdf {
+        blocks.push(DocxBlock::Paragraph {
+            text: format!(
+                "Embedded iWork PDF preview found at {name}, but embedded PDF rendering from inside the package is not wired yet."
+            ),
+            heading: None,
+        });
+    }
     for (name, text) in text_parts.iter().filter(|(name, _)| !is_metadata(name)) {
         blocks.push(DocxBlock::Paragraph {
             text: name.clone(),
@@ -109,8 +143,14 @@ fn iwork_pages_blocks(text_parts: &[(String, String)], has_preview: bool) -> Vec
     blocks
 }
 
-fn iwork_numbers_sheets(text_parts: &[(String, String)]) -> Vec<XlsxSheet> {
+fn iwork_numbers_sheets(
+    text_parts: &[(String, String)],
+    preview_image: Option<&(String, Vec<u8>)>,
+) -> Vec<XlsxSheet> {
     let mut rows = Vec::new();
+    if let Some((name, _)) = preview_image {
+        rows.push(vec!["QuickLook preview image".into(), name.clone()]);
+    }
     for (name, text) in text_parts.iter().filter(|(name, _)| !is_metadata(name)) {
         rows.push(vec![name.clone(), String::new()]);
         for line in text.lines().map(str::trim).filter(|s| !s.is_empty()) {
@@ -131,7 +171,7 @@ fn iwork_numbers_sheets(text_parts: &[(String, String)]) -> Vec<XlsxSheet> {
     let total_cols = rows.iter().map(Vec::len).max().unwrap_or(1).max(2);
     vec![XlsxSheet {
         name: "iWork preview".into(),
-        header: vec![partial_notice(false), "".into()],
+        header: vec![partial_notice(preview_image.is_some()), "".into()],
         preview_rows: rows,
         total_rows_hint: Some(total_rows),
         total_cols_hint: Some(total_cols),
@@ -145,10 +185,35 @@ fn iwork_text_body(format: Format, text_parts: &[(String, String)], has_preview:
         .map(|(name, text)| format!("{}\n{}", name, text.trim()))
         .collect();
     if extracted.is_empty() {
-        format!("{}\n\n{}", partial_notice(has_preview), no_extractable_text(format))
+        format!(
+            "{}\n\n{}",
+            partial_notice(has_preview),
+            no_extractable_text(format)
+        )
     } else {
-        format!("{}\n\n{}", partial_notice(has_preview), extracted.join("\n\n---\n\n"))
+        format!(
+            "{}\n\n{}",
+            partial_notice(has_preview),
+            extracted.join("\n\n---\n\n")
+        )
     }
+}
+
+fn iwork_key_elements(preview_image: Option<&(String, Vec<u8>)>) -> Vec<PptxElement> {
+    preview_image
+        .map(|(name, bytes)| {
+            vec![PptxElement {
+                kind: "image".into(),
+                x: 0,
+                y: 0,
+                w: 9144000,
+                h: 5143500,
+                src: Some(data_url_for_image(name, bytes)),
+                text: None,
+                font_size: None,
+            }]
+        })
+        .unwrap_or_default()
 }
 
 fn partial_notice(has_preview: bool) -> String {
@@ -171,6 +236,53 @@ fn is_metadata(name: &str) -> bool {
     lower.ends_with("metadata.json") || lower.ends_with("document.yaml")
 }
 
+fn is_preview_image(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    (lower.contains("preview") || lower.contains("quicklook"))
+        && (lower.ends_with(".jpg")
+            || lower.ends_with(".jpeg")
+            || lower.ends_with(".png")
+            || lower.ends_with("preview.jpg")
+            || lower.ends_with("preview.jpg-medium"))
+}
+
+fn is_preview_pdf(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    (lower.contains("preview") || lower.contains("quicklook")) && lower.ends_with(".pdf")
+}
+
+fn data_url_for_image(name: &str, bytes: &[u8]) -> String {
+    let mime = if name.to_lowercase().ends_with(".png") {
+        "image/png"
+    } else {
+        "image/jpeg"
+    };
+    format!("data:{};base64,{}", mime, base64_encode(bytes))
+}
+
+fn base64_encode(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let b0 = chunk[0];
+        let b1 = *chunk.get(1).unwrap_or(&0);
+        let b2 = *chunk.get(2).unwrap_or(&0);
+        out.push(TABLE[(b0 >> 2) as usize] as char);
+        out.push(TABLE[(((b0 & 0x03) << 4) | (b1 >> 4)) as usize] as char);
+        if chunk.len() > 1 {
+            out.push(TABLE[(((b1 & 0x0f) << 2) | (b2 >> 6)) as usize] as char);
+        } else {
+            out.push('=');
+        }
+        if chunk.len() > 2 {
+            out.push(TABLE[(b2 & 0x3f) as usize] as char);
+        } else {
+            out.push('=');
+        }
+    }
+    out
+}
+
 fn format_label(format: Format) -> &'static str {
     match format {
         Format::IworkPages => "Pages",
@@ -189,10 +301,52 @@ mod tests {
         let mut buf = Vec::new();
         let cursor = std::io::Cursor::new(&mut buf);
         let mut zip = zip::ZipWriter::new(cursor);
-        zip.start_file("Metadata.json", zip::write::SimpleFileOptions::default()).unwrap();
+        zip.start_file("Metadata.json", zip::write::SimpleFileOptions::default())
+            .unwrap();
         zip.write_all(b"{}\n").unwrap();
-        zip.start_file(text_path, zip::write::SimpleFileOptions::default()).unwrap();
+        zip.start_file(text_path, zip::write::SimpleFileOptions::default())
+            .unwrap();
         zip.write_all(text.as_bytes()).unwrap();
+        zip.finish().unwrap();
+        buf
+    }
+
+    fn iwork_zip_with_preview() -> Vec<u8> {
+        let mut buf = Vec::new();
+        let cursor = std::io::Cursor::new(&mut buf);
+        let mut zip = zip::ZipWriter::new(cursor);
+        zip.start_file(
+            "Index/Document.iwa",
+            zip::write::SimpleFileOptions::default(),
+        )
+        .unwrap();
+        zip.write_all(b"binary-iwa").unwrap();
+        zip.start_file(
+            "QuickLook/Preview.jpg",
+            zip::write::SimpleFileOptions::default(),
+        )
+        .unwrap();
+        zip.write_all(b"fake-jpeg").unwrap();
+        zip.finish().unwrap();
+        buf
+    }
+
+    fn iwork_zip_with_pdf_preview() -> Vec<u8> {
+        let mut buf = Vec::new();
+        let cursor = std::io::Cursor::new(&mut buf);
+        let mut zip = zip::ZipWriter::new(cursor);
+        zip.start_file(
+            "Index/Document.iwa",
+            zip::write::SimpleFileOptions::default(),
+        )
+        .unwrap();
+        zip.write_all(b"binary-iwa").unwrap();
+        zip.start_file(
+            "QuickLook/Preview.pdf",
+            zip::write::SimpleFileOptions::default(),
+        )
+        .unwrap();
+        zip.write_all(b"%PDF-1.7").unwrap();
         zip.finish().unwrap();
         buf
     }
@@ -201,20 +355,53 @@ mod tests {
     fn pages_maps_to_structured_docx() {
         let bytes = iwork_zip("Data/document.txt", "Hello Pages\n");
         let doc = parse(&bytes, Format::IworkPages, "sample.pages").unwrap();
-        assert!(matches!(doc, Document::Docx { blocks, .. } if blocks.iter().any(|b| matches!(b, DocxBlock::Paragraph { text, .. } if text == "Hello Pages"))));
+        assert!(
+            matches!(doc, Document::Docx { blocks, .. } if blocks.iter().any(|b| matches!(b, DocxBlock::Paragraph { text, .. } if text == "Hello Pages")))
+        );
     }
 
     #[test]
     fn numbers_maps_to_structured_grid() {
         let bytes = iwork_zip("Data/table.tsv", "A\tB\n1\t2\n");
         let doc = parse(&bytes, Format::IworkNumbers, "sample.numbers").unwrap();
-        assert!(matches!(doc, Document::Xlsx { sheets, .. } if sheets[0].preview_rows.iter().any(|r| r == &vec!["A".to_string(), "B".to_string()])));
+        assert!(
+            matches!(doc, Document::Xlsx { sheets, .. } if sheets[0].preview_rows.iter().any(|r| r == &vec!["A".to_string(), "B".to_string()]))
+        );
     }
 
     #[test]
     fn key_maps_to_structured_deck() {
         let bytes = iwork_zip("Data/document.txt", "Hello Keynote\n");
         let doc = parse(&bytes, Format::IworkKey, "sample.key").unwrap();
-        assert!(matches!(doc, Document::Pptx { slides, .. } if slides[0].body.contains("Hello Keynote")));
+        assert!(
+            matches!(doc, Document::Pptx { slides, .. } if slides[0].body.contains("Hello Keynote"))
+        );
+    }
+
+    #[test]
+    fn pages_preserves_quicklook_preview_image() {
+        let bytes = iwork_zip_with_preview();
+        let doc = parse(&bytes, Format::IworkPages, "real.pages").unwrap();
+        assert!(
+            matches!(doc, Document::Docx { blocks, .. } if blocks.iter().any(|b| matches!(b, DocxBlock::Image { src: Some(src), .. } if src.starts_with("data:image/jpeg;base64,"))))
+        );
+    }
+
+    #[test]
+    fn key_preserves_quicklook_preview_image() {
+        let bytes = iwork_zip_with_preview();
+        let doc = parse(&bytes, Format::IworkKey, "real.key").unwrap();
+        assert!(
+            matches!(doc, Document::Pptx { slides, .. } if slides[0].elements.iter().any(|e| e.kind == "image" && e.src.as_deref().unwrap_or_default().starts_with("data:image/jpeg;base64,")))
+        );
+    }
+
+    #[test]
+    fn pages_reports_embedded_pdf_preview() {
+        let bytes = iwork_zip_with_pdf_preview();
+        let doc = parse(&bytes, Format::IworkPages, "real.pages").unwrap();
+        assert!(
+            matches!(doc, Document::Docx { blocks, .. } if blocks.iter().any(|b| matches!(b, DocxBlock::Paragraph { text, .. } if text.contains("Embedded iWork PDF preview found"))))
+        );
     }
 }

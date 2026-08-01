@@ -25,7 +25,7 @@
         "xlsm",
         "pptm"
       ],
-      "downloadUrl": "https://github.com/mihir0209/ViewIt/releases/latest/download/office-ooxml-0.3.0-arm64-v8a.zip",
+      "downloadUrl": "https://viewit-plugin-catalog-temp.pages.dev/office-ooxml-0.3.0-arm64-v8a.zip",
       "checksum": "4dc77aa5c86953d762d12152c7faf50a030f2f0f0b7b2f4dd4ca15a76901fcd1",
       "minAppVersion": 1
     },
@@ -54,40 +54,46 @@
         "xlsm",
         "pptm"
       ],
-      "downloadUrl": "https://github.com/mihir0209/ViewIt/releases/latest/download/office-ooxml-0.3.0-x86_64.zip",
+      "downloadUrl": "https://viewit-plugin-catalog-temp.pages.dev/office-ooxml-0.3.0-x86_64.zip",
       "checksum": "14c67c0724f62ad75988244752cdae737fe212229473a171684920b484f939a1",
       "minAppVersion": 1
     },
     {
-      "id": "media-ffmpeg",
-      "name": "Media FFmpeg Transcoder",
-      "description": "Optional media transcode plugin for unsupported video/audio formats. Uses out-of-process FFmpeg service with user consent for heavy conversions.",
-      "version": "0.1.0",
-      "entryClass": "ai.viewit.plugins.media_ffmpeg.Plugin",
+      "id": "ffmpeg-transcoder",
+      "name": "FFmpeg Transcoder",
+      "description": "Optional media transcode plugin for unsupported video and audio formats. Converts legacy containers/codecs to MP4 using FFmpeg.",
+      "version": "1.0.0",
+      "entryClass": "ai.viewit.plugins.ffmpeg_transcoder.Plugin",
       "capabilities": [
         "media.inspect",
         "media.convert"
       ],
-      "runtime": "android-dex-rust-sidecar",
+      "runtime": "android-dex-jni",
       "abi": "arm64-v8a",
       "abiVersion": 1,
-      "sizeBytes": 0,
-      "installedSizeBytes": 0,
+      "sizeBytes": 17980167,
+      "installedSizeBytes": 38304481,
       "supportedFormats": [
         "avi",
-        "wmv",
-        "flv",
         "mkv",
         "mov",
+        "webm",
+        "3gp",
+        "flv",
+        "asf",
+        "wmv",
+        "wma",
+        "swf",
+        "mxf",
         "mpg",
         "mpeg",
-        "3gp",
-        "webm"
+        "ts",
+        "m2ts",
+        "mts"
       ],
-      "downloadUrl": "",
-      "checksum": "",
-      "minAppVersion": 1,
-      "status": "design-only"
+      "downloadUrl": "https://viewit-plugin-catalog-temp.pages.dev/ffmpeg-transcoder/build/ffmpeg-transcoder-1.0.0.zip",
+      "checksum": "4ad102c37775aa7311cb70e900d9bc67f940d0546fdf4c574934dc3f41e2c5c5",
+      "minAppVersion": 1
     }
   ]
 }

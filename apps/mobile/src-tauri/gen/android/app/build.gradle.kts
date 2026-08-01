@@ -12,6 +12,10 @@ val tauriProperties = Properties().apply {
         propFile.inputStream().use { load(it) }
     }
 }
+val pluginCatalogUrl: String = providers.gradleProperty("viewitPluginCatalogUrl")
+    .orElse(providers.environmentVariable("VIEWIT_PLUGIN_CATALOG_URL"))
+    .orElse("https://viewit-plugin-catalog-temp.pages.dev/catalog.signed.json")
+    .get()
 
 android {
     compileSdk = 36
@@ -23,6 +27,7 @@ android {
         targetSdk = 36
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
+        buildConfigField("String", "VIEWIT_PLUGIN_CATALOG_URL", "\"${pluginCatalogUrl.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
     }
     buildTypes {
         getByName("debug") {
@@ -48,7 +53,7 @@ android {
         buildConfig = true
     }
     packaging {
-        jniLibs.keepDebugSymbols.add("**/*.so")
+        jniLibs.useLegacyPackaging = true
     }
 }
 
@@ -57,6 +62,9 @@ rust {
 }
 
 dependencies {
+    implementation(files("libs/ffmpeg-kit-classes.jar"))
+    implementation(files("libs/smart-exception-common.jar"))
+    implementation(files("libs/smart-exception-java.jar"))
     implementation("androidx.webkit:webkit:1.14.0")
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("androidx.activity:activity-ktx:1.10.1")
@@ -75,6 +83,6 @@ apply(from = "tauri.build.gradle.kts")
 
 tasks.configureEach {
     if (name.startsWith("strip") && name.endsWith("DebugSymbols")) {
-        enabled = false
+        onlyIf { !name.contains("Debug", ignoreCase = true) }
     }
 }

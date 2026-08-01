@@ -6,9 +6,9 @@
 //! - ODS (3.4): `calamine` → `Document::Csv`
 //! - ODT/ODP (3.4): custom zip+XML reader → `Document::Text`
 
-pub mod pptx;
-pub mod odt;
 pub mod odp;
+pub mod odt;
+pub mod pptx;
 
 use std::io::Cursor;
 use viewit_core_types::{Document, Error, Format};
@@ -114,8 +114,8 @@ fn parse_xls_binary(bytes: &[u8]) -> Result<Document, Error> {
 /// sequences from the other streams. Marked partial-preview.
 fn parse_legacy_binary(bytes: &[u8], format: Format) -> Result<Document, Error> {
     let cursor = std::io::Cursor::new(bytes.to_vec());
-    let mut cfb = cfb::CompoundFile::open(cursor)
-        .map_err(|e| Error::Parse(format!("cfb open: {}", e)))?;
+    let mut cfb =
+        cfb::CompoundFile::open(cursor).map_err(|e| Error::Parse(format!("cfb open: {}", e)))?;
 
     // Stream targets per format — try primary then fallback streams.
     let streams: Vec<&str> = match format {
@@ -147,7 +147,8 @@ fn parse_legacy_binary(bytes: &[u8], format: Format) -> Result<Document, Error> 
     }
     // Fallback: walk all streams and harvest ASCII prints if primary stream empty.
     if text.trim().is_empty() {
-        let paths: Vec<_> = cfb.read_root_storage()
+        let paths: Vec<_> = cfb
+            .read_root_storage()
             .filter(|e| e.is_stream())
             .map(|e| e.path().to_path_buf())
             .collect();
@@ -173,11 +174,15 @@ fn parse_legacy_binary(bytes: &[u8], format: Format) -> Result<Document, Error> 
         });
     }
 
-    let label = match format { Format::Doc => "Word .doc", _ => "legacy" };
+    let label = match format {
+        Format::Doc => "Word .doc",
+        _ => "legacy",
+    };
     Ok(Document::Text {
         content: format!(
             "[Partial preview — {} legacy binary, layout/formatting not preserved]\n\n{}",
-            label, text.trim()
+            label,
+            text.trim()
         ),
         encoding: "utf-8".into(),
         byte_len: bytes.len(),
@@ -193,7 +198,11 @@ fn legacy_ppt_slides(text: &str) -> Vec<viewit_core_types::PptxSlide> {
         .lines()
         .map(str::trim)
         .filter(|line| line.len() >= 3)
-        .filter(|line| !line.chars().all(|c| c.is_ascii_punctuation() || c.is_ascii_digit()))
+        .filter(|line| {
+            !line
+                .chars()
+                .all(|c| c.is_ascii_punctuation() || c.is_ascii_digit())
+        })
         .map(str::to_string)
         .collect();
 
@@ -201,6 +210,7 @@ fn legacy_ppt_slides(text: &str) -> Vec<viewit_core_types::PptxSlide> {
         return vec![PptxSlide {
             title: "Legacy PowerPoint preview".into(),
             body: "No extractable slide text found. Legacy binary PowerPoint layout is not decoded in the lightweight viewer.".into(),
+            elements: Vec::new(),
         }];
     }
 
@@ -213,7 +223,11 @@ fn legacy_ppt_slides(text: &str) -> Vec<viewit_core_types::PptxSlide> {
             .filter(|s| s.len() <= 120)
             .unwrap_or_else(|| format!("Legacy PowerPoint slide {}", idx + 1));
         let body = chunk.iter().skip(1).cloned().collect::<Vec<_>>().join("\n");
-        slides.push(PptxSlide { title, body });
+        slides.push(PptxSlide {
+            title,
+            body,
+            elements: Vec::new(),
+        });
     }
     slides
 }
@@ -236,12 +250,17 @@ fn extract_utf16_le(bytes: &[u8]) -> String {
                 cur.clear();
             }
         } else if !cur.is_empty() {
-            if cur.len() >= 4 { out.push_str(&cur); out.push('\n'); }
+            if cur.len() >= 4 {
+                out.push_str(&cur);
+                out.push('\n');
+            }
             cur.clear();
         }
         i += 2;
     }
-    if cur.len() >= 4 { out.push_str(&cur); }
+    if cur.len() >= 4 {
+        out.push_str(&cur);
+    }
     out
 }
 
@@ -250,16 +269,25 @@ fn extract_ascii(bytes: &[u8]) -> String {
     let mut out = String::new();
     let mut cur: Vec<u8> = Vec::new();
     for &b in bytes {
-        if (0x20..=0x7E).contains(&b) { cur.push(b); }
-        else if b == 0x0A || b == 0x0D {
-            if cur.len() >= 4 { out.push_str(&String::from_utf8_lossy(&cur)); out.push('\n'); }
+        if (0x20..=0x7E).contains(&b) {
+            cur.push(b);
+        } else if b == 0x0A || b == 0x0D {
+            if cur.len() >= 4 {
+                out.push_str(&String::from_utf8_lossy(&cur));
+                out.push('\n');
+            }
             cur.clear();
         } else if !cur.is_empty() {
-            if cur.len() >= 4 { out.push_str(&String::from_utf8_lossy(&cur)); out.push_str(" "); }
+            if cur.len() >= 4 {
+                out.push_str(&String::from_utf8_lossy(&cur));
+                out.push_str(" ");
+            }
             cur.clear();
         }
     }
-    if cur.len() >= 4 { out.push_str(&String::from_utf8_lossy(&cur)); }
+    if cur.len() >= 4 {
+        out.push_str(&String::from_utf8_lossy(&cur));
+    }
     out
 }
 
@@ -350,8 +378,11 @@ fn parse_docx(bytes: &[u8]) -> Result<Document, Error> {
         .map_err(|e| Error::Parse(format!("docx-rust from_reader: {}", e)))?;
     let docx = match docx_file.parse() {
         Ok(docx) => docx,
-        Err(e) => return parse_docx_ooxml_fallback(bytes)
-            .map_err(|fallback| Error::Parse(format!("docx-rust parse: {}; fallback: {}", e, fallback))),
+        Err(e) => {
+            return parse_docx_ooxml_fallback(bytes).map_err(|fallback| {
+                Error::Parse(format!("docx-rust parse: {}; fallback: {}", e, fallback))
+            })
+        }
     };
 
     let mut blocks: Vec<DocxBlock> = Vec::new();
@@ -359,12 +390,17 @@ fn parse_docx(bytes: &[u8]) -> Result<Document, Error> {
         match content {
             BodyContent::Paragraph(p) => {
                 let text = p.text();
-                if text.trim().is_empty() { continue; }
-                let heading = p.property
+                if text.trim().is_empty() {
+                    continue;
+                }
+                let heading = p
+                    .property
                     .as_ref()
                     .and_then(|prop| prop.style_id.as_ref())
                     .and_then(|sid| heading_from_style(&sid.value));
-                let is_list = p.property.as_ref()
+                let is_list = p
+                    .property
+                    .as_ref()
                     .map(|prop| prop.numbering.is_some())
                     .unwrap_or(false);
                 if is_list {
@@ -378,8 +414,13 @@ fn parse_docx(bytes: &[u8]) -> Result<Document, Error> {
                 for row in &t.rows {
                     let mut cells: Vec<String> = Vec::new();
                     for tc in &row.cells {
-                        let cell = match tc { TableRowContent::TableCell(c) => c, _ => continue };
-                        let cell_text: Vec<String> = cell.content.iter()
+                        let cell = match tc {
+                            TableRowContent::TableCell(c) => c,
+                            _ => continue,
+                        };
+                        let cell_text: Vec<String> = cell
+                            .content
+                            .iter()
                             .filter_map(|c| match c {
                                 TableCellContent::Paragraph(p) => Some(p.text()),
                             })
@@ -404,10 +445,11 @@ fn parse_docx_ooxml_fallback(bytes: &[u8]) -> Result<Document, Error> {
     use std::io::Read;
 
     let cursor = Cursor::new(bytes);
-    let mut archive = zip::ZipArchive::new(cursor)
-        .map_err(|e| Error::Parse(format!("docx zip: {}", e)))?;
+    let mut archive =
+        zip::ZipArchive::new(cursor).map_err(|e| Error::Parse(format!("docx zip: {}", e)))?;
     let mut xml = String::new();
-    archive.by_name("word/document.xml")
+    archive
+        .by_name("word/document.xml")
         .map_err(|e| Error::Parse(format!("docx missing document.xml: {}", e)))?
         .read_to_string(&mut xml)
         .map_err(|e| Error::Parse(format!("docx document.xml read: {}", e)))?;
@@ -461,7 +503,8 @@ fn parse_docx_document_xml(xml: &str, byte_len: usize) -> Result<Document, Error
                     b"w:pStyle" if in_paragraph => {
                         for attr in e.attributes().flatten() {
                             if attr.key.as_ref() == b"w:val" {
-                                let value = String::from_utf8_lossy(attr.value.as_ref()).to_string();
+                                let value =
+                                    String::from_utf8_lossy(attr.value.as_ref()).to_string();
                                 paragraph_heading = heading_from_style(&value);
                             }
                         }
@@ -489,7 +532,10 @@ fn parse_docx_document_xml(xml: &str, byte_len: usize) -> Result<Document, Error
                                 if paragraph_is_list {
                                     blocks.push(DocxBlock::ListItem { text, level: 0 });
                                 } else {
-                                    blocks.push(DocxBlock::Paragraph { text, heading: paragraph_heading });
+                                    blocks.push(DocxBlock::Paragraph {
+                                        text,
+                                        heading: paragraph_heading,
+                                    });
                                 }
                             }
                         }
@@ -504,7 +550,9 @@ fn parse_docx_document_xml(xml: &str, byte_len: usize) -> Result<Document, Error
                     }
                     b"w:tbl" => {
                         if !table_rows.is_empty() {
-                            blocks.push(DocxBlock::Table { rows: table_rows.clone() });
+                            blocks.push(DocxBlock::Table {
+                                rows: table_rows.clone(),
+                            });
                         }
                         in_table = false;
                     }
@@ -590,7 +638,11 @@ mod tests {
     fn legacy_ppt_slides_chunks_extracted_text() {
         let text = "Alpha\nBeta\nGamma\nDelta\nEpsilon\nZeta\nEta\nTheta\nIota\nKappa\nLambda\nMu\nNu\nXi\nOmicron\nPi\nRho\n";
         let slides = legacy_ppt_slides(text);
-        assert!(slides.len() >= 2, "expected multiple slides from chunking, got {}", slides.len());
+        assert!(
+            slides.len() >= 2,
+            "expected multiple slides from chunking, got {}",
+            slides.len()
+        );
         assert!(
             slides.iter().all(|s| !s.title.is_empty()),
             "every slide should have a non-empty title"
@@ -605,6 +657,9 @@ mod tests {
     fn legacy_ppt_slides_empty_text_yields_honest_partial_slide() {
         let slides = legacy_ppt_slides("");
         assert_eq!(slides.len(), 1);
-        assert!(slides[0].body.contains("not decoded"), "empty PPT text should yield honest partial-notice slide");
+        assert!(
+            slides[0].body.contains("not decoded"),
+            "empty PPT text should yield honest partial-notice slide"
+        );
     }
 }

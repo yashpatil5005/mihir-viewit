@@ -29,6 +29,12 @@
 -keep class ai.viewit.app.PluginManifest { *; }
 -keep class ai.viewit.app.InstalledPlugin { *; }
 
+# Optional media plugin calls into FFmpegKit classes from the host classloader;
+# native FFmpeg libraries remain optional plugin payloads.
+-keep class com.arthenica.ffmpegkit.** { *; }
+-keep class com.arthenica.smartexception.** { *; }
+-keep class com.mrljdx.** { *; }
+
 # WebView JS bridge
 -keepclassmembers class ai.viewit.app.MainActivity$AndroidBridge {
     @android.webkit.JavascriptInterface <methods>;

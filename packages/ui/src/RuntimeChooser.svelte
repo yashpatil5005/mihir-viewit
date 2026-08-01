@@ -1,10 +1,11 @@
 <script lang="ts">
   import { openWithExternal } from '@viewit/platform';
   import {
-    fetchPluginCatalog,
+    fetchPluginCatalogSources,
     formatPluginSize,
     hasAndroidBridge,
     installPlugin,
+    isInstallablePlugin,
     listInstalledPlugins,
     pluginSupports,
     type PluginInfo,
@@ -42,10 +43,10 @@
     errorMsg = '';
     try {
       const allInstalled = await listInstalledPlugins();
-      const catalog = await fetchPluginCatalog();
+      const catalog = (await fetchPluginCatalogSources()).flatMap((source) => source.plugins);
       installed = allInstalled.filter((plugin) => pluginSupports(plugin, ext));
       downloadable = catalog
-        .filter((plugin) => pluginSupports(plugin, ext))
+        .filter((plugin) => pluginSupports(plugin, ext) && isInstallablePlugin(plugin))
         .map((plugin) => ({
           ...plugin,
           installed: allInstalled.some((installedPlugin) => installedPlugin.id === plugin.id),
@@ -130,6 +131,7 @@
                 <div>
                   <strong>{plugin.name}</strong>
                   <span>{plugin.description}</span>
+                  {#if plugin.sourceName}<small>{plugin.sourceName}</small>{/if}
                   <small>{formatPluginSize(plugin.sizeBytes)} download{plugin.installedSizeBytes ? ` · ${formatPluginSize(plugin.installedSizeBytes)} installed` : ''}</small>
                 </div>
                 <button type="button" onclick={() => installAndRefresh(plugin)} disabled={installing === plugin.id}>

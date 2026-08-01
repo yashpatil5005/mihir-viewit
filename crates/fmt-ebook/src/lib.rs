@@ -7,13 +7,15 @@
 //! Phase 5 nav UI).
 
 use std::io::Read;
+
+use base64::{engine::general_purpose, Engine as _};
 use viewit_core_types::{Document, Error, Format};
 use zip::ZipArchive;
 
 pub fn parse(bytes: &[u8], _format: Format, _name: &str) -> Result<Document, Error> {
     match _format {
         Format::Epub => parse_epub(bytes),
-        Format::Mobi => parse_mobi(bytes),
+        Format::Mobi | Format::Azw3 => parse_mobi(bytes),
         _ => Err(Error::UnsupportedFormat(_format)),
     }
 }
@@ -33,7 +35,9 @@ fn parse_epub(bytes: &[u8]) -> Result<Document, Error> {
     // 3) First chapter's XHTML eagerly. The rest is paginated.
     let spine_len = spine_paths.len();
     let first_chapter_xhtml = if let Some(first) = spine_paths.first() {
-        read_entry(&mut archive, first).unwrap_or_else(|_| "<p>(empty chapter)</p>".into())
+        let chapter =
+            read_entry(&mut archive, first).unwrap_or_else(|_| "<p>(empty chapter)</p>".into());
+        inline_epub_images(&mut archive, first, &chapter)
     } else {
         "<p>(no chapters)</p>".into()
     };
@@ -48,26 +52,19 @@ fn parse_epub(bytes: &[u8]) -> Result<Document, Error> {
 }
 
 fn parse_mobi(bytes: &[u8]) -> Result<Document, Error> {
-    let mobi = mobi::Mobi::new(bytes.to_vec())
-        .map_err(|e| Error::Parse(format!("mobi parse: {}", e)))?;
-    
+    let mobi =
+        mobi::Mobi::new(bytes.to_vec()).map_err(|e| Error::Parse(format!("mobi parse: {}", e)))?;
+
     let title = mobi.title().to_string();
     let author = mobi.author().map(|s| s.to_string());
-    
+
     // Extract text content — MOBI uses PalmDOC compression
     // The mobi crate handles decompression internally
-    let text = mobi.content_as_string().unwrap_or_else(|_| mobi.content_as_string_lossy());
-    let html = if text.is_empty() {
-        "<p>(no text content)</p>".into()
-    } else {
-        // Convert to basic HTML for consistency with EPUB viewer
-        let escaped = text.replace('&', "&amp;")
-            .replace('<', "&lt;")
-            .replace('>', "&gt;")
-            .replace('\n', "<br>");
-        format!("<div>{}</div>", escaped)
-    };
-    
+    let text = mobi
+        .content_as_string()
+        .unwrap_or_else(|_| mobi.content_as_string_lossy());
+    let html = mobi_content_to_xhtml(&text);
+
     Ok(Document::Epub {
         title,
         author,
@@ -75,6 +72,166 @@ fn parse_mobi(bytes: &[u8]) -> Result<Document, Error> {
         spine_len: 1, // MOBI is single-flow
         byte_len: bytes.len(),
     })
+}
+
+fn mobi_content_to_xhtml(text: &str) -> String {
+    let text = text.trim_matches('\0').trim();
+    if text.is_empty() {
+        return mobi_html_document("<p>(no text content)</p>");
+    }
+
+    let body = if looks_like_html(text) {
+        let body = extract_html_body(text).unwrap_or(text);
+        format!(
+            "<div class=\"mobi-flow\">{}</div>",
+            strip_mobi_html_noise(body)
+        )
+    } else {
+        format!(
+            "<div class=\"mobi-flow\">{}</div>",
+            escape_text_as_html(text)
+        )
+    };
+
+    mobi_html_document(&body)
+}
+
+fn mobi_html_document(body: &str) -> String {
+    format!(
+        r#"<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>html,body{{margin:0;padding:0;background:#fff;color:#111;font:16px/1.55 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}}body{{padding:1rem;}}p{{margin:0 0 0.85rem;}}a{{color:#0b57d0;}}.mobi-flow{{max-width:72ch;margin:0 auto;}}img{{max-width:100%;height:auto;}}</style></head><body>{}</body></html>"#,
+        body
+    )
+}
+
+fn looks_like_html(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    lower.contains("<html")
+        || lower.contains("<body")
+        || lower.contains("<p")
+        || lower.contains("<div")
+}
+
+fn extract_html_body(text: &str) -> Option<&str> {
+    let lower = text.to_ascii_lowercase();
+    let body_start = lower.find("<body")?;
+    let after_open = lower[body_start..].find('>')? + body_start + 1;
+    let body_end = lower[after_open..]
+        .find("</body>")
+        .map(|idx| after_open + idx)
+        .unwrap_or(text.len());
+    Some(&text[after_open..body_end])
+}
+
+fn strip_mobi_html_noise(html: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+    while let Some(start) = rest.to_ascii_lowercase().find("<guide") {
+        out.push_str(&rest[..start]);
+        let lower = rest.to_ascii_lowercase();
+        if let Some(end) = lower[start..].find("</guide>") {
+            rest = &rest[start + end + "</guide>".len()..];
+        } else if let Some(end) = rest[start..].find('>') {
+            rest = &rest[start + end + 1..];
+        } else {
+            rest = "";
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+fn escape_text_as_html(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('\n', "<br>")
+}
+
+fn inline_epub_images<R>(archive: &mut ZipArchive<R>, chapter_path: &str, html: &str) -> String
+where
+    R: Read + std::io::Seek,
+{
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+    while let Some((attr_start, attr_len, quote, value_start)) = find_image_attr(rest) {
+        out.push_str(&rest[..attr_start + attr_len]);
+        let Some(value_end_rel) = rest[value_start..].find(quote) else {
+            out.push_str(&rest[attr_start + attr_len..]);
+            return out;
+        };
+        let value_end = value_start + value_end_rel;
+        let src = &rest[value_start..value_end];
+        out.push(quote);
+        out.push_str(
+            &image_data_url(archive, chapter_path, src).unwrap_or_else(|| src.to_string()),
+        );
+        out.push(quote);
+        rest = &rest[value_end + quote.len_utf8()..];
+    }
+    out.push_str(rest);
+    out
+}
+
+fn find_image_attr(text: &str) -> Option<(usize, usize, char, usize)> {
+    let lower = text.to_ascii_lowercase();
+    ["src=", "href=", "xlink:href="]
+        .iter()
+        .filter_map(|attr| lower.find(attr).map(|idx| (idx, attr.len())))
+        .min_by_key(|(idx, _)| *idx)
+        .and_then(|(idx, len)| {
+            let quote_idx = idx + len;
+            let quote = *text.as_bytes().get(quote_idx)? as char;
+            if quote != '\'' && quote != '"' {
+                return None;
+            }
+            Some((idx, len, quote, quote_idx + 1))
+        })
+}
+
+fn image_data_url<R>(archive: &mut ZipArchive<R>, chapter_path: &str, src: &str) -> Option<String>
+where
+    R: Read + std::io::Seek,
+{
+    if src.starts_with("data:") || src.starts_with("http:") || src.starts_with("https:") {
+        return None;
+    }
+    let src = src.split('#').next().unwrap_or(src);
+    let path = normalize_relative_path(chapter_path, src);
+    let mime = image_mime(&path)?;
+    let mut file = archive.by_name(&path).ok()?;
+    let mut bytes = Vec::with_capacity(file.size() as usize);
+    file.read_to_end(&mut bytes).ok()?;
+    Some(format!(
+        "data:{};base64,{}",
+        mime,
+        general_purpose::STANDARD.encode(bytes)
+    ))
+}
+
+fn normalize_relative_path(base_file: &str, rel: &str) -> String {
+    let mut parts: Vec<&str> = base_file.split('/').collect();
+    parts.pop();
+    for part in rel.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            _ => parts.push(part),
+        }
+    }
+    parts.join("/")
+}
+
+fn image_mime(path: &str) -> Option<&'static str> {
+    match path.rsplit('.').next()?.to_ascii_lowercase().as_str() {
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "png" => Some("image/png"),
+        "gif" => Some("image/gif"),
+        "webp" => Some("image/webp"),
+        "svg" => Some("image/svg+xml"),
+        _ => None,
+    }
 }
 
 fn read_entry<R>(archive: &mut ZipArchive<R>, name: &str) -> Result<String, Error>
@@ -85,7 +242,8 @@ where
         .by_name(name)
         .map_err(|e| Error::Parse(format!("zip entry '{}' not found: {}", name, e)))?;
     let mut s = String::new();
-    f.read_to_string(&mut s).map_err(|e| Error::Parse(format!("read: {}", e)))?;
+    f.read_to_string(&mut s)
+        .map_err(|e| Error::Parse(format!("read: {}", e)))?;
     Ok(s)
 }
 
@@ -103,14 +261,15 @@ fn parse_container(xml: &str) -> Result<String, Error> {
                 if e.name().as_ref() == b"rootfile" {
                     for attr in e.attributes().flatten() {
                         if attr.key.as_ref() == b"full-path" {
-                            opf_path = Some(String::from_utf8_lossy(attr.value.as_ref()).into_owned());
+                            opf_path =
+                                Some(String::from_utf8_lossy(attr.value.as_ref()).into_owned());
                         }
                     }
                 }
             }
             Ok(Event::Eof) => break,
             Err(e) => return Err(Error::Parse(format!("container.xml parse: {}", e))),
-            _ => ()
+            _ => (),
         }
         buf.clear();
     }
@@ -148,17 +307,26 @@ fn parse_opf(xml: &str) -> Result<(String, Option<String>, Vec<String>), Error> 
                         let mut href_v = String::new();
                         for attr in e.attributes().flatten() {
                             match attr.key.as_ref() {
-                                b"id" => id_v = String::from_utf8_lossy(attr.value.as_ref()).into_owned(),
-                                b"href" => href_v = String::from_utf8_lossy(attr.value.as_ref()).into_owned(),
+                                b"id" => {
+                                    id_v = String::from_utf8_lossy(attr.value.as_ref()).into_owned()
+                                }
+                                b"href" => {
+                                    href_v =
+                                        String::from_utf8_lossy(attr.value.as_ref()).into_owned()
+                                }
                                 _ => {}
                             }
                         }
-                        if !id_v.is_empty() { manifest.insert(id_v, href_v); }
+                        if !id_v.is_empty() {
+                            manifest.insert(id_v, href_v);
+                        }
                     }
                     b"itemref" if in_spine_section => {
                         for attr in e.attributes().flatten() {
                             if attr.key.as_ref() == b"idref" {
-                                spine.push(String::from_utf8_lossy(attr.value.as_ref()).into_owned());
+                                spine.push(
+                                    String::from_utf8_lossy(attr.value.as_ref()).into_owned(),
+                                );
                             }
                         }
                     }
@@ -167,20 +335,24 @@ fn parse_opf(xml: &str) -> Result<(String, Option<String>, Vec<String>), Error> 
                     _ => {}
                 }
             }
-            Ok(Event::End(e)) => {
-                match e.name().as_ref() {
-                    b"metadata" => in_metadata = false,
-                    b"manifest" => in_manifest_section = false,
-                    b"spine" => in_spine_section = false,
-                    b"dc:title" => in_title_meta = false,
-                    b"dc:creator" => in_author_meta = false,
-                    _ => {}
-                }
-            }
+            Ok(Event::End(e)) => match e.name().as_ref() {
+                b"metadata" => in_metadata = false,
+                b"manifest" => in_manifest_section = false,
+                b"spine" => in_spine_section = false,
+                b"dc:title" => in_title_meta = false,
+                b"dc:creator" => in_author_meta = false,
+                _ => {}
+            },
             Ok(Event::Text(t)) => {
-                let s = t.unescape().map_err(|e| Error::Parse(format!("esc: {}", e)))?.into_owned();
-                if in_title_meta && title.is_empty() { title = s; }
-                else if in_author_meta && author.is_none() { author = Some(s); }
+                let s = t
+                    .unescape()
+                    .map_err(|e| Error::Parse(format!("esc: {}", e)))?
+                    .into_owned();
+                if in_title_meta && title.is_empty() {
+                    title = s;
+                } else if in_author_meta && author.is_none() {
+                    author = Some(s);
+                }
             }
             Ok(Event::Eof) => break,
             Err(e) => return Err(Error::Parse(format!("opf parse: {}", e))),
@@ -211,6 +383,63 @@ mod tests {
     fn mobi_parse_invalid_bytes_returns_parse_error_not_panic() {
         let bytes = [0u8; 16];
         let result = parse_mobi(&bytes);
-        assert!(matches!(result, Err(Error::Parse(_))), "invalid MOBI bytes should surface a Parse error, got {:?}", result);
+        assert!(
+            matches!(result, Err(Error::Parse(_))),
+            "invalid MOBI bytes should surface a Parse error, got {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn mobi_html_flow_renders_as_html_not_escaped_text() {
+        let html = mobi_content_to_xhtml(
+            r#"<html><head><guide><reference type="toc" /></guide></head><body><p height="19em">Readable text</p></body></html>"#,
+        );
+        assert!(html.contains("<p height=\"19em\">Readable text</p>"));
+        assert!(html.contains("<meta name=\"viewport\""));
+        assert!(!html.contains("&lt;html"));
+        assert!(!html.contains("<guide"));
+    }
+
+    #[test]
+    fn epub_first_chapter_inlines_relative_svg_image() {
+        let mut bytes = Vec::new();
+        {
+            let cursor = std::io::Cursor::new(&mut bytes);
+            let mut zip = zip::ZipWriter::new(cursor);
+            let opts = zip::write::SimpleFileOptions::default();
+            zip.start_file("META-INF/container.xml", opts).unwrap();
+            std::io::Write::write_all(
+                &mut zip,
+                br#"<container><rootfiles><rootfile full-path="content.opf"/></rootfiles></container>"#,
+            )
+            .unwrap();
+            zip.start_file("content.opf", opts).unwrap();
+            std::io::Write::write_all(
+                &mut zip,
+                br#"<package xmlns="http://www.idpf.org/2007/opf"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>T</dc:title></metadata><manifest><item id="cover" href="OEBPS/cover.xml"/></manifest><spine><itemref idref="cover"/></spine></package>"#,
+            )
+            .unwrap();
+            zip.start_file("OEBPS/cover.xml", opts).unwrap();
+            std::io::Write::write_all(
+                &mut zip,
+                br#"<html><body><svg><image xlink:href="images/cover.jpg"/></svg></body></html>"#,
+            )
+            .unwrap();
+            zip.start_file("OEBPS/images/cover.jpg", opts).unwrap();
+            std::io::Write::write_all(&mut zip, b"fake-jpeg").unwrap();
+            zip.finish().unwrap();
+        }
+
+        let doc = parse_epub(&bytes).unwrap();
+        let Document::Epub {
+            first_chapter_xhtml,
+            ..
+        } = doc
+        else {
+            panic!("expected epub document")
+        };
+        assert!(first_chapter_xhtml.contains("data:image/jpeg;base64,"));
+        assert!(!first_chapter_xhtml.contains("images/cover.jpg"));
     }
 }

@@ -300,9 +300,9 @@ ViewIt is a universal file viewer supporting 250+ file formats across text, code
 
 | Format | Extensions | Android | iOS | Desktop | Web | Notes |
 |--------|-----------|---------|-----|---------|-----|-------|
-| Pages | `.pages` | 🔄* | 🚧 | 🚧 | 🚧 | Extractable package text → structured document blocks. **Native `.iwa` layout decoding not supported** — see Known Partials. *Synthetic-sample verified on Samsung SM-E346B (Android 16). |
-| Numbers | `.numbers` | 🔄* | 🚧 | 🚧 | 🚧 | Extractable tabular text → spreadsheet grid. Native `.iwa` layout decoding not supported. *Synthetic-sample verified on Samsung SM-E346B (Android 16). |
-| Keynote | `.key` | 🔄* | 🚧 | 🚧 | 🚧 | Extractable package text → slide model. Native `.iwa` layout decoding not supported. *Synthetic-sample verified on Samsung SM-E346B (Android 16). |
+| Pages | `.pages` | 🔄* | 🚧 | 🚧 | 🚧 | QuickLook preview image when present; otherwise extractable package text → structured document blocks. **Native `.iwa` layout decoding not supported** — see Known Partials. *Synthetic-sample verified on Samsung SM-E346B (Android 16). |
+| Numbers | `.numbers` | 🔄* | 🚧 | 🚧 | 🚧 | QuickLook preview entry when present; otherwise extractable tabular text → spreadsheet grid. Native `.iwa` layout decoding not supported. *Synthetic-sample verified on Samsung SM-E346B (Android 16). |
+| Keynote | `.key` | 🔄* | 🚧 | 🚧 | 🚧 | QuickLook preview image when present; otherwise extractable package text → slide model. Native `.iwa` layout decoding not supported. *Synthetic-sample verified on Samsung SM-E346B (Android 16). |
 
 ---
 
@@ -489,7 +489,7 @@ The base app is **honest** about formats it cannot fully render: it shows a fide
 
 | Format | What works | What does not | Why we don't fix it in the base app |
 |--------|-----------|---------------|-------------------------------------|
-| **iWork `.pages` / `.numbers` / `.key`** | Extractable package text → structured Docx/Xlsx/Pptx blocks (no archive-listing fallback). Synthetic-sample verified on Android 16. | Native `.iwa` Snappy+protobuf layout decoding. Real Apple iWork files with binary `.iwa` payloads show an honest partial-notice, not a full render. | Native layout requires a produced `litchi` (iWork protobuf schemas) decoder. Until those schemas are production-ready, full fidelity belongs in an optional iWork plugin or external conversion service — see `crates/fmt-iwork/src/lib.rs` ADR 0006 deferral. |
+| **iWork `.pages` / `.numbers` / `.key`** | Embedded QuickLook preview images render for Pages/Keynote when present; Numbers surfaces the preview asset as a grid row. Extractable package text still maps to structured Docx/Xlsx/Pptx blocks (no archive-listing fallback). Synthetic-sample verified on Android 16. | Native `.iwa` Snappy+protobuf layout decoding. Real Apple iWork files without usable preview assets show an honest partial-notice, not a full render. | Native layout requires a produced `litchi` (iWork protobuf schemas) decoder. Until those schemas are production-ready, full fidelity belongs in an optional iWork plugin or external conversion service — see `crates/fmt-iwork/src/lib.rs` ADR 0006 deferral. |
 | **Legacy PowerPoint `.ppt`** | Extracted text → lightweight slide model with `.pptx-root` / `.slide-text` in the presentation viewer. Slide navigation and titles/bodies preserved. | Layout, formatting, embedded images/animations for binary `.ppt`. | A high-fidelity binary `.ppt` parser is large and low-leverage. Add an optional Office plugin or host-owned conversion service if you need pixel-accurate PPT. The legacy text-to-slide mapping in `crates/fmt-office/src/lib.rs` (`legacy_ppt_slides`) is the honest base-app fallback. |
 | **WMA `audio/x-ms-wma`** | Routes to the runtime chooser — native Android player + external open. No broken `<audio>` source is attached. | In-app WebView playback (Android WebView does not decode WMA). | per ADR: do not bundle FFmpeg/transcoding into the base app. In-app playback belongs in an optional codec plugin or a host-owned transcoding service. |
 | **AIFF/AIF (compressed)** | PCM AIFF/AIF (8/16/24/32-bit) is converted client-side to WAV (`packages/ui/src/MediaViewer.svelte::aiffToWav`) for in-app `<audio>` playback. Sample verified on Android 16. | Compressed/non-PCM AIFF variants (e.g. AIFF-C with IMA ADPCM) are surfaced as external-only. | Decompressing every AIFF-C codec in the base app would add significant binary size. Add an optional codec plugin if you need it. |
@@ -514,4 +514,3 @@ CI: `.github/workflows/android-release-gate.yml` runs `cargo test` for the relev
 - [ADR 0004: Unsupported Formats](../docs/adr/0004-unsupported-formats.md)
 - [ADR 0010: Media Rendering](../docs/adr/0010-media-rendering.md)
 - [Testing Guide](../docs/TESTING.md)
-

@@ -63,6 +63,11 @@ function parseArgs(): { artifactsDir: string; budgetPath: string } {
 }
 
 function findArtifact(target: string, rootDir: string): string | null {
+  if (target === 'android-apk-arm64-v8a') {
+    const signedApk = resolve(rootDir, 'dist/viewit-android-arm64-release.apk');
+    if (existsSync(signedApk)) return signedApk;
+  }
+
   const candidates = ARTIFACT_DIRS_DEFAULT[target as keyof typeof ARTIFACT_DIRS_DEFAULT];
   if (!candidates) return null;
   const dir = resolve(rootDir, candidates);

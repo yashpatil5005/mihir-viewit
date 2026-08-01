@@ -12,7 +12,9 @@ pub fn parse(bytes: &[u8], format: Format, _name: &str) -> Result<Document, Erro
         #[cfg(feature = "support-7z")]
         Format::Archive7z => list_7z(bytes)?,
         #[cfg(not(feature = "support-7z"))]
-        Format::Archive7z => return Err(Error::Parse("7z support not enabled in this build".into())),
+        Format::Archive7z => {
+            return Err(Error::Parse("7z support not enabled in this build".into()))
+        }
         _ => return Err(Error::UnsupportedFormat(format)),
     };
     Ok(Document::Archive {
@@ -24,7 +26,8 @@ pub fn parse(bytes: &[u8], format: Format, _name: &str) -> Result<Document, Erro
 
 fn list_zip(bytes: &[u8]) -> Result<Vec<ArchiveEntry>, Error> {
     let cursor = std::io::Cursor::new(bytes);
-    let mut archive = zip::ZipArchive::new(cursor).map_err(|e| Error::Parse(format!("zip: {}", e)))?;
+    let mut archive =
+        zip::ZipArchive::new(cursor).map_err(|e| Error::Parse(format!("zip: {}", e)))?;
     let mut out: Vec<ArchiveEntry> = Vec::with_capacity(archive.len() as usize);
     for i in 0..archive.len() {
         if let Ok(file) = archive.by_index(i) {
@@ -41,13 +44,41 @@ fn list_zip(bytes: &[u8]) -> Result<Vec<ArchiveEntry>, Error> {
 
 fn list_tar(bytes: &[u8], gzipped: bool) -> Result<Vec<ArchiveEntry>, Error> {
     let cursor = std::io::Cursor::new(bytes);
+
+    if gzipped {
+        // Check if this is a plain gz (single file) or tar.gz (tar archive)
+        use flate2::read::GzDecoder;
+        use std::io::Read;
+        let mut decoder = GzDecoder::new(cursor.clone());
+        let mut header = [0u8; 512];
+        let n = decoder.read(&mut header).unwrap_or(0);
+        if n < 268 || !header.starts_with(b"ustar") {
+            // Not a tar archive — treat as plain gz (single compressed file)
+            // Derive filename from the first 512 bytes won't help; use metadata only
+            let decompressed_size = {
+                let mut dec = GzDecoder::new(cursor);
+                let mut buf = Vec::new();
+                dec.read_to_end(&mut buf).unwrap_or(0)
+            };
+            return Ok(vec![ArchiveEntry {
+                name: "archive-content".to_string(),
+                size: decompressed_size as u64,
+                is_dir: false,
+                compressed_size: bytes.len() as u64,
+            }]);
+        }
+    }
+
     let mut entries: Vec<ArchiveEntry> = Vec::new();
     let mut archive: tar::Archive<Box<dyn std::io::Read>> = if gzipped {
         tar::Archive::new(Box::new(flate2::read::GzDecoder::new(cursor)))
     } else {
         tar::Archive::new(Box::new(cursor))
     };
-    for e in archive.entries().map_err(|e| Error::Parse(format!("tar: {}", e)))? {
+    for e in archive
+        .entries()
+        .map_err(|e| Error::Parse(format!("tar: {}", e)))?
+    {
         if let Ok(entry) = e {
             let header = entry.header();
             entries.push(ArchiveEntry {

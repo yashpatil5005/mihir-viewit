@@ -16,7 +16,8 @@ public class Plugin implements ai.viewit.app.ViewItPlugin {
     @Override
     public java.util.List<String> getSupportedFormats() {
         return java.util.Arrays.asList(
-            "flv", "asf", "wmv", "swf", "mxf",
+            "avi", "mkv", "mov", "webm", "3gp",
+            "flv", "asf", "wmv", "wma", "swf", "mxf",
             "mpg", "mpeg", "ts", "m2ts", "mts"
         );
     }
@@ -31,12 +32,18 @@ public class Plugin implements ai.viewit.app.ViewItPlugin {
         if (mimeType == null) return false;
         switch (mimeType) {
             case "video/x-flv":
+            case "video/x-msvideo":
+            case "video/x-matroska":
+            case "video/quicktime":
+            case "video/webm":
+            case "video/3gpp":
             case "video/x-ms-wmv":
             case "video/x-ms-asf":
             case "video/x-swf":
             case "video/x-mxf":
             case "video/mpeg":
             case "video/mp2t":
+            case "audio/x-ms-wma":
                 return true;
             default:
                 return false;
@@ -48,8 +55,14 @@ public class Plugin implements ai.viewit.app.ViewItPlugin {
         if (ext == null) return false;
         switch (ext.toLowerCase()) {
             case "flv":
+            case "avi":
+            case "mkv":
+            case "mov":
+            case "webm":
+            case "3gp":
             case "asf":
             case "wmv":
+            case "wma":
             case "swf":
             case "mxf":
             case "mpg":

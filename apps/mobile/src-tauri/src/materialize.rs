@@ -2,7 +2,7 @@
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
@@ -50,34 +50,44 @@ pub fn cache_dir(app: &AppHandle) -> Result<PathBuf, String> {
     app.path().app_cache_dir().map_err(|e| e.to_string())
 }
 
-pub fn materialize_uri_to_cache(app: &AppHandle, uri: &str, ext: &str) -> Result<(PathBuf, usize), String> {
+pub fn materialize_uri_to_cache(
+    app: &AppHandle,
+    uri: &str,
+    ext: &str,
+) -> Result<(PathBuf, usize), String> {
     let dir = cache_dir(app)?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let dest = dir.join(stable_cache_name(uri, ext));
-    // If cache exists, verify it's a real file (not 0 bytes from interrupted write).
+    // Always delete stale cache — content:// URIs can be reused by Android
+    // to point to different files, so we must re-materialize on every open.
     if dest.exists() {
-        let meta = std::fs::metadata(&dest).map_err(|e| e.to_string())?;
-        let len = meta.len() as usize;
-        if len > 0 {
-            return Ok((dest, len));
-        }
-        // 0-byte file = interrupted previous write; delete and re-materialize.
         let _ = std::fs::remove_file(&dest);
     }
     let fp = FilePath::from_str(uri).expect("infallible FilePath parse");
-    let bytes = app.fs().read(fp).map_err(|e| e.to_string())?;
-    if bytes.len() > MAX_MATERIALIZE_BYTES {
-        return Err(format!(
-            "File is {:.1} MB — max {:.0} MB for in-app PDF/video.",
-            bytes.len() as f64 / 1_048_576.0,
-            MAX_MATERIALIZE_BYTES as f64 / 1_048_576.0
-        ));
-    }
+    let mut opts = tauri_plugin_fs::OpenOptions::new();
+    opts.read(true);
+    let mut reader = app.fs().open(fp, opts).map_err(|e| e.to_string())?;
     let mut file = std::fs::File::create(&dest).map_err(|e| e.to_string())?;
-    file.write_all(&bytes).map_err(|e| e.to_string())?;
-    let _ = file.sync_all();
+    let mut buf = vec![0u8; 128 * 1024];
+    let mut total = 0usize;
+    loop {
+        let n = reader.read(&mut buf).map_err(|e| e.to_string())?;
+        if n == 0 {
+            break;
+        }
+        total += n;
+        if total > MAX_MATERIALIZE_BYTES {
+            let _ = std::fs::remove_file(&dest);
+            return Err(format!(
+                "File is {:.1} MB — max {:.0} MB for in-app PDF/video.",
+                total as f64 / 1_048_576.0,
+                MAX_MATERIALIZE_BYTES as f64 / 1_048_576.0
+            ));
+        }
+        file.write_all(&buf[..n]).map_err(|e| e.to_string())?;
+    }
     let _ = prune_viewit_cache(app);
-    Ok((dest, bytes.len()))
+    Ok((dest, total))
 }
 
 pub fn read_materialized_file(app: &AppHandle, asset_path: &str) -> Result<Vec<u8>, String> {
@@ -97,7 +107,9 @@ pub fn read_materialized_file(app: &AppHandle, asset_path: &str) -> Result<Vec<u
 }
 
 pub fn path_to_file_url(path: &Path) -> Result<String, String> {
-    url::Url::from_file_path(path).map_err(|_| "bad cache path".to_string()).map(|u| u.to_string())
+    url::Url::from_file_path(path)
+        .map_err(|_| "bad cache path".to_string())
+        .map(|u| u.to_string())
 }
 
 pub fn open_pptx_materialized(

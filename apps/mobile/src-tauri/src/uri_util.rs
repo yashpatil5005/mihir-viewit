@@ -32,9 +32,9 @@ fn is_image_format(format: Format) -> bool {
             | Format::ImageSvg
             | Format::ImageHeic
             | Format::ImagePsd
+            | Format::ImageRaw
     )
 }
-
 
 fn ext_hint_from_android_uri(uri: &str) -> Option<String> {
     let lower = uri.to_lowercase();
@@ -75,7 +75,75 @@ fn ext_from_mime(mime: &str) -> Option<&'static str> {
             "audio/aac" => "aac",
             "audio/x-m4a" | "audio/mp4" => "m4a",
             "audio/webm" => "opus",
+            "audio/aiff" | "audio/x-aiff" => "aif",
+            "audio/x-flac" => "flac",
+            "audio/x-opus" | "audio/opus" => "opus",
+            "audio/x-ms-wma" | "audio/wma" => "wma",
             _ => "mp3",
+        });
+    }
+    if m.starts_with("image/") {
+        return Some(match m.as_str() {
+            "image/png" => "png",
+            "image/jpeg" | "image/jpg" => "jpg",
+            "image/gif" => "gif",
+            "image/webp" => "webp",
+            "image/bmp" => "bmp",
+            "image/tiff" | "image/tif" => "tiff",
+            "image/svg+xml" => "svg",
+            "image/heic" | "image/heic-sequence" | "image/heif" | "image/heif-sequence" => "heic",
+            "image/avif" | "image/avis" => "avif",
+            "image/x-adobe-dng" | "image/dng" => "dng",
+            "image/x-photoshop" | "image/vnd.adobe.photoshop" => "psd",
+            "image/x-nikon-nef" => "nef",
+            "image/x-canon-cr2" | "image/x-canon-cr3" => "cr2",
+            "image/x-sony-arw" => "arw",
+            "image/x-olympus-orf" => "orf",
+            "image/x-fuji-raf" => "raf",
+            "image/x-panasonic-rw2" => "rw2",
+            "image/x-samsung-srw" => "srw",
+            "image/x-pentax-pef" => "pef",
+            _ => "png",
+        });
+    }
+    if m.starts_with("application/") {
+        return Some(match m.as_str() {
+            "application/pdf" => "pdf",
+            "application/msword" | "application/vnd.ms-word" => "doc",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => "docx",
+            "application/vnd.ms-excel" | "application/vnd.ms-powerpoint" => "xls",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => "xlsx",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation" => "pptx",
+            "application/vnd.oasis.opendocument.text" => "odt",
+            "application/vnd.oasis.opendocument.spreadsheet" => "ods",
+            "application/vnd.oasis.opendocument.presentation" => "odp",
+            "application/epub+zip" => "epub",
+            "application/x-mobipocket-ebook" => "mobi",
+            "application/zip" => "zip",
+            "application/x-tar" => "tar",
+            "application/gzip" | "application/x-gzip" => "gz",
+            "application/rtf" => "rtf",
+            "application/json" => "json",
+            "application/xml" | "application/xhtml+xml" => "xml",
+            "application/javascript" => "js",
+            _ => "txt",
+        });
+    }
+    if m.starts_with("font/") {
+        return Some(match m.as_str() {
+            "font/otf" | "font/ttf" | "font/woff" | "font/woff2" => "otf",
+            _ => "ttf",
+        });
+    }
+    if m.starts_with("text/") {
+        return Some(match m.as_str() {
+            "text/css" => "css",
+            "text/html" => "html",
+            "text/csv" => "csv",
+            "text/markdown" => "md",
+            "text/xml" => "xml",
+            "text/javascript" | "text/typescript" => "js",
+            _ => "txt",
         });
     }
     None
@@ -97,7 +165,10 @@ fn is_office_format(format: Format) -> bool {
 }
 
 fn is_iwork_format(format: Format) -> bool {
-    matches!(format, Format::IworkPages | Format::IworkNumbers | Format::IworkKey)
+    matches!(
+        format,
+        Format::IworkPages | Format::IworkNumbers | Format::IworkKey
+    )
 }
 
 fn format_from_ext(ext: &str) -> Format {
@@ -185,10 +256,9 @@ fn percent_decode_segment(s: &str) -> String {
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(v) = u8::from_str_radix(
-                std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""),
-                16,
-            ) {
+            if let Ok(v) =
+                u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""), 16)
+            {
                 raw.push(v);
                 i += 3;
                 continue;
@@ -273,11 +343,21 @@ fn sniff_prefix(app: &AppHandle, uri: &str, ext: &str) -> Result<(String, Format
     let ext_guess = ext_from_sniff(&buf, &ext_hint)
         .or_else(|| ext_hint_from_magic(&buf))
         .map(|s| s.to_string())
-        .unwrap_or_else(|| if ext_hint.is_empty() { "txt".into() } else { ext_hint });
+        .unwrap_or_else(|| {
+            if ext_hint.is_empty() {
+                "txt".into()
+            } else {
+                ext_hint
+            }
+        });
     Ok((ext_guess.clone(), sniff(&buf, &ext_guess)))
 }
 
-pub fn probe_before_read(_app: &AppHandle, uri: &str, name: Option<String>) -> Result<Option<Document>, String> {
+pub fn probe_before_read(
+    _app: &AppHandle,
+    uri: &str,
+    name: Option<String>,
+) -> Result<Option<Document>, String> {
     let _ = (uri, name);
     Ok(None)
 }
@@ -303,7 +383,10 @@ pub fn read_uri_meta(
 fn build_stream_url(app: &AppHandle, uri: &str) -> Option<String> {
     let registry = app.state::<stream_server::StreamRegistry>();
     let id = stream_server::register_uri(&registry, uri.to_string());
-    let port = app.state::<crate::HttpPort>().0.load(std::sync::atomic::Ordering::Relaxed);
+    let port = app
+        .state::<crate::HttpPort>()
+        .0
+        .load(std::sync::atomic::Ordering::Relaxed);
     if port > 0 {
         Some(format!("http://127.0.0.1:{}/{}", port, id))
     } else {
@@ -315,8 +398,19 @@ pub fn open_from_uri(
     app: &AppHandle,
     uri: String,
     name: Option<String>,
+    mime_type: Option<String>,
 ) -> Result<Document, String> {
-    let (ext, display_name) = uri_display_name(app, &uri, name);
+    let (mut ext, display_name) = uri_display_name(app, &uri, name);
+
+    // If ext is empty, try to derive from the provided MIME type
+    if ext.is_empty() {
+        if let Some(mime) = &mime_type {
+            if let Some(h) = ext_from_mime(mime) {
+                ext = h.to_string();
+            }
+        }
+    }
+
     let (ext, format) = sniff_prefix(app, &uri, &ext)?;
 
     // PDF: register stream, return native Document with stream_url
@@ -333,7 +427,12 @@ pub fn open_from_uri(
     }
 
     // Video/Audio: register stream, return Media with stream_url
-    if format == Format::Video || format == Format::Audio || is_video_ext(&ext) || is_audio_ext(&ext) || is_stream_ext(&ext) {
+    if format == Format::Video
+        || format == Format::Audio
+        || is_video_ext(&ext)
+        || is_audio_ext(&ext)
+        || is_stream_ext(&ext)
+    {
         let kind = if format == Format::Audio || is_audio_ext(&ext) {
             MediaKind::Audio
         } else {
@@ -354,6 +453,40 @@ pub fn open_from_uri(
     // Images: register stream, return Image with stream_url
     if is_image_format(format) {
         if uri.starts_with("content://") || uri.starts_with("file://") {
+            // Convert unsupported formats (TIFF, DNG, NEF, PSD) to PNG for WebView
+            if viewit_fmt_image::needs_conversion(format) {
+                let bytes = read_uri_bytes(app, &uri)?;
+                match viewit_fmt_image::decode_to_png(&bytes, format) {
+                    Ok(png_bytes) => {
+                        let cache_dir = app
+                            .path()
+                            .app_cache_dir()
+                            .map_err(|e| e.to_string())?;
+                        std::fs::create_dir_all(&cache_dir)
+                            .map_err(|e| e.to_string())?;
+                        let cache_path =
+                            cache_dir.join(format!("{}_converted.png", display_name));
+                        std::fs::write(&cache_path, &png_bytes)
+                            .map_err(|e| e.to_string())?;
+                        let stream_url =
+                            crate::stream_server::register_cached_path(
+                                app,
+                                cache_path,
+                                "png".into(),
+                            );
+                        return Ok(Document::Image {
+                            format,
+                            byte_len: png_bytes.len(),
+                            name: display_name,
+                            asset_path: String::new(),
+                            stream_url: Some(stream_url),
+                        });
+                    }
+                    Err(e) => {
+                        eprintln!("[viewit] failed to convert {:?} to PNG: {}", format, e);
+                    }
+                }
+            }
             let stream_url = build_stream_url(app, &uri);
             return Ok(Document::Image {
                 format,
@@ -370,13 +503,21 @@ pub fn open_from_uri(
     if (format == Format::Pptx || ext_l == "pptx" || ext_l == "pptm" || ext_l == "potx")
         && (uri.starts_with("content://") || uri.starts_with("file://"))
     {
-        let use_ext = if ext_l.is_empty() { "pptx" } else { ext_l.as_str() };
+        let use_ext = if ext_l.is_empty() {
+            "pptx"
+        } else {
+            ext_l.as_str()
+        };
         let doc = materialize::open_pptx_materialized(app, &uri, &display_name, use_ext)?;
         if let Document::Pptx { asset_path, .. } = &doc {
             if !asset_path.is_empty() {
                 // Also register for streaming
                 let stream_url = build_stream_url(app, &uri);
-                if let Document::Pptx { stream_url: ref mut _su, .. } = doc.clone() {
+                if let Document::Pptx {
+                    stream_url: ref mut _su,
+                    ..
+                } = doc.clone()
+                {
                     // Reconstruct with stream_url
                     return Ok(Document::Pptx {
                         slide_count: 0,
@@ -419,11 +560,13 @@ pub fn open_from_uri(
 pub fn open_from_bytes(bytes: Vec<u8>, name: String) -> Result<Document, String> {
     let mut ext = sanitize_ext(name.rsplit('.').next().unwrap_or(""));
     if ext.is_empty() {
-        ext = ext_hint_from_magic(&bytes)
-            .unwrap_or("txt")
-            .to_string();
+        ext = ext_hint_from_magic(&bytes).unwrap_or("txt").to_string();
     }
-    let display = if name.is_empty() { "file".to_string() } else { name.clone() };
+    let display = if name.is_empty() {
+        "file".to_string()
+    } else {
+        name.clone()
+    };
 
     if is_stream_ext(&ext) && bytes.len() > OPEN_BYTES_CAP {
         return Err("Large PDF/video: use Open with or the in-app file picker.".into());

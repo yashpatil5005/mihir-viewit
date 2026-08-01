@@ -193,6 +193,22 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
+                <data android:mimeType="audio/*" />
+                <data android:pathPattern=".*\\.aac" />
+                <data android:pathPattern=".*\\.mp3" />
+                <data android:pathPattern=".*\\.m4a" />
+                <data android:pathPattern=".*\\.flac" />
+                <data android:pathPattern=".*\\.ogg" />
+                <data android:pathPattern=".*\\.wav" />
+                <data android:pathPattern=".*\\.wma" />
+                <data android:pathPattern=".*\\.opus" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
                 <data android:mimeType="application/rtf" />
                 <data android:pathPattern=".*\\.rtf" />
             </intent-filter>

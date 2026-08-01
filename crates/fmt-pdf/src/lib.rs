@@ -20,7 +20,11 @@ fn bind_pdfium() -> Result<Pdfium, Error> {
     Ok(Pdfium::new(bindings))
 }
 
-fn render_page_png_data_url(pdfium: &Pdfium, bytes: &[u8], page_index: usize) -> Result<String, Error> {
+fn render_page_png_data_url(
+    pdfium: &Pdfium,
+    bytes: &[u8],
+    page_index: usize,
+) -> Result<String, Error> {
     let document = pdfium
         .load_pdf_from_byte_vec(bytes.to_vec(), None)
         .map_err(|e| Error::Parse(format!("pdfium load: {}", e)))?;

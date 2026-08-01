@@ -73,8 +73,6 @@
       'epub':     () => import('./EpubViewer.svelte'),
       'mobi':     () => import('./EpubViewer.svelte'),
       'azw3':     () => import('./EpubViewer.svelte'),
-      'fictionbook': () => import('./EpubViewer.svelte'),
-      'palmdoc':  () => import('./EpubViewer.svelte'),
       'archive':  () => import('./ArchiveViewer.svelte'),
       'pptx':     () => import('./PptxViewer.svelte'),
       'docx':     () => import('./DocxViewer.svelte'),
@@ -94,7 +92,7 @@
       else if (k === 'json') JsonViewer = m.default;
       else if (k === 'csv') CsvViewer = m.default;
       else if (k === 'pdf' || k === 'stream-file') PdfViewer = m.default;
-      else if (k === 'epub' || k === 'mobi' || k === 'azw3' || k === 'fictionbook' || k === 'palmdoc') EpubViewer = m.default;
+      else if (k === 'epub' || k === 'mobi' || k === 'azw3') EpubViewer = m.default;
       else if (k === 'archive') ArchiveViewer = m.default;
       else if (k === 'pptx') PptxViewer = m.default;
       else if (k === 'docx') DocxViewer = m.default;
@@ -130,6 +128,7 @@
   let officeWarnings: string[] = $state([]);
   let officeFidelity: string = $state('');
   let officeRendererLabel: string = $state('');
+  let loadSeq = 0;
 
   import { onMount } from 'svelte';
   import {
@@ -173,7 +172,16 @@
   });
   async function drainOpenedQueue() {
     try {
-      const cold = await openedFiles();
+      let cold = await openedFiles();
+      const bridge = (window as any).AndroidBridge;
+      if (cold.length === 0 && bridge && typeof bridge.drainPendingOpenUris === 'function') {
+        try {
+          const pending = JSON.parse(bridge.drainPendingOpenUris());
+          if (Array.isArray(pending)) cold = pending.filter((uri) => typeof uri === 'string');
+        } catch {
+          cold = [];
+        }
+      }
       if (cold.length > 0) {
         pendingUri = cold[0];
         await load();
@@ -213,21 +221,33 @@
         void load();
       }
     });
+    setInterval(() => {
+      void drainOpenedQueue();
+    }, 1500);
   });
 
   async function load() {
     if (!pendingUri) return;
+    const uri = pendingUri;
+    const seq = ++loadSeq;
     busy = true;
     error = null;
-    docUri = pendingUri;
+    doc = null;
+    docUri = uri;
     busyHint = 'Opening…';
     try {
-      doc = await openWithDefaultRuntime(pendingUri);
+      const nextDoc = await openWithDefaultRuntime(uri);
+      if (seq !== loadSeq || pendingUri !== uri) return;
+      doc = nextDoc;
     } catch (e: any) {
+      if (seq !== loadSeq || pendingUri !== uri) return;
       error = e?.toString?.() ?? String(e);
+      doc = null;
     } finally {
-      busy = false;
-      busyHint = '';
+      if (seq === loadSeq && pendingUri === uri) {
+        busy = false;
+        busyHint = '';
+      }
     }
   }
 
@@ -245,22 +265,31 @@
     error = null;
     const viewitUri = (f as File & { viewitUri?: string }).viewitUri;
     if (viewitUri) {
+      const seq = ++loadSeq;
       pendingUri = viewitUri;
       docUri = viewitUri;
+      doc = null;
       busyHint = 'Opening…';
       try {
-        doc = await openWithDefaultRuntime(viewitUri);
+        const nextDoc = await openWithDefaultRuntime(viewitUri);
+        if (seq !== loadSeq || pendingUri !== viewitUri) return;
+        doc = nextDoc;
       } catch (e: unknown) {
+        if (seq !== loadSeq || pendingUri !== viewitUri) return;
         error = e instanceof Error ? e.message : String(e);
         doc = null;
       } finally {
-        busy = false;
-        busyHint = '';
+        if (seq === loadSeq && pendingUri === viewitUri) {
+          busy = false;
+          busyHint = '';
+        }
       }
       return;
     }
+    const seq = ++loadSeq;
     pendingUri = f.name;
     docUri = f.name;
+    doc = null;
     const mb = (f.size / 1_048_576).toFixed(1);
     try {
       const gate = checkFileBeforeRead(f);
@@ -274,7 +303,9 @@
         return;
       }
       busyHint = `Reading ${f.name} (${mb} MB)…`;
-      doc = await openFileFromPicker(f);
+      const nextDoc = await openFileFromPicker(f);
+      if (seq !== loadSeq || pendingUri !== f.name) return;
+      doc = nextDoc;
       selectedOfficePlugin = null;
       officePluginNotice = '';
       if (doc.kind === 'image') {
@@ -282,11 +313,14 @@
         docUri = imagePreviewUrl;
       }
     } catch (e: unknown) {
+      if (seq !== loadSeq || pendingUri !== f.name) return;
       error = e instanceof Error ? e.message : String(e);
       doc = null;
     } finally {
-      busy = false;
-      busyHint = '';
+      if (seq === loadSeq && pendingUri === f.name) {
+        busy = false;
+        busyHint = '';
+      }
     }
   }
 
@@ -392,6 +426,8 @@
 
   async function chooseOfficePlugin(plugin: PluginInfo) {
     if (!docUri) return;
+    const uri = docUri;
+    const seq = ++loadSeq;
     busy = true;
     busyHint = `Opening with ${plugin.name}…`;
     error = null;
@@ -399,39 +435,50 @@
     officePluginNotice = '';
     try {
       const ext = officeExt();
-      const readableUri = materializeExternalUri(docUri, ext);
-      doc = await renderDocumentWithPlugin(plugin, readableUri, ext) as Document;
+      const readableUri = materializeExternalUri(uri, ext);
+      const nextDoc = await renderDocumentWithPlugin(plugin, readableUri, ext) as Document;
+      if (seq !== loadSeq || docUri !== uri) return;
+      doc = nextDoc;
       await dbg(`runtime[${officeExt()}] manual plugin ${plugin.id} returned kind=${(doc as any)?.kind} renderer=${(doc as any)?.renderer?.id ?? 'none'}`);
       officePluginNotice = `Rendered by ${plugin.name}.`;
       saveRuntimePref(ext, plugin.id);
     } catch (e) {
+      if (seq !== loadSeq || docUri !== uri) return;
       officePluginNotice = `${plugin.name} could not render this file: ${e instanceof Error ? e.message : String(e)}. Using the built-in lightweight viewer.`;
       if (pendingUri) doc = await openFile(pendingUri);
       selectedOfficePlugin = null;
     } finally {
-      busy = false;
-      busyHint = '';
+      if (seq === loadSeq && docUri === uri) {
+        busy = false;
+        busyHint = '';
+      }
     }
   }
 
   async function chooseBuiltInOfficeRuntime() {
     const uri = docUri ?? pendingUri;
     if (!uri) return;
+    const seq = ++loadSeq;
     busy = true;
     busyHint = 'Opening with built-in lightweight viewer…';
     error = null;
     selectedOfficePlugin = null;
     officePluginNotice = '';
     try {
-      doc = await openFile(materializeExternalUri(uri, officeExt()));
+      const nextDoc = await openFile(materializeExternalUri(uri, officeExt()));
+      if (seq !== loadSeq || (docUri ?? pendingUri) !== uri) return;
+      doc = nextDoc;
       officePluginNotice = 'Rendered by built-in lightweight viewer.';
       saveRuntimePref(officeExt(), '__builtin__');
     } catch (e) {
+      if (seq !== loadSeq || (docUri ?? pendingUri) !== uri) return;
       error = e instanceof Error ? e.message : String(e);
       doc = null;
     } finally {
-      busy = false;
-      busyHint = '';
+      if (seq === loadSeq && (docUri ?? pendingUri) === uri) {
+        busy = false;
+        busyHint = '';
+      }
     }
   }
 </script>
@@ -474,6 +521,7 @@
       <pre class="error">{error}</pre>
     {:else if doc}
       {#if doc.kind === 'text'}
+        {#key docUri}
         {#if docUri && /\.ics?$/i.test(docUri) && IcsViewer}
           <IcsViewer {...(doc as any)} />
         {:else if docUri && /\.vcf$/i.test(docUri) && VcfViewer}
@@ -483,32 +531,50 @@
         {:else}
           <TextViewer {...(doc as any)} />
         {/if}
+        {/key}
       {:else if doc.kind === 'image' && docUri}
+        {#key docUri}
         <ImageViewer uri={docUri} {...(doc as any)} />
+        {/key}
       {:else if doc.kind === 'markdown' && MarkdownViewer}
+        {#key docUri}
         <MarkdownViewer {...(doc as any)} />
+        {/key}
       {:else if doc.kind === 'json' && JsonViewer}
+        {#key docUri}
         <JsonViewer {...(doc as any)} />
+        {/key}
       {:else if doc.kind === 'csv' && CsvViewer}
+        {#key docUri}
         <CsvViewer {...(doc as any)} />
+        {/key}
       {:else if doc.kind === 'stream-file'}
+        {#key docUri}
         {#if PdfViewer}
           <PdfViewer document={doc} source_uri={docUri ?? ''} />
         {:else}
           <p class="status">Loading PDF viewer…</p>
         {/if}
+        {/key}
       {:else if doc.kind === 'media'}
+        {#key docUri}
         <MediaViewer uri={docUri ?? ''} {...(doc as any)} />
+        {/key}
       {:else if doc.kind === 'pdf' && PdfViewer}
+        {#key docUri}
         <PdfViewer document={doc} source_uri={docUri ?? ''} />
-      {:else if (doc.kind === 'epub' || doc.kind === 'mobi' || doc.kind === 'azw3' || doc.kind === 'fictionbook' || doc.kind === 'palmdoc') && EpubViewer}
-        <EpubViewer {...(doc as any)} />
+        {/key}
+      {:else if (doc.kind === 'epub' || doc.kind === 'mobi' || doc.kind === 'azw3') && EpubViewer}
+        {#key docUri}
+        <EpubViewer {...(doc as any)} uri={docUri ?? ''} onclose={() => { doc = null; }} />
+        {/key}
       {:else if doc.kind === 'archive' && ArchiveViewer}
+        {#key docUri}
         <ArchiveViewer {...(doc as any)} />
+        {/key}
       {:else if isOfficePluginHtml()}
         {#key docUri}
         <div class="plugin-renderer-shell">
-        <div class="plugin-renderer-banner">PLUGIN RENDERER ACTIVE · {officeRendererLabel || selectedOfficePlugin?.name || 'Office plugin'} · HTML VIEWER MODE</div>
         <div class="runtime-bar plugin-runtime-bar">
           <button type="button" onclick={() => officeRuntimeChooserOpen = true}>Runtime: {selectedOfficePlugin?.name ?? 'Office plugin'}</button>
           {#if officePluginNotice}<span>{officePluginNotice}</span>{/if}
@@ -521,7 +587,6 @@
       {:else if doc.kind === 'pptx' && PptxViewer}
         {#key docUri}
         <div class:plugin-renderer-shell={isPluginRendered()}>
-        {#if isPluginRendered()}<div class="plugin-renderer-banner">PLUGIN RENDERER ACTIVE · {officeRendererLabel || selectedOfficePlugin?.name || 'Office plugin'} · LIGHT PINK TEST MODE</div>{/if}
         <div class="runtime-bar" class:plugin-runtime-bar={isPluginRendered()}>
           <button type="button" onclick={() => officeRuntimeChooserOpen = true}>Runtime: {selectedOfficePlugin?.name ?? 'Built-in lightweight viewer'}</button>
           {#if officePluginNotice}<span>{officePluginNotice}</span>{/if}
@@ -534,7 +599,6 @@
       {:else if doc.kind === 'docx' && DocxViewer}
         {#key docUri}
         <div class:plugin-renderer-shell={isPluginRendered()}>
-        {#if isPluginRendered()}<div class="plugin-renderer-banner">PLUGIN RENDERER ACTIVE · {officeRendererLabel || selectedOfficePlugin?.name || 'Office plugin'} · LIGHT PINK TEST MODE</div>{/if}
         <div class="runtime-bar" class:plugin-runtime-bar={isPluginRendered()}>
           <button type="button" onclick={() => officeRuntimeChooserOpen = true}>Runtime: {selectedOfficePlugin?.name ?? 'Built-in lightweight viewer'}</button>
           {#if officePluginNotice}<span>{officePluginNotice}</span>{/if}
@@ -547,7 +611,6 @@
       {:else if doc.kind === 'xlsx' && XlsxViewer}
         {#key docUri}
         <div class:plugin-renderer-shell={isPluginRendered()}>
-        {#if isPluginRendered()}<div class="plugin-renderer-banner">PLUGIN RENDERER ACTIVE · {officeRendererLabel || selectedOfficePlugin?.name || 'Office plugin'} · LIGHT PINK TEST MODE</div>{/if}
         <div class="runtime-bar" class:plugin-runtime-bar={isPluginRendered()}>
           <button type="button" onclick={() => officeRuntimeChooserOpen = true}>Runtime: {selectedOfficePlugin?.name ?? 'Built-in lightweight viewer'}</button>
           {#if officePluginNotice}<span>{officePluginNotice}</span>{/if}
@@ -558,11 +621,17 @@
         </div>
         {/key}
       {:else if doc.kind === 'unsupported'}
-        <UnsupportedViewer uri={docUri ?? undefined} document={doc} />
+        {#key docUri}
+        <UnsupportedViewer uri={docUri ?? undefined} document={doc} onPluginInstalled={() => { if (docUri) load(docUri); }} />
+        {/key}
       {:else if doc.kind === 'font' && FontViewer}
+        {#key docUri}
         <FontViewer {...(doc as any)} />
+        {/key}
       {:else if doc.kind === 'placeholder'}
+        {#key docUri}
         <PlaceholderViewer document={doc} />
+        {/key}
       {:else}
         <p class="error">Unknown document kind: <code>{(doc as any).kind}</code></p>
       {/if}
@@ -634,27 +703,12 @@
   .runtime-bar .warnings summary { cursor: pointer; }
   .runtime-bar .warnings ul { margin: 0.25rem 0 0; padding-left: 1rem; max-width: 40rem; }
   .plugin-renderer-shell {
-    background: #ffe6f1;
-    border: 3px solid #ff5aa5;
-    border-radius: 1rem;
-    padding: 0.8rem;
-    box-shadow: 0 0 0 0.3rem rgba(255, 90, 165, 0.15);
-  }
-  .plugin-renderer-banner {
-    margin: 0 0 0.75rem;
-    padding: 0.55rem 0.75rem;
-    border-radius: 0.7rem;
-    background: #ffb8d8;
-    color: #65002f;
-    font-weight: 900;
-    font-size: 0.78rem;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    border: 1px solid #ff5aa5;
+    display: grid;
+    gap: 0.75rem;
   }
   .plugin-runtime-bar {
-    background: #ffd3e8;
-    border: 1px solid #ff8cc3;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
     border-radius: 999px;
     padding: 0.4rem 0.55rem;
   }
