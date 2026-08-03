@@ -386,8 +386,9 @@ class MainActivity : TauriActivity() {
           payload.put("error", e.message ?: e.javaClass.simpleName)
         }
         runOnUiThread {
+          val jsonStr = payload.toString()
           webView.evaluateJavascript(
-            "window._documentPluginCallback && window._documentPluginCallback($payload)",
+            "(window._documentPluginCallback || window._docPluginCallback) && (window._documentPluginCallback || window._docPluginCallback)(${jsonStr})",
             null
           )
         }

@@ -70,6 +70,9 @@ xcuserdata/
 # --- WASM build outputs (mid-stage) ---
 *.wasm.tmp
 
+# --- Android plugin derived build output ---
+apps/mobile/plugins/*/build/
+
 # --- Per-project environment ---
 .env
 .env.*

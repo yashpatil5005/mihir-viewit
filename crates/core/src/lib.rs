@@ -80,6 +80,15 @@ pub fn ext_from_sniff(bytes: &[u8], ext_hint: &str) -> Option<&'static str> {
         Format::Video => "mp4",
         Format::Audio => "mp3",
         Format::ArchiveZip => "zip",
+        Format::ArchiveTarGz => "gz",
+        Format::ArchiveTar => "tar",
+        Format::ArchiveTarBz2 => "bz2",
+        Format::ArchiveTarXz => "xz",
+        Format::ArchiveTarZstd => "zst",
+        Format::ArchiveTarLz4 => "lz4",
+        Format::ArchiveTarLzma => "lzma",
+        Format::Archive7z => "7z",
+        Format::ArchiveRar => "rar",
         Format::IworkPages => "pages",
         Format::IworkNumbers => "numbers",
         Format::IworkKey => "key",
@@ -241,6 +250,14 @@ fn sniff_magic(bytes: &[u8], ext: &str) -> Option<Format> {
         }
         // gzip (so tar.gz or single-file gz)
         [0x1F, 0x8B, ..] => Format::ArchiveTarGz,
+        // bzip2
+        [0x42, 0x5A, 0x68, ..] => Format::ArchiveTarBz2,
+        // xz/lzma
+        [0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00, ..] => Format::ArchiveTarXz,
+        // zstd
+        [0x28, 0xB5, 0x2F, 0xFD, ..] => Format::ArchiveTarZstd,
+        // lz4
+        [0x04, 0x22, 0x4D, 0x18, ..] => Format::ArchiveTarLz4,
         // 7z
         [0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C, ..] => Format::Archive7z,
         // Rar
@@ -423,6 +440,11 @@ fn sniff_ext(ext: &str) -> Format {
         "zip" => Format::ArchiveZip,
         "tar" => Format::ArchiveTar,
         "tgz" | "gz" => Format::ArchiveTarGz,
+        "tbz2" | "bz2" => Format::ArchiveTarBz2,
+        "txz" | "xz" => Format::ArchiveTarXz,
+        "tzst" | "zst" => Format::ArchiveTarZstd,
+        "tar.lz4" | "lz4" => Format::ArchiveTarLz4,
+        "tlz" | "lzma" => Format::ArchiveTarLzma,
         "7z" => Format::Archive7z,
         "rar" => Format::ArchiveRar,
         "docx" | "docm" | "dotx" | "dotm" => Format::Docx,
@@ -564,24 +586,22 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
                 byte_len: bytes.len(),
             });
         }
-        Format::ArchiveZip | Format::ArchiveTar | Format::ArchiveTarGz | Format::Archive7z => {
-            #[cfg(feature = "fmt-archive")]
+        Format::ArchiveZip | Format::ArchiveTar | Format::ArchiveTarGz | Format::Archive7z
+        | Format::ArchiveTarBz2 | Format::ArchiveTarXz | Format::ArchiveTarZstd
+        | Format::ArchiveTarLz4 | Format::ArchiveTarLzma | Format::ArchiveRar => {
+            #[cfg(feature = "fmt-archive-universal")]
+            {
+                return viewit_fmt_archive_universal::parse(bytes, format, name).map_err(Error::from_parse);
+            }
+            #[cfg(all(feature = "fmt-archive", not(feature = "fmt-archive-universal")))]
             {
                 return viewit_fmt_archive::parse(bytes, format, name).map_err(Error::from_parse);
             }
-            #[cfg(not(feature = "fmt-archive"))]
+            #[cfg(not(any(feature = "fmt-archive", feature = "fmt-archive-universal")))]
             return Ok(Document::Placeholder {
                 format,
                 name: name.to_string(),
                 byte_len: bytes.len(),
-            });
-        }
-        Format::ArchiveRar => {
-            // Per ADR 0004: RAR5 omitted entirely from v1 with friendly hand-off.
-            return Ok(Document::Unsupported {
-                format,
-                reason: "RAR5 isn't supported inside ViewIt yet — proprietary compression format. Open with your installed extractor.".into(),
-                suggestion: Suggestion::OpenWithExternal,
             });
         }
         Format::Docx

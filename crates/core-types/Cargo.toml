@@ -8,6 +8,10 @@ license.workspace = true
 repository.workspace = true
 description = "ViewIt shared types — Document, Format, Error"
 
+[features]
+default = []
+wasm = []
+
 [dependencies]
 anyhow.workspace = true
 thiserror.workspace = true

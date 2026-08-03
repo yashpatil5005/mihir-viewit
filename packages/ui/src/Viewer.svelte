@@ -332,7 +332,37 @@
   }
 
   function extFromUri(uri: string): string {
-    return uri.split(/[?#]/, 1)[0].split('.').pop()?.toLowerCase() ?? '';
+    const fromPath = uri.split(/[?#]/, 1)[0].split('.').pop()?.toLowerCase() ?? '';
+    if (fromPath && fromPath.length <= 8 && /^[a-z0-9]+$/.test(fromPath)) return fromPath;
+    if (hasAndroidBridge()) {
+      try {
+        const bridge = (window as any).AndroidBridge;
+        const mime = typeof bridge.getMimeType === 'function' ? bridge.getMimeType(uri) : '';
+        const fromMime = extFromMime(mime);
+        if (fromMime) return fromMime;
+      } catch { /* ignore */ }
+    }
+    return '';
+  }
+
+  function extFromMime(mime: string): string {
+    const normalized = mime.toLowerCase();
+    const map: Record<string, string> = {
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+      'application/vnd.ms-word.document.macroenabled.12': 'docm',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+      'application/vnd.ms-excel.sheet.macroenabled.12': 'xlsm',
+      'application/vnd.ms-excel.sheet.binary.macroenabled.12': 'xlsb',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+      'application/vnd.ms-powerpoint.presentation.macroenabled.12': 'pptm',
+      'application/vnd.oasis.opendocument.text': 'odt',
+      'application/vnd.oasis.opendocument.spreadsheet': 'ods',
+      'application/vnd.oasis.opendocument.presentation': 'odp',
+      'application/msword': 'doc',
+      'application/vnd.ms-excel': 'xls',
+      'application/vnd.ms-powerpoint': 'ppt',
+    };
+    return map[normalized] ?? '';
   }
 
   const RUNTIME_PREF_KEY = 'viewit.runtimePref';
@@ -377,7 +407,8 @@
         const plugins = await listInstalledPlugins();
         const plugin = prefId
           ? plugins.find((p) => p.id === prefId && pluginSupports(p, ext))
-          : plugins.find((candidate) => pluginSupports(candidate, ext));
+          : plugins.find((candidate) => candidate.id === 'office-universal' && pluginSupports(candidate, ext))
+            ?? plugins.find((candidate) => pluginSupports(candidate, ext));
         if (plugin) {
           await dbg(`runtime[${ext}] pref=${prefId ?? 'auto'} → plugin ${plugin.id}`);
           try {

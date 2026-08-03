@@ -3,6 +3,7 @@ package ai.viewit.app
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import ai.viewit.app.ViewItDocumentPlugin
 import dalvik.system.DexClassLoader
 import org.json.JSONArray
 import org.json.JSONObject
@@ -107,6 +108,54 @@ class PluginManager(private val context: Context) {
     fun init() {
         pluginsDir.mkdirs()
         loadInstalledPlugins()
+        registerBuiltInPlugins()
+    }
+
+    private fun registerBuiltInPlugins() {
+        // Register built-in native plugins (bundled in APK)
+        try {
+            System.loadLibrary("viewit_plugin_office_universal")
+            val clazz = Class.forName("ai.viewit.plugins.officeuniversal.OfficeUniversalPlugin")
+            val instance = clazz.getDeclaredConstructor().newInstance() as ViewItDocumentPlugin
+            instance.initialize(context)
+
+            val manifest = PluginManifest(
+                id = "office-universal",
+                name = "Office Universal",
+                version = "0.1.0",
+                description = "Built-in support for Office formats (docx, xlsx, pptx, odt, ods, odp, etc.)",
+                minAppVersion = 1,
+                entryClass = "ai.viewit.plugins.officeuniversal.OfficeUniversalPlugin",
+                supportedFormats = listOf(
+                    "docx", "docm", "dotx", "dotm",
+                    "xlsx", "xlsm", "xlsb", "xls",
+                    "pptx", "pptm", "potx",
+                    "odt", "ott",
+                    "ods", "ots",
+                    "odp", "otp",
+                    "doc", "ppt"
+                ),
+                downloadUrl = "",
+                sizeBytes = 0,
+                installedSizeBytes = 0,
+                checksum = "",
+                abi = runtimeAbi(),
+                abiVersion = 1,
+                capabilities = listOf("document"),
+                runtime = "native"
+            )
+
+            installed["office-universal"] = InstalledPlugin(
+                manifest = manifest,
+                instance = instance,
+                mediaPlugin = null,
+                documentPlugin = instance,
+                installDir = File(context.filesDir, "plugins/office-universal")
+            )
+            Log.i(TAG, "Registered built-in plugin: office-universal")
+        } catch (e: Throwable) {
+            Log.w(TAG, "Failed to register built-in office-universal plugin", e)
+        }
     }
 
     fun getInstalledPlugins(): List<InstalledPlugin> = installed.values.toList()

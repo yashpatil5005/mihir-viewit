@@ -53,19 +53,21 @@ log = "0.4"
 [features]
 default = ["fmt-text-only"]
 fmt-text-only = ["viewit-core/fmt-text"]
-# Phase 1.4 / 5 — umbrella for full Android build (all fmt-* parsers + iWork).
-# fmt-text is always on (text/markdown/json/csv/rtf) since it's tiny and core to the viewer experience.
-# Excludes: 7z (heavy sevenz-rust), encrypted Office (heavy office-crypto)
-fmt-everything-lite = [
+# Minimal native build — only essential formats built-in.
+# Office, Archive, Ebook, iWork, Font are delivered via WASM plugins (smaller APK).
+fmt-mobile = [
   "fmt-text-only",
+  "fmt-image",
+]
+# Full feature set (for desktop/comparison) - not used on mobile
+fmt-everything-lite = [
+  "fmt-mobile",
   "fmt-office",
   "fmt-archive",
-  "fmt-image",
   "fmt-ebook",
   "fmt-iwork",
   "fmt-font",
 ]
-# Full feature set including 7z and encrypted Office support
 fmt-everything = [
   "fmt-everything-lite",
   "fmt-pdf",

@@ -42,7 +42,7 @@ if [[ "$BUILD_PROFILE" == "full" ]]; then
   fi
   cp "$PDFIUM_CACHE/libpdfium.so" "$JNI/libpdfium.so"
 else
-  CARGO_FEATURES="fmt-everything-lite,tauri/custom-protocol"
+  CARGO_FEATURES="fmt-mobile,tauri/custom-protocol"
   echo "[android] lite build (ADR 0010 — WebView PDF, no libpdfium)"
   mkdir -p "$JNI"
   rm -f "$JNI/libpdfium.so"
@@ -107,7 +107,12 @@ TMP_LIB_DIR="$ROOT/dist/android-native-lib"
 rm -rf "$TMP_LIB_DIR"
 mkdir -p "$TMP_LIB_DIR/lib/arm64-v8a"
 cp "$RUST_LIB" "$TMP_LIB_DIR/lib/arm64-v8a/libviewit_mobile_lib.so"
-(cd "$TMP_LIB_DIR" && zip -0 -q "$APK_WITH_LIB" lib/arm64-v8a/libviewit_mobile_lib.so)
+OFFICE_LIB="$GEN/app/src/main/jniLibs/arm64-v8a/libviewit_plugin_office_universal.so"
+if [[ -f "$OFFICE_LIB" ]]; then
+  cp "$OFFICE_LIB" "$TMP_LIB_DIR/lib/arm64-v8a/libviewit_plugin_office_universal.so"
+  echo "[android] adding office-universal plugin to APK"
+fi
+(cd "$TMP_LIB_DIR" && zip -0 -q "$APK_WITH_LIB" lib/arm64-v8a/libviewit_mobile_lib.so lib/arm64-v8a/libviewit_plugin_office_universal.so 2>/dev/null || zip -0 -q "$APK_WITH_LIB" lib/arm64-v8a/libviewit_mobile_lib.so)
 "$BUILD_TOOLS/zipalign" -P 16 -f 4 "$APK_WITH_LIB" "$APK_ALIGNED"
 "$BUILD_TOOLS/apksigner" sign --ks "$KEYSTORE" --ks-pass pass:android --key-pass pass:android \
   --out "$APK_SIGNED" "$APK_ALIGNED"

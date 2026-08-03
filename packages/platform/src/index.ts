@@ -18,7 +18,7 @@ import { displayNameFromUri } from './displayNameFromUri';
 
 export type DocumentKind =
   | 'text' | 'image' | 'markdown' | 'json' | 'csv' | 'pdf' | 'epub' | 'mobi' | 'azw3'
-  | 'fictionbook' | 'palmdoc' | 'archive' | 'pptx' | 'docx' | 'xlsx'
+  | 'fictionbook' | 'palmdoc' | 'archive' | 'pptx' | 'docx' | 'xlsx' | 'odt' | 'ods' | 'odp'
   | 'media' | 'stream-file' | 'unsupported' | 'placeholder' | 'font';
 export type Format =
   | 'plain-text' | 'markdown' | 'json' | 'csv' | 'code'
@@ -63,6 +63,32 @@ export interface PlaceholderDocument extends Document {
   format: Format;
   name: string;
   byte_len: number;
+  legacy_text?: string;
+}
+
+export interface OdtDocument extends Document {
+  kind: 'odt';
+  content: string;
+  meta?: Record<string, unknown>;
+  name: string;
+  byte_len: number;
+  format: Format;
+}
+
+export interface OdsDocument extends Document {
+  kind: 'ods';
+  sheets: string[];
+  name: string;
+  byte_len: number;
+  format: Format;
+}
+
+export interface OdpDocument extends Document {
+  kind: 'odp';
+  slides: string[];
+  name: string;
+  byte_len: number;
+  format: Format;
 }
 
 // ---------------------------------------------------------------------------
@@ -101,6 +127,20 @@ export async function onOpenedFiles(cb: (urls: string[]) => void): Promise<() =>
  * Open a file URI and return a structured Document. This is the main
  * entry-point the Viewer root component calls.
  */
+const OFFICE_EXTS = new Set([
+  'docx', 'docm', 'dotx', 'dotm',
+  'xlsx', 'xlsm', 'xlsb', 'xls',
+  'pptx', 'pptm', 'potx',
+  'odt', 'ott',
+  'ods', 'ots',
+  'odp', 'otp',
+  'doc', 'ppt',
+]);
+
+function isOfficeExt(ext: string): boolean {
+  return OFFICE_EXTS.has(ext.toLowerCase());
+}
+
 export async function openFile(uri: string): Promise<Document> {
   if (uri.startsWith('blob:')) {
     throw new Error(
@@ -122,6 +162,20 @@ export async function openFile(uri: string): Promise<Document> {
       if (typeof window !== 'undefined' && 'AndroidBridge' in window && typeof (window as any).AndroidBridge.getMimeType === 'function') {
         try { mimeType = (window as any).AndroidBridge.getMimeType(uri) || null; } catch { /* ignore */ }
       }
+
+      // Try Android document plugin for office formats
+      const ext = fileExtension(displayNameFromUri(uri));
+      if (isOfficeExt(ext) && typeof window !== 'undefined' && 'AndroidBridge' in window && typeof (window as any).AndroidBridge.renderDocumentWithPlugin === 'function') {
+        debugLog(`Trying Android office plugin for .${ext}`);
+        try {
+          const doc = await renderDocumentWithAndroidPlugin('office-universal', uri, ext);
+          debugLog(`Android office plugin ok kind=${(doc as Document).kind}`);
+          return doc;
+        } catch (e) {
+          debugLog(`Android office plugin failed: ${e instanceof Error ? e.message : String(e)}, falling back to Rust`);
+        }
+      }
+
       const doc = await invokeOpenUri(uri, displayNameFromUri(uri), mimeType);
       debugLog(`ok kind=${(doc as Document).kind}`);
       return doc;
@@ -146,6 +200,43 @@ export async function registerStreamUri(uri: string): Promise<string> {
   if (!IS_TAURI) return uri;
   const { invoke } = await import('@tauri-apps/api/core');
   return invoking(() => invoke<string>('register_stream_uri', { uri }));
+}
+
+/** Invoke Android document plugin (office-universal) for office formats on Android. */
+export async function renderDocumentWithAndroidPlugin(
+  pluginId: string,
+  uri: string,
+  ext: string
+): Promise<Document> {
+  if (!IS_TAURI || typeof window === 'undefined' || !('AndroidBridge' in window)) {
+    throw new Error('Android document plugin not available');
+  }
+  const bridge = (window as any).AndroidBridge;
+  if (typeof bridge.renderDocumentWithPlugin !== 'function') {
+    throw new Error('renderDocumentWithPlugin not available on AndroidBridge');
+  }
+  return new Promise((resolve, reject) => {
+    const callbackId = `doc_plugin_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    // Set up callback function
+    (window as any)._docPluginCallback = (data: any) => {
+      delete (window as any)._docPluginCallback;
+      if (data.id === callbackId) {
+        if (data.error) {
+          reject(new Error(data.error));
+        } else if (data.document) {
+          resolve(data.document as Document);
+        } else {
+          reject(new Error('Invalid response from document plugin'));
+        }
+      }
+    };
+    bridge.renderDocumentWithPlugin(pluginId, uri, ext, callbackId);
+    // Timeout after 30 seconds
+    setTimeout(() => {
+      delete (window as any)._docPluginCallback;
+      reject(new Error('Document plugin timeout'));
+    }, 30000);
+  });
 }
 
 /** After `<input type="file">` — checks size/type first (no read for video/large). */
@@ -319,6 +410,34 @@ async function webOpenFile(
   }
   const name = hint?.name ?? uri.split('/').pop()?.split('?')[0] ?? 'file';
   const ext = hint?.ext ?? name.split('.').pop()?.toLowerCase() ?? '';
+
+  // Office — use WASM plugin (docx, xlsx, pptx, odt, ods, odp, doc, ppt, etc.)
+  const { isOfficeExt, openOffice } = await import('./plugins/officeUniversal');
+  if (isOfficeExt(ext)) {
+    try {
+      return await openOffice(buf, name, ext);
+    } catch (e) {
+      console.error('[office-universal] render failed:', e);
+      return unsupportedDocument(
+        `Office rendering failed: ${e instanceof Error ? e.message : String(e)}`,
+        'open-with-external',
+      );
+    }
+  }
+
+  // Archive — use WASM plugin (zip, tar, 7z, rar, etc.)
+  const { isArchiveExt, openArchive } = await import('./plugins/archiveUniversal');
+  if (isArchiveExt(ext)) {
+    try {
+      return await openArchive(buf, name, ext);
+    } catch (e) {
+      console.error('[archive-universal] parse failed:', e);
+      return unsupportedDocument(
+        `Archive parsing failed: ${e instanceof Error ? e.message : String(e)}`,
+        'open-with-external',
+      );
+    }
+  }
 
   // Image — native webview decoder path. Hand the URI directly back to
   // the frontend ImageViewer's <img> tag.

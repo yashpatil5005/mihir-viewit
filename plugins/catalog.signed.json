@@ -2,64 +2,6 @@
   "catalog": {
     "plugins": [
       {
-        "id": "office-ooxml",
-        "name": "Enhanced Office OOXML",
-        "description": "Optional enhanced DOCX/XLS/XLSX/PPTX runtime with plugin-owned offline HTML renderers and a calamine spreadsheet engine.",
-        "version": "0.3.0",
-        "entryClass": "ai.viewit.plugins.office_ooxml.Plugin",
-        "capabilities": [
-          "view",
-          "inspect",
-          "edit-planned"
-        ],
-        "runtime": "android-dex-rust-sidecar",
-        "abi": "arm64-v8a",
-        "abiVersion": 1,
-        "sizeBytes": 798144,
-        "installedSizeBytes": 1786051,
-        "supportedFormats": [
-          "docx",
-          "xlsx",
-          "xls",
-          "pptx",
-          "docm",
-          "xlsm",
-          "pptm"
-        ],
-        "downloadUrl": "https://viewit-plugin-catalog-temp.pages.dev/office-ooxml-0.3.0-arm64-v8a.zip",
-        "checksum": "4dc77aa5c86953d762d12152c7faf50a030f2f0f0b7b2f4dd4ca15a76901fcd1",
-        "minAppVersion": 1
-      },
-      {
-        "id": "office-ooxml",
-        "name": "Enhanced Office OOXML",
-        "description": "Optional enhanced DOCX/XLS/XLSX/PPTX runtime with plugin-owned offline HTML renderers and a calamine spreadsheet engine.",
-        "version": "0.3.0",
-        "entryClass": "ai.viewit.plugins.office_ooxml.Plugin",
-        "capabilities": [
-          "view",
-          "inspect",
-          "edit-planned"
-        ],
-        "runtime": "android-dex-rust-sidecar",
-        "abi": "x86_64",
-        "abiVersion": 1,
-        "sizeBytes": 804452,
-        "installedSizeBytes": 1777307,
-        "supportedFormats": [
-          "docx",
-          "xlsx",
-          "xls",
-          "pptx",
-          "docm",
-          "xlsm",
-          "pptm"
-        ],
-        "downloadUrl": "https://viewit-plugin-catalog-temp.pages.dev/office-ooxml-0.3.0-x86_64.zip",
-        "checksum": "14c67c0724f62ad75988244752cdae737fe212229473a171684920b484f939a1",
-        "minAppVersion": 1
-      },
-      {
         "id": "ffmpeg-transcoder",
         "name": "FFmpeg Transcoder",
         "description": "Optional media transcode plugin for unsupported video and audio formats. Converts legacy containers/codecs to MP4 using FFmpeg.",
@@ -98,5 +40,5 @@
       }
     ]
   },
-  "signature": "HzTV6nNliqMAb+LKJehxe7i92pA5ViYTljUuCyhGC5PU0r/kbbnbMhJhbIOqSwSJwZPrEN1XOEwwUzBRbD2IAg=="
+  "signature": "nrCx7g8UX9+wTnFop0dmPJgIjOH2Q52T/FScDtoUbUEYG40/uAJZzxUj6cCVs6gKU49oul2FnYudJ0h5UFtNDQ=="
 }
