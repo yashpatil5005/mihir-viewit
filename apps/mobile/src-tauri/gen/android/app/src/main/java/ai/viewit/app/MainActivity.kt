@@ -165,7 +165,7 @@ class MainActivity : TauriActivity() {
       val parsed = Uri.parse(uri)
       if (parsed.scheme == "file") {
         val path = parsed.path ?: throw IllegalArgumentException("Invalid file URI")
-        val appDir = applicationContext.filesDir.canonicalFile
+        val appDir = applicationContext.cacheDir.canonicalFile
         val source = File(path).canonicalFile
         if (source.path == appDir.path || source.path.startsWith(appDir.path + File.separator)) {
           return parsed.toString()
@@ -177,7 +177,7 @@ class MainActivity : TauriActivity() {
         .digest(uri.toByteArray(Charsets.UTF_8))
         .take(12)
         .joinToString("") { "%02x".format(it) }
-      val dest = File(applicationContext.filesDir, "external-$digest.$safeExt")
+      val dest = File(applicationContext.cacheDir, "external-$digest.$safeExt")
       if (dest.exists()) dest.delete()
 
       val input = if (parsed.scheme == "content") {

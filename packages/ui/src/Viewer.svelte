@@ -49,7 +49,7 @@
   let EpubViewer = $state<any>(null);
   let ArchiveViewer = $state<any>(null);
   let PptxViewer = $state<any>(null);
-  let DocxViewer = $state<any>(null);
+  let DocxPreview = $state<any>(null);
   let XlsxViewer = $state<any>(null);
   let FontViewer = $state<any>(null);
   let IcsViewer = $state<any>(null);
@@ -75,7 +75,7 @@
       'azw3':     () => import('./EpubViewer.svelte'),
       'archive':  () => import('./ArchiveViewer.svelte'),
       'pptx':     () => import('./PptxViewer.svelte'),
-      'docx':     () => import('./DocxViewer.svelte'),
+      'docx':     () => import('./DocxPreview.svelte'),
       'xlsx':     () => import('./XlsxViewer.svelte'),
       'font':     () => import('./FontViewer.svelte'),
     };
@@ -95,7 +95,7 @@
       else if (k === 'epub' || k === 'mobi' || k === 'azw3') EpubViewer = m.default;
       else if (k === 'archive') ArchiveViewer = m.default;
       else if (k === 'pptx') PptxViewer = m.default;
-      else if (k === 'docx') DocxViewer = m.default;
+      else if (k === 'docx') DocxPreview = m.default;
       else if (k === 'xlsx') XlsxViewer = m.default;
       else if (k === 'font') FontViewer = m.default;
       else if (k === 'text' && isIcs) IcsViewer = m.default;
@@ -627,16 +627,16 @@
         {#if (doc as any).html}<div class="plugin-html-surface">{@html (doc as any).html}</div>{:else}<PptxViewer document={doc} source_uri={docUri ?? ''} />{/if}
         </div>
         {/key}
-      {:else if doc.kind === 'docx' && DocxViewer}
+      {:else if doc.kind === 'docx' && DocxPreview}
         {#key docUri}
-        <div class:plugin-renderer-shell={isPluginRendered()}>
-        <div class="runtime-bar" class:plugin-runtime-bar={isPluginRendered()}>
-          <button type="button" onclick={() => officeRuntimeChooserOpen = true}>Runtime: {selectedOfficePlugin?.name ?? 'Built-in lightweight viewer'}</button>
+        <div class="plugin-renderer-shell">
+        <div class="runtime-bar plugin-runtime-bar">
+          <button type="button" onclick={() => officeRuntimeChooserOpen = true}>Runtime: {selectedOfficePlugin?.name ?? 'docx-preview'}</button>
           {#if officePluginNotice}<span>{officePluginNotice}</span>{/if}
           {#if officeFidelity}<span class="fidelity">{officeFidelity}</span>{/if}
           {#if officeWarnings.length > 0}<details class="warnings"><summary>{officeWarnings.length} warning(s)</summary><ul>{#each officeWarnings as w}<li>{w}</li>{/each}</ul></details>{/if}
         </div>
-        {#if (doc as any).html}<div class="plugin-html-surface">{@html (doc as any).html}</div>{:else}<DocxViewer document={doc} />{/if}
+        <DocxPreview source_uri={docUri ?? ''} />
         </div>
         {/key}
       {:else if doc.kind === 'xlsx' && XlsxViewer}
