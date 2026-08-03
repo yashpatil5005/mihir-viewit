@@ -6,6 +6,7 @@
   "minAppVersion": 1,
   "entryClass": "ai.viewit.plugins.officeuniversal.OfficeUniversalPlugin",
   "supportedFormats": [
+    "docx", "docm", "dotx", "dotm",
     "xlsx", "xlsm", "xlsb", "xls",
     "pptx", "pptm", "potx",
     "odt", "ott",

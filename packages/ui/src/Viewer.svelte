@@ -631,7 +631,7 @@
         {#key docUri}
         <div class="plugin-renderer-shell">
         <div class="runtime-bar plugin-runtime-bar">
-          <button type="button" onclick={() => officeRuntimeChooserOpen = true}>Runtime: {selectedOfficePlugin?.name ?? 'docx-preview'}</button>
+          <button type="button" onclick={() => officeRuntimeChooserOpen = true}>Runtime: {selectedOfficePlugin?.name ?? 'Office Universal'}</button>
           {#if officePluginNotice}<span>{officePluginNotice}</span>{/if}
           {#if officeFidelity}<span class="fidelity">{officeFidelity}</span>{/if}
           {#if officeWarnings.length > 0}<details class="warnings"><summary>{officeWarnings.length} warning(s)</summary><ul>{#each officeWarnings as w}<li>{w}</li>{/each}</ul></details>{/if}

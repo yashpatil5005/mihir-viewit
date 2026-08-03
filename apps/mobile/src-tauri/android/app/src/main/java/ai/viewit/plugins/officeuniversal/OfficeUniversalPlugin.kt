@@ -9,6 +9,7 @@ class OfficeUniversalPlugin : ViewItDocumentPlugin {
     override val id = "office-universal"
     override val version = "0.1.0"
     override val supportedFormats = listOf(
+        "docx", "docm", "dotx", "dotm",
         "xlsx", "xlsm", "xlsb", "xls",
         "pptx", "pptm", "potx",
         "odt", "ott",

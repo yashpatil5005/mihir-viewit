@@ -127,6 +127,7 @@ class PluginManager(private val context: Context) {
                 minAppVersion = 1,
                 entryClass = "ai.viewit.plugins.officeuniversal.OfficeUniversalPlugin",
                 supportedFormats = listOf(
+                    "docx", "docm", "dotx", "dotm",
                     "xlsx", "xlsm", "xlsb", "xls",
                     "pptx", "pptm", "potx",
                     "odt", "ott",
