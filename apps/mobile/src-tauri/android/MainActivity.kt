@@ -18,6 +18,10 @@ import java.security.MessageDigest
 class MainActivity : TauriActivity() {
   private var bridgeWebView: WebView? = null
 
+  companion object {
+    const val ACTION_DEBUG_OPEN = "ai.viewit.app.action.DEBUG_OPEN"
+  }
+
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     WebView.setWebContentsDebuggingEnabled(true)
@@ -40,7 +44,9 @@ class MainActivity : TauriActivity() {
   private fun consumeIncomingIntent(intent: Intent?) {
     if (intent == null) return
     val action = intent.action ?: return
+    val isDebugOpen = action == ACTION_DEBUG_OPEN
     if (
+      !isDebugOpen &&
       action != Intent.ACTION_VIEW &&
       action != Intent.ACTION_SEND &&
       action != Intent.ACTION_SEND_MULTIPLE
@@ -64,23 +70,52 @@ class MainActivity : TauriActivity() {
 
     intent.data?.let { lines.add(grantWithDisplayName(it, intent.type)) }
 
+    // Debug-driven open: `am start -a ${ACTION_DEBUG_OPEN} --es uri ... --es name ...`
+    // carries an explicit name (and optional ext/plugin) so extension-less SAF URIs
+    // from scripts / automation resolve exactly like filesystem paths.
+    if (isDebugOpen) {
+      val debugUri = intent.getStringExtra("uri")
+      val debugName = intent.getStringExtra("name")
+      val debugExt = intent.getStringExtra("ext")
+      val debugPlugin = intent.getStringExtra("plugin")
+      if (debugUri != null && intent.data == null) {
+        lines.add(debugRecord(debugUri, debugName, debugExt, debugPlugin, intent.type))
+      }
+    }
+
     if (lines.isEmpty()) return
 
     try {
       val f = File(applicationContext.filesDir, "viewit_pending_opens.txt")
       f.writeText(lines.joinToString("\n") + "\n")
-      notifyWebViewOpened(lines.map { it.substringBefore('\t') })
+      notifyWebViewOpened(lines)
     } catch (e: Exception) {
       android.util.Log.e("ViewIt", "pending opens write failed", e)
     }
   }
 
-  private fun notifyWebViewOpened(uris: List<String>) {
+  private fun debugRecord(uri: String, name: String?, ext: String?, plugin: String?, mime: String?): String {
+    val displayName = name ?: Uri.parse(uri)?.lastPathSegment ?: ""
+    return "$uri\t$displayName\t${mime ?: ""}\t${ext ?: ""}\t${plugin ?: ""}"
+  }
+
+  /** Notify an already-loaded WebView of new opens (native-side, in-process). */
+  private fun notifyWebViewOpened(lines: List<String>) {
     val webView = bridgeWebView ?: return
-    if (uris.isEmpty()) return
-    val payload = JSONArray(uris).toString()
+    if (lines.isEmpty()) return
+    val payload = JSONArray()
+    lines.forEach { line ->
+      val parts = line.split("\t", limit = 5)
+      payload.put(JSONObject().apply {
+        put("uri", parts.getOrNull(0)?.trim() ?: "")
+        put("name", parts.getOrNull(1)?.trim() ?: "")
+        put("mime", parts.getOrNull(2)?.trim() ?: "")
+        put("ext", parts.getOrNull(3)?.trim() ?: "")
+        put("plugin", parts.getOrNull(4)?.trim() ?: "")
+      })
+    }
     webView.post {
-      webView.evaluateJavascript("window.__viewitAndroidOpened && window.__viewitAndroidOpened($payload)", null)
+      webView.evaluateJavascript("window.__viewitAndroidOpened && window.__viewitAndroidOpened(${payload.toString()})", null)
     }
   }
 
@@ -90,8 +125,16 @@ class MainActivity : TauriActivity() {
     if (!f.exists()) return result
     try {
       f.readLines().forEach { line ->
-        val uri = line.substringBefore('\t').trim()
-        if (uri.isNotEmpty()) result.put(uri)
+        val parts = line.split("\t", limit = 5)
+        val uri = parts.getOrNull(0)?.trim()
+        if (uri.isNullOrEmpty()) return@forEach
+        result.put(JSONObject().apply {
+          put("uri", uri)
+          put("name", parts.getOrNull(1)?.trim() ?: "")
+          put("mime", parts.getOrNull(2)?.trim() ?: "")
+          put("ext", parts.getOrNull(3)?.trim() ?: "")
+          put("plugin", parts.getOrNull(4)?.trim() ?: "")
+        })
       }
     } finally {
       f.delete()
@@ -145,6 +188,11 @@ class MainActivity : TauriActivity() {
       } catch (_: Exception) {
         ""
       }
+    }
+
+    @JavascriptInterface
+    fun getDisplayName(uri: String): String {
+      return queryDisplayName(Uri.parse(uri)) ?: Uri.parse(uri).lastPathSegment ?: ""
     }
 
     @JavascriptInterface

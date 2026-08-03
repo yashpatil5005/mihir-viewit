@@ -15,7 +15,8 @@ const AUDIO_EXT = new Set([
   'spx', 'tta', 'txw', 'vms', 'voc', 'vox', 'w64', 'wv', 'wve',
 ]);
 
-export function fileExtension(name: string): string {
+export function fileExtension(name: string | null | undefined): string {
+  if (!name) return '';
   const base = name.split(/[/\\]/).pop() ?? name;
   const i = base.lastIndexOf('.');
   return i >= 0 ? base.slice(i + 1).toLowerCase() : '';

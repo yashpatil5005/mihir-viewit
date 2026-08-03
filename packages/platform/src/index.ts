@@ -141,7 +141,7 @@ function isOfficeExt(ext: string): boolean {
   return OFFICE_EXTS.has(ext.toLowerCase());
 }
 
-export async function openFile(uri: string): Promise<Document> {
+export async function openFile(uri: string, nameHint?: string | null): Promise<Document> {
   if (uri.startsWith('blob:')) {
     throw new Error(
       'blob: URLs cannot be read by the host. Use openFileFromPicker(File) after the in-app file picker.',
@@ -164,7 +164,7 @@ export async function openFile(uri: string): Promise<Document> {
       }
 
       // Try Android document plugin for office formats
-      const ext = fileExtension(displayNameFromUri(uri));
+      const ext = (nameHint && fileExtension(nameHint)) || fileExtension(displayNameFromUri(uri));
       if (isOfficeExt(ext) && typeof window !== 'undefined' && 'AndroidBridge' in window && typeof (window as any).AndroidBridge.renderDocumentWithPlugin === 'function') {
         debugLog(`Trying Android office plugin for .${ext}`);
         try {
@@ -176,7 +176,7 @@ export async function openFile(uri: string): Promise<Document> {
         }
       }
 
-      const doc = await invokeOpenUri(uri, displayNameFromUri(uri), mimeType);
+      const doc = await invokeOpenUri(uri, nameHint || displayNameFromUri(uri), mimeType);
       debugLog(`ok kind=${(doc as Document).kind}`);
       return doc;
     } catch (e) {
@@ -185,6 +185,18 @@ export async function openFile(uri: string): Promise<Document> {
     }
   }
   return await webOpenFile(uri);
+}
+
+/** Best-effort display name from an Android URI via the ContentResolver bridge. */
+export async function resolveDisplayName(uri: string): Promise<string | null> {
+  if (typeof window === 'undefined' || !('AndroidBridge' in window)) return null;
+  try {
+    const bridge = (window as any).AndroidBridge;
+    const name = typeof bridge.getDisplayName === 'function' ? bridge.getDisplayName(uri) : null;
+    return name && typeof name === 'string' ? name : null;
+  } catch {
+    return null;
+  }
 }
 
 export { OPEN_BYTES_CAP, checkFileBeforeRead, unsupportedDocument, fileExtension };
@@ -309,7 +321,10 @@ function streamDocFromFile(file: File, ext: string): Document | null {
 export async function openFileFromPicker(file: File): Promise<Document> {
   const viewitUri = (file as File & { viewitUri?: string }).viewitUri;
   if (viewitUri) {
-    return openFile(viewitUri);
+    const nameHint = file.name && /^[a-z0-9._%+-]{1,120}\.[a-z0-9]{1,10}$/i.test(file.name)
+      ? file.name
+      : resolveDisplayName(viewitUri);
+    return openFile(viewitUri, nameHint);
   }
   const gate = checkFileBeforeRead(file);
   if (gate.reject) {

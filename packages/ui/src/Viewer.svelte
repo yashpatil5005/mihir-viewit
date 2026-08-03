@@ -36,7 +36,13 @@
     type PluginInfo,
   } from './pluginBridge';
 
-  const OFFICE_PLUGIN_EXTS = new Set(['docx', 'docm', 'dotx', 'dotm', 'xlsx', 'xlsm', 'xls', 'pptx', 'pptm', 'potx']);
+  const OFFICE_ALL_EXTS = new Set([
+    'docx', 'docm', 'dotx', 'dotm',
+    'xlsx', 'xlsm', 'xlsb', 'xls',
+    'pptx', 'pptm', 'potx',
+    'odt', 'ott', 'ods', 'ots', 'odp', 'otp',
+    'doc', 'ppt',
+  ]);
   const OFFICE_KINDS = new Set(['docx', 'xlsx', 'pptx']);
 
   // Phase 3.8 — per-format lazy code-split. Heavy viewers load on demand via
@@ -50,6 +56,7 @@
   let ArchiveViewer = $state<any>(null);
   let PptxViewer = $state<any>(null);
   let DocxPreview = $state<any>(null);
+  let DocxViewer = $state<any>(null);
   let XlsxViewer = $state<any>(null);
   let FontViewer = $state<any>(null);
   let IcsViewer = $state<any>(null);
@@ -86,6 +93,12 @@
       else if (isDesktop) loader = () => import('./DesktopEntryViewer.svelte');
       else loader = undefined;
     }
+    const isOdtLike = officeExt() === 'odt' || officeExt() === 'ott';
+    if (k === 'docx' && isOdtLike) {
+      // ODT/OTT: plugin produces Document::Docx with structured blocks —
+      // render via the block-based DocxViewer instead of docx-preview.
+      loader = () => import('./DocxViewer.svelte');
+    }
     if (!loader) return;
     loader().then((m) => {
       if (k === 'markdown') MarkdownViewer = m.default;
@@ -95,7 +108,10 @@
       else if (k === 'epub' || k === 'mobi' || k === 'azw3') EpubViewer = m.default;
       else if (k === 'archive') ArchiveViewer = m.default;
       else if (k === 'pptx') PptxViewer = m.default;
-      else if (k === 'docx') DocxPreview = m.default;
+      else if (k === 'docx') {
+        if (isOdtLike) DocxViewer = m.default;
+        else DocxPreview = m.default;
+      }
       else if (k === 'xlsx') XlsxViewer = m.default;
       else if (k === 'font') FontViewer = m.default;
       else if (k === 'text' && isIcs) IcsViewer = m.default;
@@ -117,6 +133,9 @@
   let doc: Document | null = $state(null);
   let docUri: string | null = $state(null);
   let pendingUri: string | null = $state(null);
+  let pendingName: string | null = $state(null);
+  let pendingExt: string | null = $state(null);
+  let pendingPlugin: string | null = $state(null);
   let busy = $state(false);
   let busyHint = $state('');
   let error: string | null = $state(null);
@@ -177,13 +196,13 @@
       if (cold.length === 0 && bridge && typeof bridge.drainPendingOpenUris === 'function') {
         try {
           const pending = JSON.parse(bridge.drainPendingOpenUris());
-          if (Array.isArray(pending)) cold = pending.filter((uri) => typeof uri === 'string');
+          if (Array.isArray(pending)) cold = pending;
         } catch {
           cold = [];
         }
       }
       if (cold.length > 0) {
-        pendingUri = cold[0];
+        setPendingOpen(cold[0]);
         await load();
         return true;
       }
@@ -192,6 +211,38 @@
       debugLog(`openedFiles err: ${e instanceof Error ? e.message : String(e)}`);
     }
     return false;
+  }
+
+  /** Best-effort real display name for a picker File (SAF content:// URIs often
+   *  have no extension — Samsung My Files: `msf:1000483515`). */
+  function resolvePickerName(f: File, viewitUri: string): string | null {
+    const base = f.name;
+    if (/^[a-z0-9._%+-]{1,120}\.[a-z0-9]{1,10}$/i.test(base)) return base;
+    try {
+      const bridge = (window as any).AndroidBridge;
+      if (bridge && typeof bridge.getDisplayName === 'function') {
+        const name = bridge.getDisplayName(viewitUri);
+        if (name && /^[a-z0-9._%+-]{1,120}\.[a-z0-9]{1,10}$/i.test(name)) return name;
+      }
+    } catch { /* ignore */ }
+    return null;
+  }
+
+  function setPendingOpen(record: unknown) {
+    if (typeof record === 'string') {
+      pendingUri = record;
+      pendingName = null;
+      pendingExt = null;
+      pendingPlugin = null;
+    } else if (record && typeof record === 'object') {
+      const r = record as any;
+      pendingUri = typeof r.uri === 'string' ? r.uri : null;
+      pendingName = typeof r.name === 'string' && r.name ? r.name : null;
+      pendingExt = typeof r.ext === 'string' && r.ext ? r.ext : null;
+      pendingPlugin = typeof r.plugin === 'string' && r.plugin ? r.plugin : null;
+    } else {
+      pendingUri = null;
+    }
   }
 
   onMount(async () => {
@@ -206,18 +257,18 @@
         if (await drainOpenedQueue()) break;
       }
     }
-    (window as any).__viewitAndroidOpened = (urls: string[] | string) => {
+    (window as any).__viewitAndroidOpened = (urls: any) => {
       const list = Array.isArray(urls) ? urls : [urls];
       if (list.length > 0) {
-        debugLog(`android opened event ${list[0].slice(0, 60)}…`);
-        pendingUri = list[0];
+        setPendingOpen(list[0]);
+        debugLog(`android opened event ${String(pendingUri).slice(0, 60)}…`);
         void load();
       }
     };
     onOpenedFiles((urls) => {
       if (urls.length > 0) {
-        debugLog(`opened event ${urls[0].slice(0, 60)}…`);
-        pendingUri = urls[0];
+        setPendingOpen(urls[0]);
+        debugLog(`opened event ${String(pendingUri).slice(0, 60)}…`);
         void load();
       }
     });
@@ -230,13 +281,16 @@
     if (!pendingUri) return;
     const uri = pendingUri;
     const seq = ++loadSeq;
+    const nameHint = pendingName ?? undefined;
+    const extHint = pendingExt ?? undefined;
+    const pluginHint = pendingPlugin ?? undefined;
     busy = true;
     error = null;
     doc = null;
     docUri = uri;
     busyHint = 'Opening…';
     try {
-      const nextDoc = await openWithDefaultRuntime(uri);
+      const nextDoc = await openWithDefaultRuntime(uri, nameHint, extHint, pluginHint);
       if (seq !== loadSeq || pendingUri !== uri) return;
       doc = nextDoc;
     } catch (e: any) {
@@ -267,11 +321,14 @@
     if (viewitUri) {
       const seq = ++loadSeq;
       pendingUri = viewitUri;
+      pendingName = resolvePickerName(f, viewitUri);
+      pendingExt = null;
+      pendingPlugin = null;
       docUri = viewitUri;
       doc = null;
       busyHint = 'Opening…';
       try {
-        const nextDoc = await openWithDefaultRuntime(viewitUri);
+        const nextDoc = await openWithDefaultRuntime(viewitUri, pendingName ?? undefined, undefined, undefined);
         if (seq !== loadSeq || pendingUri !== viewitUri) return;
         doc = nextDoc;
       } catch (e: unknown) {
@@ -325,13 +382,17 @@
   }
 
   function officeExt(): string {
+    const uri = docUri ?? pendingUri ?? '';
+    const derived = extFromUri(uri, pendingName ?? undefined);
+    if (derived && OFFICE_ALL_EXTS.has(derived)) return derived;
     const kind = (doc as any)?.kind;
     if (OFFICE_KINDS.has(kind)) return kind;
-    const uri = docUri ?? pendingUri ?? '';
-    return extFromUri(uri);
+    return derived;
   }
 
-  function extFromUri(uri: string): string {
+  function extFromUri(uri: string, nameHint?: string): string {
+    const fromName = nameHint ? nameHint.split('.').pop()?.toLowerCase() ?? '' : '';
+    if (fromName && fromName.length <= 8 && /^[a-z0-9]+$/.test(fromName)) return fromName;
     const fromPath = uri.split(/[?#]/, 1)[0].split('.').pop()?.toLowerCase() ?? '';
     if (fromPath && fromPath.length <= 8 && /^[a-z0-9]+$/.test(fromPath)) return fromPath;
     if (hasAndroidBridge()) {
@@ -350,14 +411,21 @@
     const map: Record<string, string> = {
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
       'application/vnd.ms-word.document.macroenabled.12': 'docm',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.template': 'dotx',
+      'application/vnd.ms-word.template.macroenabled.12': 'dotm',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
       'application/vnd.ms-excel.sheet.macroenabled.12': 'xlsm',
       'application/vnd.ms-excel.sheet.binary.macroenabled.12': 'xlsb',
       'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
       'application/vnd.ms-powerpoint.presentation.macroenabled.12': 'pptm',
+      'application/vnd.ms-powerpoint.template.macroenabled.12': 'potm',
+      'application/vnd.openxmlformats-officedocument.presentationml.template': 'potx',
       'application/vnd.oasis.opendocument.text': 'odt',
+      'application/vnd.oasis.opendocument.text-template': 'ott',
       'application/vnd.oasis.opendocument.spreadsheet': 'ods',
+      'application/vnd.oasis.opendocument.spreadsheet-template': 'ots',
       'application/vnd.oasis.opendocument.presentation': 'odp',
+      'application/vnd.oasis.opendocument.presentation-template': 'otp',
       'application/msword': 'doc',
       'application/vnd.ms-excel': 'xls',
       'application/vnd.ms-powerpoint': 'ppt',
@@ -380,15 +448,20 @@
     return loadRuntimePrefs()[ext] ?? null;
   }
 
-  async function openWithDefaultRuntime(uri: string): Promise<Document> {
+  async function openWithDefaultRuntime(
+    uri: string,
+    nameHint?: string,
+    extHint?: string,
+    pluginHint?: string
+  ): Promise<Document> {
     selectedOfficePlugin = null;
     officePluginNotice = '';
     officeWarnings = [];
     officeFidelity = '';
-    const ext = extFromUri(uri);
+    const ext = extHint && OFFICE_ALL_EXTS.has(extHint) ? extHint : extFromUri(uri, nameHint);
     let failedPluginId = '';
     let readableUri = uri;
-    if (hasAndroidBridge() && OFFICE_PLUGIN_EXTS.has(ext)) {
+    if (hasAndroidBridge() && OFFICE_ALL_EXTS.has(ext)) {
       try {
         readableUri = materializeExternalUri(uri, ext);
       } catch (e) {
@@ -429,9 +502,9 @@
         }
       }
     }
-    const builtIn = await openFile(readableUri);
+    const builtIn = await openFile(readableUri, nameHint);
     const detectedKind = builtIn.kind;
-    if (hasAndroidBridge() && OFFICE_KINDS.has(detectedKind) && OFFICE_PLUGIN_EXTS.has(ext)) {
+    if (hasAndroidBridge() && OFFICE_KINDS.has(detectedKind) && OFFICE_ALL_EXTS.has(ext)) {
       const prefId = getRuntimePref(detectedKind);
       if (prefId !== '__builtin__') {
         const plugin = (await listInstalledPlugins()).find((candidate) => candidate.id !== failedPluginId && pluginSupports(candidate, detectedKind));
@@ -627,7 +700,7 @@
         {#if (doc as any).html}<div class="plugin-html-surface">{@html (doc as any).html}</div>{:else}<PptxViewer document={doc} source_uri={docUri ?? ''} />{/if}
         </div>
         {/key}
-      {:else if doc.kind === 'docx' && DocxPreview}
+      {:else if doc.kind === 'docx' && (officeExt() === 'odt' || officeExt() === 'ott' ? DocxViewer : DocxPreview)}
         {#key docUri}
         <div class="plugin-renderer-shell">
         <div class="runtime-bar plugin-runtime-bar">
@@ -636,7 +709,11 @@
           {#if officeFidelity}<span class="fidelity">{officeFidelity}</span>{/if}
           {#if officeWarnings.length > 0}<details class="warnings"><summary>{officeWarnings.length} warning(s)</summary><ul>{#each officeWarnings as w}<li>{w}</li>{/each}</ul></details>{/if}
         </div>
-        <DocxPreview source_uri={docUri ?? ''} />
+        {#if officeExt() === 'odt' || officeExt() === 'ott'}
+          <DocxViewer document={doc} />
+        {:else}
+          <DocxPreview source_uri={docUri ?? ''} />
+        {/if}
         </div>
         {/key}
       {:else if doc.kind === 'xlsx' && XlsxViewer}
