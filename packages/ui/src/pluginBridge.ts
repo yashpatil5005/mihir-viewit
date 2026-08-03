@@ -16,6 +16,10 @@ export interface PluginInfo {
   sourceId?: string;
   sourceName?: string;
   sourceUrl?: string;
+  /** Plugin runtime: 'native' | 'dex' | 'js'. JS plugins ship a WebView bundle. */
+  runtime?: string;
+  jsEntry?: string;
+  cssEntry?: string;
 }
 
 export interface PluginCatalogSource {
@@ -185,6 +189,91 @@ export function materializeExternalUri(uri: string, ext: string): string {
   return bridge.materializeExternalUri(uri, ext);
 }
 
+export function isJsPlugin(plugin: PluginInfo): boolean {
+  return plugin.runtime === 'js';
+}
+
+const jsPluginModuleCache = new Map<string, Promise<Record<string, any>>>();
+
+function decodeB64Utf8(b64: string): string {
+  const raw = atob(b64);
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+  return new TextDecoder('utf-8').decode(bytes);
+}
+
+function b64ToBytes(b64: string): Uint8Array {
+  const raw = atob(b64);
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+  return bytes;
+}
+
+/** Bundles are gzip+base64 across the bridge ("b64gz:") when they exceed ~1 MB. */
+async function decodePluginCode(payload: string): Promise<string> {
+  if (payload.startsWith('b64gz:')) {
+    const gz = b64ToBytes(payload.slice(6));
+    const gzBuf = gz.buffer.slice(gz.byteOffset, gz.byteOffset + gz.byteLength) as ArrayBuffer;
+    const stream = new Blob([gzBuf]).stream().pipeThrough(new DecompressionStream('gzip'));
+    return await new Response(stream).text();
+  }
+  return decodeB64Utf8(payload);
+}
+
+/**
+ * Load a runtime=js plugin's bundle into the WebView and return its exports.
+ * The bundle is read as base64 through the Android bridge (it lives in
+ * app-private storage), gzip-decoded, and executed via indirect `eval` — the
+ * WebView blocks `import()` of blob: URLs and never runs dynamically created
+ * inline <script> nodes, so IIFE bundles exposed on `window.ViewItPlugin__<id>`
+ * are the only reliable path (sync, no fetch, no CSP-sensitive DOM tricks).
+ * Cached per plugin version.
+ */
+export async function loadJsPlugin(plugin: PluginInfo): Promise<Record<string, any>> {
+  const key = `${plugin.id}@${plugin.version}`;
+  const cached = jsPluginModuleCache.get(key);
+  if (cached) return cached;
+
+  if (!hasAndroidBridge()) {
+    throw new Error(`JS plugin ${plugin.id} requires the Android app`);
+  }
+  const bridge = (window as any).AndroidBridge;
+  const payload: Promise<Record<string, any>> = (async () => {
+    const entryB64 = typeof bridge.loadPluginBundle === 'function' ? bridge.loadPluginBundle(plugin.id) : '';
+    if (!entryB64) throw new Error(`Could not read ${plugin.id} bundle (is it installed?)`);
+
+    if (plugin.cssEntry && typeof bridge.pluginAssetB64 === 'function') {
+      const cssB64 = bridge.pluginAssetB64(plugin.id, plugin.cssEntry);
+      if (cssB64) {
+        try {
+          let styleEl = document.getElementById(`viewit-plugin-css-${plugin.id}`);
+          if (!styleEl) {
+            styleEl = document.createElement('style');
+            styleEl.id = `viewit-plugin-css-${plugin.id}`;
+            document.head.appendChild(styleEl);
+          }
+          styleEl.textContent = decodeB64Utf8(cssB64);
+        } catch { /* non-fatal */ }
+      }
+    }
+
+    const code = await decodePluginCode(entryB64);
+    const globalName = `ViewItPlugin__${plugin.id.replace(/[^a-zA-Z0-9_]/g, '_')}`;
+    if (typeof (window as any)[globalName] === 'undefined') {
+      (0, eval)(code);
+    }
+    const mod = (window as any)[globalName];
+    if (!mod || typeof mod !== 'object') {
+      throw new Error(`${plugin.id} bundle did not expose ${globalName}`);
+    }
+    return mod as Record<string, any>;
+  })();
+
+  jsPluginModuleCache.set(key, payload);
+  payload.catch(() => jsPluginModuleCache.delete(key));
+  return payload;
+}
+
 export async function installPlugin(plugin: PluginInfo): Promise<void> {
   if (!hasAndroidBridge()) return;
   if (!isInstallablePlugin(plugin)) {
@@ -203,6 +292,9 @@ export async function installPlugin(plugin: PluginInfo): Promise<void> {
     minAppVersion: 1,
     checksum: plugin.checksum ?? '',
     abi: plugin.abi ?? '',
+    runtime: plugin.runtime ?? 'native',
+    jsEntry: plugin.runtime === 'js' ? (plugin.jsEntry ?? 'web/index.js') : '',
+    cssEntry: plugin.runtime === 'js' ? (plugin.cssEntry ?? '') : '',
   });
   return new Promise<void>((resolve, reject) => {
     const id = `install_${plugin.id}_${Date.now()}_${Math.random().toString(36).slice(2)}`;

@@ -29,6 +29,7 @@
   import OfficePluginHtmlViewer from './OfficePluginHtmlViewer.svelte';
   import {
     hasAndroidBridge,
+    isJsPlugin,
     listInstalledPlugins,
     materializeExternalUri,
     pluginSupports,
@@ -55,6 +56,7 @@
   let EpubViewer = $state<any>(null);
   let ArchiveViewer = $state<any>(null);
   let PptxViewer = $state<any>(null);
+  let PptxVanillaViewer = $state<any>(null);
   let DocxPreview = $state<any>(null);
   let DocxViewer = $state<any>(null);
   let XlsxViewer = $state<any>(null);
@@ -82,6 +84,7 @@
       'azw3':     () => import('./EpubViewer.svelte'),
       'archive':  () => import('./ArchiveViewer.svelte'),
       'pptx':     () => import('./PptxViewer.svelte'),
+      'pptx-vanilla': () => import('./PptxVanillaViewer.svelte'),
       'docx':     () => import('./DocxPreview.svelte'),
       'xlsx':     () => import('./XlsxViewer.svelte'),
       'font':     () => import('./FontViewer.svelte'),
@@ -99,6 +102,17 @@
       // render via the block-based DocxViewer instead of docx-preview.
       loader = () => import('./DocxViewer.svelte');
     }
+    if (k === 'pptx') {
+      void resolvePptxVanillaPlugin().then((p) => {
+        if (p?.id !== pptxVanillaPlugin?.id) pptxVanillaPlugin = p;
+        if (p) {
+          selectedOfficePlugin = p;
+          if (!PptxVanillaViewer) {
+            import('./PptxVanillaViewer.svelte').then((m) => { PptxVanillaViewer = m.default; });
+          }
+        }
+      });
+    }
     if (!loader) return;
     loader().then((m) => {
       if (k === 'markdown') MarkdownViewer = m.default;
@@ -108,6 +122,7 @@
       else if (k === 'epub' || k === 'mobi' || k === 'azw3') EpubViewer = m.default;
       else if (k === 'archive') ArchiveViewer = m.default;
       else if (k === 'pptx') PptxViewer = m.default;
+      else if (k === 'pptx-vanilla') PptxVanillaViewer = m.default;
       else if (k === 'docx') {
         if (isOdtLike) DocxViewer = m.default;
         else DocxPreview = m.default;
@@ -143,6 +158,7 @@
   let pluginStoreOpen = $state(false);
   let officeRuntimeChooserOpen = $state(false);
   let selectedOfficePlugin: PluginInfo | null = $state(null);
+  let pptxVanillaPlugin: PluginInfo | null = $state(null);
   let officePluginNotice = $state('');
   let officeWarnings: string[] = $state([]);
   let officeFidelity: string = $state('');
@@ -444,6 +460,19 @@
     if (pluginId) prefs[ext] = pluginId; else delete prefs[ext];
     try { localStorage.setItem(RUNTIME_PREF_KEY, JSON.stringify(prefs)); } catch { /* ignore */ }
   }
+
+  /** Pick the installed runtime=js PPTX plugin (if any) that should own the
+   *  WebView rendering, honoring the per-format runtime pref. */
+  async function resolvePptxVanillaPlugin(): Promise<PluginInfo | null> {
+    if (!hasAndroidBridge()) return null;
+    const prefId = getRuntimePref('pptx');
+    if (prefId === '__builtin__') return null;
+    const installed = await listInstalledPlugins();
+    if (prefId) {
+      return installed.find((p) => p.id === prefId && isJsPlugin(p) && pluginSupports(p, 'pptx')) ?? null;
+    }
+    return installed.find((p) => isJsPlugin(p) && pluginSupports(p, 'pptx')) ?? null;
+  }
   function getRuntimePref(ext: string): string | null {
     return loadRuntimePrefs()[ext] ?? null;
   }
@@ -478,10 +507,22 @@
         await dbg(`runtime[${ext}] pref=builtin → skipping plugin`);
       } else {
         const plugins = await listInstalledPlugins();
+        // runtime=js plugins render in the WebView (Viewer template), not via
+        // the native renderDocumentWithPlugin bridge — skip them here.
         const plugin = prefId
-          ? plugins.find((p) => p.id === prefId && pluginSupports(p, ext))
-          : plugins.find((candidate) => candidate.id === 'office-universal' && pluginSupports(candidate, ext))
-            ?? plugins.find((candidate) => pluginSupports(candidate, ext));
+          ? null
+          : plugins.find((candidate) => candidate.id === 'office-universal' && !isJsPlugin(candidate) && pluginSupports(candidate, ext))
+            ?? plugins.find((candidate) => !isJsPlugin(candidate) && pluginSupports(candidate, ext));
+        if (prefId) {
+          const prefPlugin = plugins.find((p) => p.id === prefId && pluginSupports(p, ext));
+          if (!prefPlugin) {
+            await dbg(`runtime[${ext}] pref=${prefId} missing → fallback auto/builtin`);
+          } else if (isJsPlugin(prefPlugin)) {
+            // The js plugin owns WebView rendering; fetch a parseable doc from the
+            // native plugin so the template's pptx branch can hand bytes to it.
+            await dbg(`runtime[${ext}] pref=${prefId} → js plugin ${prefPlugin.id} (renders in WebView)`);
+          }
+        }
         if (plugin) {
           await dbg(`runtime[${ext}] pref=${prefId ?? 'auto'} → plugin ${plugin.id}`);
           try {
@@ -497,8 +538,6 @@
             selectedOfficePlugin = null;
             failedPluginId = plugin.id;
           }
-        } else if (prefId) {
-          await dbg(`runtime[${ext}] pref=${prefId} missing → fallback auto/builtin`);
         }
       }
     }
@@ -507,7 +546,7 @@
     if (hasAndroidBridge() && OFFICE_KINDS.has(detectedKind) && OFFICE_ALL_EXTS.has(ext)) {
       const prefId = getRuntimePref(detectedKind);
       if (prefId !== '__builtin__') {
-        const plugin = (await listInstalledPlugins()).find((candidate) => candidate.id !== failedPluginId && pluginSupports(candidate, detectedKind));
+        const plugin = (await listInstalledPlugins()).find((candidate) => candidate.id !== failedPluginId && !isJsPlugin(candidate) && pluginSupports(candidate, detectedKind));
         if (plugin) {
           await dbg(`runtime[${detectedKind}] retry plugin ${plugin.id} via detected kind`);
           try {
@@ -540,6 +579,18 @@
     try {
       const ext = officeExt();
       const readableUri = materializeExternalUri(uri, ext);
+      if (isJsPlugin(plugin)) {
+        // JS plugins render in the WebView (no native bridge). Re-open through
+        // the native plugin so doc.kind matches, then let the template hand the
+        // file bytes to the js renderer.
+        saveRuntimePref(ext, plugin.id);
+        pptxVanillaPlugin = plugin;
+        const fallback = await openFile(readableUri);
+        if (seq !== loadSeq || docUri !== uri) return;
+        doc = fallback;
+        officePluginNotice = `WebView renderer ${plugin.name} selected.`;
+        return;
+      }
       const nextDoc = await renderDocumentWithPlugin(plugin, readableUri, ext) as Document;
       if (seq !== loadSeq || docUri !== uri) return;
       doc = nextDoc;
@@ -697,7 +748,11 @@
           {#if officeFidelity}<span class="fidelity">{officeFidelity}</span>{/if}
           {#if officeWarnings.length > 0}<details class="warnings"><summary>{officeWarnings.length} warning(s)</summary><ul>{#each officeWarnings as w}<li>{w}</li>{/each}</ul></details>{/if}
         </div>
-        {#if (doc as any).html}<div class="plugin-html-surface">{@html (doc as any).html}</div>{:else}<PptxViewer document={doc} source_uri={docUri ?? ''} />{/if}
+        {#if PptxVanillaViewer && pptxVanillaPlugin}
+          <PptxVanillaViewer document={doc} source_uri={docUri ?? ''} plugin={pptxVanillaPlugin} />
+        {:else}
+          {#if (doc as any).html}<div class="plugin-html-surface">{@html (doc as any).html}</div>{:else}<PptxViewer document={doc} source_uri={docUri ?? ''} />{/if}
+        {/if}
         </div>
         {/key}
       {:else if doc.kind === 'docx' && (officeExt() === 'odt' || officeExt() === 'ott' ? DocxViewer : DocxPreview)}

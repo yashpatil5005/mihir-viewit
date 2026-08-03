@@ -16,4 +16,8 @@ data class PluginManifest(
     val abiVersion: Int = 1,
     val capabilities: List<String> = emptyList(),
     val runtime: String = "",
+    /** Relative path of the bundle entry inside the plugin dir for runtime=js plugins. */
+    val jsEntry: String = "web/index.js",
+    /** Optional relative path of a CSS asset for runtime=js plugins. */
+    val cssEntry: String = "",
 )

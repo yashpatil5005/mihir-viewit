@@ -20,6 +20,7 @@ class MainActivity : TauriActivity() {
 
   companion object {
     const val ACTION_DEBUG_OPEN = "ai.viewit.app.action.DEBUG_OPEN"
+    const val ACTION_DEBUG_INSTALL_PLUGIN = "ai.viewit.app.action.DEBUG_INSTALL_PLUGIN"
   }
 
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -45,8 +46,10 @@ class MainActivity : TauriActivity() {
     if (intent == null) return
     val action = intent.action ?: return
     val isDebugOpen = action == ACTION_DEBUG_OPEN
+    val isDebugInstall = action == ACTION_DEBUG_INSTALL_PLUGIN
     if (
       !isDebugOpen &&
+      !isDebugInstall &&
       action != Intent.ACTION_VIEW &&
       action != Intent.ACTION_SEND &&
       action != Intent.ACTION_SEND_MULTIPLE
@@ -81,6 +84,28 @@ class MainActivity : TauriActivity() {
       if (debugUri != null && intent.data == null) {
         lines.add(debugRecord(debugUri, debugName, debugExt, debugPlugin, intent.type))
       }
+    }
+
+    if (isDebugInstall) {
+      // `am start -a ${ACTION_DEBUG_INSTALL_PLUGIN} --es path <abs zip>` — local,
+      // download-free install for verifying runtime=js plugins on-device.
+      val zipPath = intent.getStringExtra("path") ?: return
+      val pm = (application as? ViewItApp)?.pluginManager ?: return
+      Thread {
+        try {
+          val result = pm.installLocalZip(zipPath)
+          runOnUiThread {
+            android.util.Log.i("ViewIt", "DEBUG_INSTALL_PLUGIN ${zipPath} -> ${result.isSuccess} (${result.exceptionOrNull()?.message})")
+            bridgeWebView?.evaluateJavascript(
+              "window.__viewitDebugInstall && window.__viewitDebugInstall(${result.isSuccess})",
+              null
+            )
+          }
+        } catch (e: Exception) {
+          android.util.Log.e("ViewIt", "DEBUG_INSTALL_PLUGIN failed", e)
+        }
+      }.start()
+      return
     }
 
     if (lines.isEmpty()) return
@@ -263,9 +288,78 @@ class MainActivity : TauriActivity() {
           put("installedSizeBytes", p.manifest.installedSizeBytes)
           put("checksum", p.manifest.checksum)
           put("abi", p.manifest.abi)
+          put("runtime", p.manifest.runtime.ifBlank { "native" })
+          if (p.manifest.runtime == "js") put("jsEntry", p.manifest.jsEntry)
+          if (p.manifest.runtime == "js" && p.manifest.cssEntry.isNotEmpty()) put("cssEntry", p.manifest.cssEntry)
         })
       }
       return arr.toString()
+    }
+
+    @JavascriptInterface
+    fun pluginAssetB64(pluginId: String, relPath: String): String {
+      val pm = (application as? ViewItApp)?.pluginManager ?: return ""
+      return pm.pluginAssetB64(pluginId, relPath) ?: ""
+    }
+
+    @JavascriptInterface
+    fun loadPluginBundle(pluginId: String): String {
+      val pm = (application as? ViewItApp)?.pluginManager ?: return ""
+      val plugin = pm.getInstalledPlugins().firstOrNull { it.manifest.id == pluginId } ?: return ""
+      val file = File(plugin.installDir, plugin.manifest.jsEntry)
+      if (!file.exists()) return ""
+      return try {
+        // "b64gz:" — gzip + base64 to keep the JS→native bridge payload small
+        // (WebView string bridges degrade past ~10 MB). Decompressed in JS via
+        // DecompressionStream('gzip').
+        val bos = java.io.ByteArrayOutputStream()
+        java.util.zip.GZIPOutputStream(bos).use { it.write(file.readBytes()) }
+        "b64gz:" + java.util.Base64.getEncoder().encodeToString(bos.toByteArray())
+      } catch (e: Exception) {
+        android.util.Log.e("ViewIt", "loadPluginBundle failed: ${plugin.manifest.id}", e)
+        ""
+      }
+    }
+
+    @JavascriptInterface
+    fun installPluginLocal(zipPath: String, callbackId: String) {
+      val pm = (application as? ViewItApp)?.pluginManager ?: return
+      Thread {
+        try {
+          val result = pm.installLocalZip(zipPath) { progress ->
+            val msg = JSONObject().apply {
+              put("id", callbackId)
+              put("event", "progress")
+              put("progress", progress)
+            }
+            runOnUiThread {
+              webView.evaluateJavascript("window._pluginCallback && window._pluginCallback($msg)", null)
+            }
+          }
+          val msg = JSONObject().apply {
+            put("id", callbackId)
+            if (result.isSuccess) {
+              put("event", "complete")
+            } else {
+              put("event", "error")
+              put("error", result.exceptionOrNull()?.message ?: "Install failed")
+            }
+          }
+          runOnUiThread {
+            webView.evaluateJavascript("window._pluginCallback && window._pluginCallback($msg)", null)
+          }
+        } catch (e: Exception) {
+          android.util.Log.e("ViewIt", "Local plugin install error", e)
+          val msg = JSONObject().apply {
+            put("id", callbackId)
+            put("event", "error")
+            put("error", e.message ?: e.javaClass.simpleName)
+          }
+          runOnUiThread {
+            webView.evaluateJavascript("window._pluginCallback && window._pluginCallback($msg)", null)
+          }
+        }
+      }.start()
     }
 
     @JavascriptInterface

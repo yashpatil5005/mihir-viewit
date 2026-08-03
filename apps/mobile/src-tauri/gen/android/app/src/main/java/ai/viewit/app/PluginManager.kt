@@ -57,6 +57,8 @@ class PluginManager(private val context: Context) {
                 abiVersion = obj.optInt("abiVersion", 1),
                 capabilities = caps,
                 runtime = obj.optString("runtime", ""),
+                jsEntry = obj.optString("jsEntry", "web/index.js"),
+                cssEntry = obj.optString("cssEntry", ""),
             )
         }
 
@@ -65,8 +67,7 @@ class PluginManager(private val context: Context) {
             if (manifest.id.isBlank()) errors.add("id is required")
             if (manifest.name.isBlank()) errors.add("name is required")
             if (manifest.version.isBlank()) errors.add("version is required")
-            if (manifest.entryClass.isBlank()) errors.add("entryClass is required")
-            if (manifest.downloadUrl.isBlank()) errors.add("downloadUrl is required")
+            if (manifest.runtime != "js" && manifest.entryClass.isBlank()) errors.add("entryClass is required")
             if (manifest.supportedFormats.isEmpty()) errors.add("supportedFormats is required")
             if (manifest.abiVersion > SUPPORTED_ABI_VERSION) {
                 errors.add("abiVersion ${manifest.abiVersion} is not supported (max $SUPPORTED_ABI_VERSION)")
@@ -215,6 +216,58 @@ class PluginManager(private val context: Context) {
 
             val zipFile = File(stagingDir, "${manifest.id}.zip")
             downloadFile(manifest.downloadUrl, zipFile, onProgress)
+            installZipPayload(zipFile, manifest, onProgress)
+        } catch (e: Throwable) {
+            Log.e(TAG, "Install failed: ${manifest.id}", e)
+            File(pluginsDir, "${manifest.id}.staging").deleteRecursively()
+            Result.failure(Exception(e.message ?: e.javaClass.simpleName, e))
+        }
+    }
+
+    /** Debug/test helper — install a plugin from a ZIP already on the device (no download). */
+    fun installLocalZip(zipPath: String, onProgress: (Float) -> Unit = {}): Result<InstalledPlugin> {
+        return try {
+            val zipFile = File(zipPath)
+            if (!zipFile.exists()) return Result.failure(Exception("Local plugin zip not found: $zipPath"))
+            val entry = java.util.zip.ZipFile(zipFile).use { z ->
+                z.entries().asSequence().firstOrNull { it.name == "plugin.json" }
+                ?: return@use null
+            } ?: return Result.failure(Exception("Missing plugin.json in zip"))
+            val manifestJson = java.util.zip.ZipFile(zipFile).use { z ->
+                z.getInputStream(entry).readBytes().toString(Charsets.UTF_8)
+            }
+            val manifest = fetchManifestFromJson(JSONObject(manifestJson))
+            onProgress(0.3f)
+            installZipPayload(zipFile, manifest, onProgress)
+        } catch (e: Throwable) {
+            Log.e(TAG, "Local install failed: $zipPath", e)
+            Result.failure(Exception(e.message ?: e.javaClass.simpleName, e))
+        }
+    }
+
+    private fun installZipPayload(
+        zipFile: File,
+        manifest: PluginManifest,
+        onProgress: (Float) -> Unit,
+    ): Result<InstalledPlugin> {
+        return try {
+            val dir = File(pluginsDir, manifest.id)
+            if (dir.exists()) {
+                val existing = installed[manifest.id]
+                if (existing?.manifest?.version == manifest.version) {
+                    return Result.success(existing)
+                }
+                existing?.mediaPlugin?.cleanup()
+                if (existing?.documentPlugin !== existing?.mediaPlugin) {
+                    existing?.documentPlugin?.cleanup()
+                }
+                installed.remove(manifest.id)
+                dir.deleteRecursively()
+            }
+
+            val stagingDir = File(pluginsDir, "${manifest.id}.staging")
+            stagingDir.deleteRecursively()
+            stagingDir.mkdirs()
 
             if (manifest.checksum.isNotEmpty()) {
                 val hash = sha256(zipFile)
@@ -224,9 +277,8 @@ class PluginManager(private val context: Context) {
                 }
             }
 
+            onProgress(0.6f)
             unzip(zipFile, stagingDir)
-            zipFile.delete()
-
             saveManifest(stagingDir, manifest)
 
             val plugin = loadPluginFromDir(stagingDir)
@@ -235,16 +287,35 @@ class PluginManager(private val context: Context) {
                     return Result.failure(Exception("Failed to load plugin"))
                 }
 
-            stagingDir.renameTo(dir)
+            // loadPluginFromDir records the staging path as installDir; point it at
+            // the final dir after the (possibly successful) rename so asset reads
+            // (loadPluginBundle/pluginAssetB64) work in the same process.
+            val moved = stagingDir.renameTo(dir)
+            if (!moved) Log.w(TAG, "Plugin dir rename failed; keeping staging path: ${manifest.id}")
+            val finalDir = if (moved) dir else stagingDir
 
-            val installedPlugin = plugin.copy(manifest = manifest, health = PluginHealth.LOADED)
+            val installedPlugin = plugin.copy(manifest = manifest, health = PluginHealth.LOADED, installDir = finalDir)
             installed[manifest.id] = installedPlugin
+            onProgress(1f)
             Log.i(TAG, "Installed plugin: ${manifest.id} v${manifest.version}")
             Result.success(installedPlugin)
         } catch (e: Throwable) {
             Log.e(TAG, "Install failed: ${manifest.id}", e)
             File(pluginsDir, "${manifest.id}.staging").deleteRecursively()
             Result.failure(Exception(e.message ?: e.javaClass.simpleName, e))
+        }
+    }
+
+    /** Base64 of a plugin asset file (used by runtime=js plugins to load bundles in the WebView). */
+    fun pluginAssetB64(pluginId: String, relPath: String): String? {
+        val plugin = installed[pluginId] ?: return null
+        val file = File(plugin.installDir, relPath)
+        if (!file.exists() || file.length() > 16L * 1024 * 1024) return null
+        return try {
+            java.util.Base64.getEncoder().encodeToString(file.readBytes())
+        } catch (e: Exception) {
+            Log.e(TAG, "Read plugin asset failed: $pluginId/$relPath", e)
+            null
         }
     }
 
@@ -386,6 +457,21 @@ class PluginManager(private val context: Context) {
             val manifestFile = File(dir, "plugin.json")
             if (!manifestFile.exists()) return null
             val manifest = parseManifest(JSONObject(manifestFile.readText()))
+
+            if (manifest.runtime == "js") {
+                val entry = File(dir, manifest.jsEntry)
+                if (!entry.exists()) {
+                    Log.e(TAG, "JS plugin ${manifest.id} missing entry ${manifest.jsEntry}")
+                    return null
+                }
+                return InstalledPlugin(
+                    manifest = manifest,
+                    instance = Unit,
+                    mediaPlugin = null,
+                    documentPlugin = null,
+                    installDir = dir,
+                )
+            }
 
             // Native libs may live under lib/<abi>/ or directly under <abi>/
             val nativeDir = File(dir, "lib")
@@ -572,6 +658,8 @@ class PluginManager(private val context: Context) {
             put("abiVersion", manifest.abiVersion)
             if (manifest.capabilities.isNotEmpty()) put("capabilities", JSONArray(manifest.capabilities))
             if (manifest.runtime.isNotEmpty()) put("runtime", manifest.runtime)
+            if (manifest.runtime == "js") put("jsEntry", manifest.jsEntry)
+            if (manifest.runtime == "js" && manifest.cssEntry.isNotEmpty()) put("cssEntry", manifest.cssEntry)
         }
         File(dir, "plugin.json").writeText(obj.toString(2))
     }

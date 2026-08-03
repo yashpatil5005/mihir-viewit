@@ -1,0 +1,24 @@
+{
+  "id": "pptx-vanilla",
+  "name": "PPTX Vanilla Viewer",
+  "version": "1.0.1",
+  "description": "High-fidelity PPTX viewing directly in the WebView via pptx-vanilla-viewer — real HTML/CSS slide rendering, no server, no conversion.",
+  "minAppVersion": 1,
+  "entryClass": "",
+  "supportedFormats": [
+    "pptx"
+  ],
+  "capabilities": [
+    "document-render",
+    "webview-render"
+  ],
+  "downloadUrl": "https://viewit-plugin-catalog-temp.pages.dev/plugins/pptx-vanilla-1.0.1.zip",
+  "sizeBytes": 1838649,
+  "installedSizeBytes": 5515947,
+  "checksum": "646b8b3bee9c6430c130f06449d5986942b3d7675ee12b8631753b1cbb908dc9",
+  "abi": "",
+  "abiVersion": 1,
+  "runtime": "js",
+  "jsEntry": "index.js",
+  "cssEntry": "styles.css"
+}

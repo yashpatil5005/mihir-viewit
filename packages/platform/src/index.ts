@@ -323,7 +323,7 @@ export async function openFileFromPicker(file: File): Promise<Document> {
   if (viewitUri) {
     const nameHint = file.name && /^[a-z0-9._%+-]{1,120}\.[a-z0-9]{1,10}$/i.test(file.name)
       ? file.name
-      : resolveDisplayName(viewitUri);
+      : await resolveDisplayName(viewitUri);
     return openFile(viewitUri, nameHint);
   }
   const gate = checkFileBeforeRead(file);
