@@ -2,6 +2,88 @@
   "catalog": {
     "plugins": [
       {
+        "id": "office-universal",
+        "name": "Office Universal Plugin",
+        "description": "Unified parser for all Office formats: OOXML (docx/xlsx/pptx + templates), Legacy Binary (doc/ppt), OpenDocument (odt/ods/odp + templates)",
+        "minAppVersion": 1,
+        "entryClass": "ai.viewit.plugins.officeuniversal.OfficeUniversalPlugin",
+        "supportedFormats": [
+          "docx",
+          "docm",
+          "dotx",
+          "dotm",
+          "xlsx",
+          "xlsm",
+          "xlsb",
+          "xls",
+          "pptx",
+          "pptm",
+          "potx",
+          "odt",
+          "ott",
+          "ods",
+          "ots",
+          "odp",
+          "otp",
+          "doc",
+          "ppt"
+        ],
+        "capabilities": [
+          "document-render",
+          "text-extraction",
+          "structured-output"
+        ],
+        "abiVersion": 1,
+        "runtime": "native",
+        "version": "0.1.0",
+        "abi": "arm64-v8a",
+        "sizeBytes": 944054,
+        "installedSizeBytes": 1669839,
+        "checksum": "4a7e0c991a1d966e2ff45832e2766f2136aec01bcf26defc4e20c7dacc9e89ae",
+        "downloadUrl": "https://viewit-plugin-catalog-temp.pages.dev/plugins/office-universal-0.1.0-arm64-v8a.zip"
+      },
+      {
+        "id": "office-universal",
+        "name": "Office Universal Plugin",
+        "description": "Unified parser for all Office formats: OOXML (docx/xlsx/pptx + templates), Legacy Binary (doc/ppt), OpenDocument (odt/ods/odp + templates)",
+        "minAppVersion": 1,
+        "entryClass": "ai.viewit.plugins.officeuniversal.OfficeUniversalPlugin",
+        "supportedFormats": [
+          "docx",
+          "docm",
+          "dotx",
+          "dotm",
+          "xlsx",
+          "xlsm",
+          "xlsb",
+          "xls",
+          "pptx",
+          "pptm",
+          "potx",
+          "odt",
+          "ott",
+          "ods",
+          "ots",
+          "odp",
+          "otp",
+          "doc",
+          "ppt"
+        ],
+        "capabilities": [
+          "document-render",
+          "text-extraction",
+          "structured-output"
+        ],
+        "abiVersion": 1,
+        "runtime": "native",
+        "version": "0.1.0",
+        "abi": "x86_64",
+        "sizeBytes": 975573,
+        "installedSizeBytes": 2138663,
+        "checksum": "05dd74381da630988feb0152469abd21ecb82529cd201131546dcffc77411b77",
+        "downloadUrl": "https://viewit-plugin-catalog-temp.pages.dev/plugins/office-universal-0.1.0-x86_64.zip"
+      },
+      {
         "id": "ffmpeg-transcoder",
         "name": "FFmpeg Transcoder",
         "description": "Optional media transcode plugin for unsupported video and audio formats. Converts legacy containers/codecs to MP4 using FFmpeg.",
@@ -39,64 +121,6 @@
         "minAppVersion": 1
       },
       {
-        "id": "office-ooxml",
-        "name": "Enhanced Office OOXML",
-        "version": "0.3.0",
-        "description": "Optional enhanced DOCX/XLS/XLSX/PPTX runtime with plugin-owned offline HTML renderers and a calamine spreadsheet engine.",
-        "minAppVersion": 1,
-        "entryClass": "ai.viewit.plugins.office_ooxml.Plugin",
-        "capabilities": [
-          "view",
-          "inspect",
-          "edit-planned"
-        ],
-        "supportedFormats": [
-          "docx",
-          "xlsx",
-          "xls",
-          "pptx",
-          "docm",
-          "xlsm",
-          "pptm"
-        ],
-        "runtime": "android-dex-rust-sidecar",
-        "abiVersion": 1,
-        "installedSizeBytes": 1786051,
-        "abi": "arm64-v8a",
-        "sizeBytes": 798144,
-        "checksum": "4dc77aa5c86953d762d12152c7faf50a030f2f0f0b7b2f4dd4ca15a76901fcd1",
-        "downloadUrl": "https://github.com/mihir0209/ViewIt/releases/latest/download/office-ooxml-0.3.0-arm64-v8a.zip"
-      },
-      {
-        "id": "office-ooxml",
-        "name": "Enhanced Office OOXML",
-        "version": "0.3.0",
-        "description": "Optional enhanced DOCX/XLS/XLSX/PPTX runtime with plugin-owned offline HTML renderers and a calamine spreadsheet engine.",
-        "minAppVersion": 1,
-        "entryClass": "ai.viewit.plugins.office_ooxml.Plugin",
-        "capabilities": [
-          "view",
-          "inspect",
-          "edit-planned"
-        ],
-        "supportedFormats": [
-          "docx",
-          "xlsx",
-          "xls",
-          "pptx",
-          "docm",
-          "xlsm",
-          "pptm"
-        ],
-        "runtime": "android-dex-rust-sidecar",
-        "abiVersion": 1,
-        "installedSizeBytes": 1777307,
-        "abi": "x86_64",
-        "sizeBytes": 804452,
-        "checksum": "14c67c0724f62ad75988244752cdae737fe212229473a171684920b484f939a1",
-        "downloadUrl": "https://github.com/mihir0209/ViewIt/releases/latest/download/office-ooxml-0.3.0-x86_64.zip"
-      },
-      {
         "id": "pptx-vanilla",
         "name": "PPTX Vanilla Viewer",
         "version": "1.0.1",
@@ -122,5 +146,5 @@
       }
     ]
   },
-  "signature": "wrtVv5CfpXErkqKYiJlfzDnXxhzKiwnkN5QHOXNrJ2y531DGpgxWdIqDI/dlGlPiCpCCE4mthEfXl/UkgmLEBA=="
+  "signature": "Z2JipJNcwBlg6kjp4b4JPN6WoW2ISsqkfwD5hyFUGp2kKRnhsVFJmnH1qXw7oUu5RgFPXS4QvfSrda/AzFjWAQ=="
 }

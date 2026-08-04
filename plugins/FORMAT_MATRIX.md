@@ -26,17 +26,34 @@ This document maps every format ViewIt handles to its detection method, renderin
 
 ## Enhanced Plugin Candidates
 
-| Extension(s) | Detection | Base View | Enhanced | External | Fixtures | Limitations |
-|---|---|---|---|---|---|---|
-| `.docx`, `.docm` | extension + ZIP+XML | DocxViewer (text+structure) | `office-ooxml` plugin | — | `/tmp/opencode/viewit-fixtures/viewit-sample.docx` | No images in base; no footnotes/headers/tracked changes; enhanced: images+hyperlinks+headings+lists+tables |
-| `.xlsx`, `.xlsm` | extension + ZIP+XML | XlsxViewer (text+structure) | `office-ooxml` plugin | — | `/tmp/opencode/viewit-fixtures/viewit-sample.xlsx` | No formatting/formulas in base; enhanced: merged cells+frozen panes |
-| `.pptx`, `.pptm` | extension + ZIP+XML | PptxViewer (text extraction) | `office-ooxml` plugin | — | `/tmp/opencode/viewit-fixtures/viewit-sample.pptx` | No layout in base; enhanced: positioned text+images+bullets+rich runs+backgrounds |
-| `.odt`, `.ods`, `.odp` | extension + ZIP+XML | PlaceholderViewer | planned | — | — | Fallback to text extraction |
-| `.epub`, `.mobi`, `.azw3`, `.fb2` | extension | EpubViewer | planned | — | — | Basic reflow; no DRM |
-| `.doc`, `.xls`, `.ppt` | extension + magic | UnsupportedViewer | planned (conversion) | open-with-external | — | Legacy binary OOXML; no native parser |
-| `.rtf` | extension + magic | TextViewer | planned | — | — | Plain text fallback |
-| `.heic`, `.heif`, `.avif` | extension + MIME | ImageViewer (platform) | planned | — | — | Depends on Android platform decoder |
-| `.psd`, `.dng`, `.cr2`, `.cr3`, `.nef`, `.arw` | extension + MIME | ImageViewer (raw fallback) | planned | — | — | WebView may not render; platform-dependent |
+Status legend for current engine: **FULL** = real layout/content rendered on-device; **PARTIAL** = text/structure only; **GAP** = opens but does not render the format. Verified on-device 2026-08-05 (CDP DOM capture, `office-universal` + `pptx-vanilla`). Smoke run: 7/10 PASS; the 3 expected FAIL rows are the ODF-presentation (odp/otp) and legacy-ppt gaps below.
+
+| Extension(s) | Detection | Base View | Enhanced | Notes / Limitations |
+|---|---|---|---|---|
+| `.docx`, `.docm` | extension + ZIP+XML | DocxViewer (text+structure) | `office-universal` (Enhanced Office OOXML + docx-preview) | **FULL** — images+hyperlinks+headings+lists+tables rendered |
+| `.dotx`, `.dotm` | extension + ZIP+XML | DocxViewer | `office-universal` | **FULL** (template) — same OOXML text engine as docx |
+| `.xlsx`, `.xlsm`, `.xlsb`, `.xls` | extension + magic | XlsxViewer (text+structure) | `office-universal` (calamine) | **FULL** — multi-sheet, formulas, 13/13 rows etc. on fixture |
+| `.pptx`, `.pptm`, `.potx` | extension + ZIP+XML | PptxViewer (text extraction) | `pptx-vanilla` (JS, WebView HTML slides) | **FULL** slides — body shows "Rendered by PPTX Vanilla Viewer · view-only (no PowerPoint animations, no editing)"; no PowerPoint animations/editing |
+| `.odt`, `.ott` | extension + ZIP+XML | PlaceholderViewer | `office-universal` | **FULL** — words/blocks/tables count on fixture (458 words, 33 blocks, 2 tables) |
+| `.ods`, `.ots` | extension + ZIP+XML | PlaceholderViewer | `office-universal` | **FULL** — sheets, rows/cols, 24 formulas on fixture |
+| `.odp`, `.otp` | extension + ZIP+XML | PlaceholderViewer | (routed to pptx-vanilla) | **GAP** — on-device body: "Invalid PPTX: presentation.xml not found" + "No slides". ODF presentation (content.xml) not parsed. Needs ODP path in office-universal |
+| `.doc` | extension + magic | UnsupportedViewer/partial | `office-universal` (text extract) | **PARTIAL** — text-only preview; layout/images not preserved (known issue, see below) |
+| `.ppt` | extension + magic | UnsupportedViewer | — | **GAP** — on-device body: "This presentation is password protected." Legacy binary slide content not rendered; message is misleading, should say unsupported + open-external |
+| `.rtf` | extension + magic | TextViewer | — | Plain-text fallback — on-device smoke PASS (marker text extracted) |
+| `.epub`, `.mobi`, `.azw3`, `.fb2` | extension | EpubViewer | — | Basic reflow; no DRM |
+| `.heic`, `.heif`, `.avif` | extension + MIME | ImageViewer (platform) | — | Depends on Android platform decoder |
+| `.psd`, `.dng`, `.cr2`, `.cr3`, `.nef`, `.arw` | extension + MIME | ImageViewer (raw fallback) | — | WebView may not render; platform-dependent |
+
+### .doc (legacy binary) decision — 2026-08-05
+
+`doc` renders as a **text-only partial preview** (`44,544 bytes · encoding: utf-8 [Partial preview — Word .doc legacy binary, layout/formatting not preserved]`).
+
+User-base context (research, 2026-08-05): `.doc` (binary CFB, Word 97‑2003) is a legacy-format — default replaced by `.docx` since Office 2007 (18 years). Word 2003-era users are <1%. Real-world `.doc` today is **archive + vertical-restricted**: legal/court e-filing requirements, healthcare EMR, government archives, K-12 legacy IT, and "that's what we've always used" orgs. Growth: negligible; new `.doc` creation is rare.
+
+Decision (preview-tier, do NOT build a binary layout renderer):
+1. Keep `doc` at text-preview tier. Improve the extractor to surface headings/paragraphs/tables where the binary stream allows.
+2. Add a clear one-line banner + "Open with external app" action (Word / Google Docs / LibreOffice) for users who need true layout.
+3. Reconsider only if app telemetry shows `.doc` open volume above a threshold (e.g. >5% of Office opens).
 
 ## External Runtime Candidates
 

@@ -227,6 +227,7 @@ DOM_QUERY = """(() => {
     docxViewer: !!document.querySelector('.docx-viewer'),
     xlsxViewer: !!document.querySelector('.xlsx-viewer'),
     pptxRoot: !!document.querySelector('.pptx-root'),
+    pptxVanilla: body.includes('PPTX Vanilla Viewer') || !!document.querySelector('.pptx-vanilla-viewer'),
     slideText: !!document.querySelector('.slide-text'),
     epubViewer: !!document.querySelector('.epub-viewer'),
     mediaViewer: !!document.querySelector('.media-viewer'),
@@ -385,9 +386,9 @@ def _docx_or_plugin(m: dict) -> str:
 
 
 def _pptx_or_plugin(m: dict) -> str:
-    if m.get("pptxRoot") or m.get("pluginRenderer"):
+    if m.get("pptxRoot") or m.get("pluginRenderer") or m.get("pptxVanilla"):
         return ""
-    return "pptxRoot or pluginRenderer expected"
+    return "pptxRoot, pluginRenderer, or pptxVanilla expected"
 
 
 def _xlsx_or_plugin(m: dict) -> str:
@@ -416,7 +417,32 @@ ASSERTIONS: dict[str, list[tuple[str, callable]]] = {
         ("has slide text", lambda m: assert_truthy(m.get("slideText"), what="slideText")),
         ("no archive fallback", _no_archive_fallback),
     ],
+    "sample.otp": [
+        ("no error", _no_error),
+        ("pptx viewer", lambda m: assert_truthy(m.get("pptxRoot"), what="pptxRoot")),
+        ("has slide text", lambda m: assert_truthy(m.get("slideText"), what="slideText")),
+        ("no archive fallback", _no_archive_fallback),
+    ],
+    "sample.rtf": [
+        ("no error", _no_error),
+        ("has body", lambda m: _has_body(m, 20)),
+    ],
     "sample.docx": [
+        ("no error", _no_error),
+        ("docx viewer or plugin", _docx_or_plugin),
+        ("has body", lambda m: _has_body(m, 50)),
+    ],
+    "sample.docm": [
+        ("no error", _no_error),
+        ("docx viewer or plugin", _docx_or_plugin),
+        ("has body", lambda m: _has_body(m, 50)),
+    ],
+    "sample.dotx": [
+        ("no error", _no_error),
+        ("docx viewer or plugin", _docx_or_plugin),
+        ("has body", lambda m: _has_body(m, 50)),
+    ],
+    "sample.dotm": [
         ("no error", _no_error),
         ("docx viewer or plugin", _docx_or_plugin),
         ("has body", lambda m: _has_body(m, 50)),

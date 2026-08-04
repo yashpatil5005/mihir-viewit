@@ -48,8 +48,11 @@ for i in "${!TARGETS[@]}"; do
     echo "Built ${OUTPUT_DIR}/${ABI}/libviewit_plugin_office_universal.so"
 done
 
-# Create plugin package
+# Create plugin package — canonical root layout matching office-ooxml:
+#   plugin.json / lib/<ABI>/libviewit_plugin_office_universal.so / [dex/]
+# (The app's plugin loader expects entries at the ZIP root, NOT under package/.)
 PACKAGE_DIR="${OUTPUT_DIR}/package"
+rm -rf "${PACKAGE_DIR}"
 mkdir -p "${PACKAGE_DIR}/lib/arm64-v8a"
 mkdir -p "${PACKAGE_DIR}/lib/x86_64"
 mkdir -p "${PACKAGE_DIR}/dex"
@@ -70,9 +73,11 @@ else
     echo "WARNING: d8 not found, skipping classes.dex generation"
 fi
 
-# Create ZIP package
-cd "${OUTPUT_DIR}"
-zip -r "office-universal-0.1.0-${ABIS[0]}.zip" "package/lib/${ABIS[0]}" "package/plugin.json" 2>/dev/null || true
-zip -r "office-universal-0.1.0-${ABIS[1]}.zip" "package/lib/${ABIS[1]}" "package/plugin.json" 2>/dev/null || true
+# Create ZIP packages (one per ABI, entries relative to the package root).
+# Remove stale zips first: `zip -r` appends, so a prior package/ prefix would leak in.
+for ABI in "${ABIS[@]}"; do
+    rm -f "${OUTPUT_DIR}/office-universal-0.1.0-${ABI}.zip"
+    (cd "${PACKAGE_DIR}" && zip -r "${OUTPUT_DIR}/office-universal-0.1.0-${ABI}.zip" "lib/${ABI}" "plugin.json" "dex")
+done
 
 echo "Build complete! Output in ${OUTPUT_DIR}"
