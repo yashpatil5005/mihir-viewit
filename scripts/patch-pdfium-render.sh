@@ -7,13 +7,11 @@ if [[ -z "$FILE" ]]; then
   echo "[patch-pdfium] pdfium-render not in cargo registry yet; run cargo fetch -p pdfium-render first"
   exit 0
 fi
-CHANGED=0
-if grep -q 'chars.as_ptr() as \*const i8' "$FILE"; then
+# Patch only when the target code is actually present. A no-op `sed -i`
+# rewrite would bump the registry file's mtime every run, making cargo treat
+# pdfium-render as changed → full downstream recompile (~50 s per script run).
+if grep -q 'chars.as_ptr() as \*const u8' "$FILE"; then
   sed -i 's/chars.as_ptr() as \*const u8/chars.as_ptr() as *const i8/' "$FILE"
-  CHANGED=1
-fi
-
-if [[ $CHANGED -eq 1 ]]; then
   echo "[patch-pdfium] patched $FILE"
 else
   echo "[patch-pdfium] already patched or upstream fixed"

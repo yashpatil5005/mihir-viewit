@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
-# Two-pass Android release: Rust (fmt-everything) + Gradle, skip RustPlugin re-invoke.
+# Android release: frontend + Rust lib (canonical flags from
+# apps/mobile/.cargo/config.toml) + Gradle, then zip/zipalign/apksigner.
+#
+# Phase timings are printed by `mark`, so a slow step is visible instead of a
+# silent wall-clock gap ("gradle says 32s, whole script takes 10 min").
+#
+# Rust linker + RUSTFLAGS are NOT overridden here — they live in
+# apps/mobile/.cargo/config.toml so Android Studio / gradle rust builds and this
+# script share one fingerprint. Any divergence forces a full aarch64 rebuild of
+# the dependency tree every time you switch entry points (~10 min).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 MOBILE="$ROOT/apps/mobile"
@@ -11,9 +20,13 @@ PDFIUM_CACHE="${ROOT}/.cache/pdfium-android-arm64"
 JNI="$GEN/app/src/main/jniLibs/arm64-v8a"
 FLAVOR_JNI="$GEN/app/src/arm64/jniLibs/arm64-v8a"
 
+_ts=$(date +%s%N)
+mark() { local now; now=$(date +%s%N); echo "  [$(awk -v a="$now" -v b="$_ts" 'BEGIN{printf "%.1fs", (a-b)/1e9}')] $1"; _ts=$now; }
+
 chmod +x "$ROOT/scripts/patch-pdfium-render.sh" "$ROOT/scripts/patch-tauri-android-protocol.sh"
 "$ROOT/scripts/patch-pdfium-render.sh"
 "$ROOT/scripts/patch-tauri-android-protocol.sh"
+mark "patches applied"
 
 export TAURI_ANDROID_PROJECT_PATH="$GEN"
 
@@ -25,9 +38,36 @@ fi
 chmod +x "$ROOT/scripts/patch-android-mainactivity.sh"
 "$ROOT/scripts/patch-android-mainactivity.sh"
 export WRY_ANDROID_PACKAGE="ai.viewit.app"
+mark "mainactivity overlay"
 
-echo "[android] frontend build"
-(cd "$MOBILE" && npm run build)
+# Frontend rebuilds touch frontendDist (apps/mobile/build/), which tauri_build
+# mtime-watches — every npm rebuild forces the full aarch64 crate recompile
+# (~50 s) on the next cargo run even with zero changes. Hash the frontend
+# inputs and skip the npm rebuild when nothing changed since the last build.
+FE_STAMP="${VIEWIT_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/viewit}/mobile-frontend-inputs.v1.sha"
+fe_hash() {
+  {
+    for p in "$MOBILE/src" "$MOBILE/static" "$MOBILE/package.json" \
+             "$MOBILE/svelte.config.js" "$MOBILE/vite.config.ts" "$MOBILE/tsconfig.json" \
+             "$ROOT/packages/ui/src" "$ROOT/packages/ui/package.json" "$ROOT/packages/ui/tsconfig.json"; do
+      if [[ -f "$p" ]]; then
+        sha256sum "$p"
+      elif [[ -d "$p" ]]; then
+        find "$p" -type f -print0 | sort -z | xargs -0 sha256sum
+      fi
+    done
+  } | sha256sum | awk '{print $1}'
+}
+FE_HASH=$(fe_hash)
+if [[ -f "$FE_STAMP" && "$(cat "$FE_STAMP")" == "$FE_HASH" ]]; then
+  echo "[android] frontend inputs unchanged — skipping npm rebuild"
+else
+  echo "[android] frontend build"
+  (cd "$MOBILE" && npm run build)
+  mkdir -p "$(dirname "$FE_STAMP")"
+  printf '%s\n' "$FE_HASH" > "$FE_STAMP"
+fi
+mark "frontend build"
 
 BUILD_PROFILE="${BUILD_PROFILE:-lite}"
 if [[ "$BUILD_PROFILE" == "full" ]]; then
@@ -48,16 +88,21 @@ else
   rm -f "$JNI/libpdfium.so"
 fi
 
-LINKER="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
 export ANDROID_NDK_HOME="$NDK"
-export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$LINKER"
-export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C force-unwind-tables=no"
 export PATH="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
 BUILD_TOOLS=$(ls -d "$HOME/Android/Sdk/build-tools/"* 2>/dev/null | sort -V | tail -1)
 
-echo "[android] cargo release lib ($CARGO_FEATURES)"
-(cd "$MOBILE" && cargo build --target aarch64-linux-android --release -p viewit-mobile --lib \
-  --features "$CARGO_FEATURES")
+# VIEWIT_SKIP_RUST=1 reuses the previously built .so (iterating on frontend /
+# gradle / plugin packaging only, no mobile Rust changes). The ELF-alignment
+# gate below still runs, so a misaligned stale lib fails loudly.
+if [[ "${VIEWIT_SKIP_RUST:-0}" == "1" ]]; then
+  echo "[android] VIEWIT_SKIP_RUST=1 — reusing previous Rust lib (no cargo)"
+else
+  echo "[android] cargo release lib ($CARGO_FEATURES)"
+  (cd "$MOBILE" && cargo build --target aarch64-linux-android --release -p viewit-mobile --lib \
+    --features "$CARGO_FEATURES")
+fi
+mark "cargo aarch64 release lib"
 
 TARGET_DIR=$(cd "$ROOT" && cargo metadata --format-version 1 --no-deps | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')
 RUST_LIB="$TARGET_DIR/aarch64-linux-android/release/libviewit_mobile_lib.so"
@@ -80,11 +125,17 @@ echo "[android] sync frontend into APK assets (WebViewAssetLoader fallback)"
 ASSETS="$GEN/app/src/main/assets"
 mkdir -p "$ASSETS"
 rsync -a --delete "$MOBILE/build/" "$ASSETS/"
+mark "frontend assets sync"
 
 echo "[android] gradle arm64-only APK (~11 MB, not 4-ABI universal)"
+GRADLE_EXTRA=""
+# CI: hermetic single-run JVM. Local: reuse the gradle daemon (much faster
+# repeated builds, and it's what makes warm runs seconds instead of minutes).
+[[ "${CI:-0}" == "1" ]] && GRADLE_EXTRA="--no-daemon"
 (cd "$GEN" && ./gradlew :app:assembleArm64Release \
   -PabiList=arm64-v8a \
-  -x rustBuildArm64Release -x rustBuildUniversalRelease --no-daemon)
+  -x rustBuildArm64Release -x rustBuildUniversalRelease $GRADLE_EXTRA)
+mark "gradle assembleArm64Release"
 
 APK_UNSIGNED="$GEN/app/build/outputs/apk/arm64/release/app-arm64-release-unsigned.apk"
 APK_WITH_LIB="$ROOT/dist/viewit-android-arm64-release-with-lib.apk"
@@ -101,21 +152,25 @@ if [[ ! -f "$KEYSTORE" ]]; then
     -dname "CN=Android Debug,O=Android,C=US"
 fi
 
-rm -f "$APK_WITH_LIB" "$APK_ALIGNED" "$APK_SIGNED" "$APK_LEGACY"
 cp "$APK_UNSIGNED" "$APK_WITH_LIB"
 TMP_LIB_DIR="$ROOT/dist/android-native-lib"
 rm -rf "$TMP_LIB_DIR"
 mkdir -p "$TMP_LIB_DIR/lib/arm64-v8a"
 cp "$RUST_LIB" "$TMP_LIB_DIR/lib/arm64-v8a/libviewit_mobile_lib.so"
-OFFICE_LIB="$GEN/app/src/main/jniLibs/arm64-v8a/libviewit_plugin_office_universal.so"
+# office-universal plugin .so: prefer the canonical plugins/.../build.sh output.
+# assembleArm64Release re-stages a *cached* copy over $GEN jniLibs, silently
+# undoing any fresh build.sh output — so only fall back to that stale copy.
+OFFICE_LIB="$ROOT/apps/mobile/plugins/office-universal/build/output/arm64-v8a/libviewit_plugin_office_universal.so"
+[[ -f "$OFFICE_LIB" ]] || OFFICE_LIB="$GEN/app/src/main/jniLibs/arm64-v8a/libviewit_plugin_office_universal.so"
 if [[ -f "$OFFICE_LIB" ]]; then
   cp "$OFFICE_LIB" "$TMP_LIB_DIR/lib/arm64-v8a/libviewit_plugin_office_universal.so"
-  echo "[android] adding office-universal plugin to APK"
+  echo "[android] adding office-universal plugin to APK ($OFFICE_LIB)"
 fi
 (cd "$TMP_LIB_DIR" && zip -0 -q "$APK_WITH_LIB" lib/arm64-v8a/libviewit_mobile_lib.so lib/arm64-v8a/libviewit_plugin_office_universal.so 2>/dev/null || zip -0 -q "$APK_WITH_LIB" lib/arm64-v8a/libviewit_mobile_lib.so)
 "$BUILD_TOOLS/zipalign" -P 16 -f 4 "$APK_WITH_LIB" "$APK_ALIGNED"
 "$BUILD_TOOLS/apksigner" sign --ks "$KEYSTORE" --ks-pass pass:android --key-pass pass:android \
   --out "$APK_SIGNED" "$APK_ALIGNED"
+mark "zip/zipalign/apksigner"
 
 "$ROOT/scripts/verify-android-16kb.sh" "$APK_SIGNED"
 
@@ -128,9 +183,9 @@ fi
 echo "[android] APK size OK: $APK_BYTES bytes <= $MAX_APK_BYTES bytes"
 
 echo "[android] size budget"
-(cd "$ROOT" && (node --experimental-strip-types scripts/size-budget.ts 2>/dev/null || npx tsx scripts/size-budget.ts))
+(cd "$ROOT" && (node --experimental-strip-types scripts/size-budget.ts 2>/dev/null || timeout 90 npx tsx scripts/size-budget.ts))
+mark "size budget"
 
 echo ""
 echo "Signed APK (USB install): $APK_SIGNED"
 echo "  adb install -r \"$APK_SIGNED\""
-echo "  adb shell am start -n ai.viewit.app/.MainActivity"

@@ -11,6 +11,10 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
+_ts0=$(date +%s%N)
+_ts=$_ts0
+mark() { local now; now=$(date +%s%N); echo "  [$(awk -v a="$now" -v b="$_ts" 'BEGIN{printf "%.1fs", (a-b)/1e9}')] $1"; _ts=$now; }
+
 FAILED=0
 PASSED=0
 SKIPPED=0
@@ -46,6 +50,7 @@ else
     exit 1
   fi
 fi
+mark "git worktree check"
 
 # 1. Base app frontend build
 echo "[2/7] Frontend build..."
@@ -56,6 +61,7 @@ else
   echo -e "${RED}FAIL${NC}  Frontend build (see /tmp/viewit-build.log)"
   FAILED=$((FAILED+1))
 fi
+mark "frontend build"
 
 # 2. Plugin crate tests
 echo "[3/7] Plugin crate tests..."
@@ -66,6 +72,7 @@ else
   echo -e "${RED}FAIL${NC}  Plugin crate tests (see /tmp/viewit-plugin-test.log)"
   FAILED=$((FAILED+1))
 fi
+mark "plugin crate tests"
 
 # 3. Plugin ZIP exists and is valid
 echo "[4/7] Plugin ZIP build..."
@@ -77,6 +84,7 @@ else
   echo -e "${RED}FAIL${NC}  Plugin ZIP build (run scripts/prepare-release.sh first; ZIPs are ignored local artifacts)"
   FAILED=$((FAILED+1))
 fi
+mark "plugin zip check"
 
 # 4. Catalog checksum matches ZIP
 echo "[5/7] Catalog checksum verification..."
@@ -114,11 +122,12 @@ else
   echo -e "${YELLOW}SKIP${NC}  Catalog checksum verification (catalog.json not found)"
   SKIPPED=$((SKIPPED+1))
 fi
+mark "catalog checksum"
 
 # 5. Size budget
 echo "[6/7] Size budget..."
 if [[ -f scripts/size-budget.ts ]] && [[ -f scripts/size-budget.json ]]; then
-  if (node --experimental-strip-types scripts/size-budget.ts 2>/dev/null || npx tsx scripts/size-budget.ts) >/tmp/viewit-size.log 2>&1; then
+  if (node --experimental-strip-types scripts/size-budget.ts 2>/dev/null || timeout 90 npx tsx scripts/size-budget.ts) >/tmp/viewit-size.log 2>&1; then
     echo -e "${GREEN}PASS${NC}  Size budget"
     PASSED=$((PASSED+1))
   else
@@ -129,6 +138,7 @@ else
   echo -e "${YELLOW}SKIP${NC}  Size budget (scripts not found)"
   SKIPPED=$((SKIPPED+1))
 fi
+mark "size budget"
 
 # 6. Dependency separation: ooxmlsdk NOT in base Cargo.lock
 echo "[7/7] Dependency separation (ooxmlsdk not in base)..."
@@ -165,7 +175,9 @@ else
     FAILED=$((FAILED+1))
   fi
 fi
+mark "dependency separation"
 
+echo "  [total: $(awk -v a="$(date +%s%N)" -v b="$_ts0" 'BEGIN{printf "%.1fs", (a-b)/1e9}')]"
 echo ""
 echo "=== Results ==="
 echo -e "Passed:  ${GREEN}$PASSED${NC}"
