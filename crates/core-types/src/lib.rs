@@ -322,6 +322,11 @@ pub struct XlsxSheet {
     pub total_rows_hint: Option<usize>,
     #[serde(default)]
     pub total_cols_hint: Option<usize>,
+    /// Formula source per preview cell, aligned with `preview_rows` (same
+    /// shape; empty string when a cell has no formula). Only populated by
+    /// ODS (native parser) — XLSX stays calamine-sourced without formulas.
+    #[serde(default)]
+    pub preview_formulas: Option<Vec<Vec<String>>>,
 }
 
 /// Errors that any fmt-* crate may return. Uniform so the frontend can rely

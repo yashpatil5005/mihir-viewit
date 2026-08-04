@@ -13,6 +13,7 @@
       total_cols_hint?: number;
       merged_cells?: string[];
       frozen_panes?: { x_split: number; y_split: number; active_pane: string };
+      preview_formulas?: string[][];
     }>,
   );
   let pluginHtml = $derived((docProp.html ?? '') as string);
@@ -33,13 +34,27 @@
     const source = sheet.header.length > 0 ? sheet.header : columnLabels;
     return Array.from({ length: columnCount }, (_, i) => source[i] ?? '');
   });
+  let formulaGrid = $derived.by(() => {
+    if (!sheet) return [];
+    const f = sheet.preview_formulas ?? [];
+    return sheet.preview_rows.map((row, r) =>
+      Array.from({ length: columnCount }, (_, i) => (f[r]?.[i] ?? '')),
+    );
+  });
   let visibleRows = $derived.by(() => {
     if (!sheet) return [];
     return sheet.preview_rows.map((row) => Array.from({ length: columnCount }, (_, i) => row[i] ?? ''));
   });
+  let hasFormulas = $derived(formulaGrid.some((row) => row.some((c) => c)));
+  let formulaCount = $derived(
+    formulaGrid.reduce((n, row) => n + row.filter((c) => c).length, 0),
+  );
   let textBody = $derived.by(() => {
     if (!sheet) return '';
-    return [sheet.header.join('\t'), ...sheet.preview_rows.map(r => r.join('\t'))].join('\n');
+    return [
+      sheet.header.join('\t'),
+      ...sheet.preview_rows.map((row, r) => [...row, ...(formulaGrid[r] ?? [])].join('\t')),
+    ].join('\n');
   });
 
   let matches = $derived(query ? findAllMatches(textBody, query, caseSensitive) : []);
@@ -85,6 +100,7 @@
       <span>{columnCount}{sheet.total_cols_hint && sheet.total_cols_hint !== columnCount ? '/' + sheet.total_cols_hint : ''} cols</span>
       {#if sheet.merged_cells && sheet.merged_cells.length > 0}<span>{sheet.merged_cells.length} merged</span>{/if}
       {#if sheet.frozen_panes}<span>frozen x:{sheet.frozen_panes.x_split} y:{sheet.frozen_panes.y_split}</span>{/if}
+      {#if hasFormulas}<span>{formulaCount} formula{formulaCount === 1 ? '' : 's'}</span>{/if}
       {#if matches.length > 0}<span>{matches.length} matches</span>{/if}
     </aside>
     <div class="table-frame">
@@ -105,8 +121,15 @@
           {#each visibleRows as row, rowIndex}
             <tr>
               <th class="row-label">{rowIndex + 2}</th>
-              {#each row as cell}
-                <td class:formula={(cell ?? '').startsWith('=')} title={cell}>{@html cellMatches(cell ?? '')}</td>
+              {#each row as cell, c}
+                {@const fmt = formulaGrid[rowIndex][c]}
+                <td class:formula={(cell ?? '').startsWith('=') || (!(cell ?? '').trim() && !!fmt)} title={fmt ? fmt + '\n' + (cell ?? '') : cell}>
+                  {#if !(cell ?? '').trim() && fmt}
+                    <span class="fx-empty" title={fmt}>{fmt}</span>
+                  {:else}
+                    {@html cellMatches(cell ?? '')}
+                  {/if}
+                </td>
               {/each}
             </tr>
           {/each}
@@ -137,5 +160,6 @@
   .col-label { min-width: 7ch; }
   tbody tr:hover td { background: color-mix(in srgb, var(--link) 8%, var(--bg-primary)); }
   td.formula { color: var(--link); }
+  .fx-empty { color: var(--text-secondary); font-style: italic; opacity: 0.8; }
   :global(mark) { background: rgba(255, 213, 79, 0.6); border-radius: 0.15rem; }
 </style>

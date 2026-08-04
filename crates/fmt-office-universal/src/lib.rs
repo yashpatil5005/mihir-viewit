@@ -177,7 +177,8 @@ fn dispatch(format: Format, bytes: &[u8], _ext: &str, name: &str) -> Result<Docu
     let bytes = bytes.as_slice();
 
     match format {
-        Format::Xlsx | Format::Xls | Format::Ods => parse_xlsx_xls_ods(bytes, format),
+        Format::Xlsx | Format::Xls => parse_xlsx_xls_ods(bytes, format),
+        Format::Ods => ods::parse_ods(bytes, format, name),
         Format::Docx => docx::parse_docx(bytes),
         Format::Pptx => pptx::parse_pptx(bytes, format, name),
         Format::Odt => odt::parse_odt(bytes, format, name),
@@ -253,6 +254,7 @@ fn parse_xlsx_xls_ods(bytes: &[u8], format: Format) -> Result<Document, Error> {
                     preview_rows,
                     total_rows_hint: Some(range.height()),
                     total_cols_hint: Some(range.width()),
+                    preview_formulas: None,
                 });
             }
         }
@@ -276,29 +278,7 @@ fn parse_xlsx_xls_ods(bytes: &[u8], format: Format) -> Result<Document, Error> {
                     preview_rows,
                     total_rows_hint: Some(range.height()),
                     total_cols_hint: Some(range.width()),
-                });
-            }
-        }
-        Format::Ods => {
-            let mut workbook = calamine::Ods::<Cursor<Vec<u8>>>::new(cursor)
-                .map_err(|e| Error::Parse(format!("calamine ods: {}", e)))?;
-            let sheets_meta = workbook.worksheets();
-            for (name, range) in sheets_meta.into_iter().take(8) {
-                let mut rows_iter = range.rows();
-                let header: Vec<String> = rows_iter
-                    .next()
-                    .map(|r| r.iter().map(|c| c.to_string()).collect())
-                    .unwrap_or_default();
-                let preview_rows: Vec<Vec<String>> = rows_iter
-                    .take(200)
-                    .map(|r| r.iter().map(|c| c.to_string()).collect())
-                    .collect();
-                sheets.push(XlsxSheet {
-                    name,
-                    header,
-                    preview_rows,
-                    total_rows_hint: Some(range.height()),
-                    total_cols_hint: Some(range.width()),
+                    preview_formulas: None,
                 });
             }
         }

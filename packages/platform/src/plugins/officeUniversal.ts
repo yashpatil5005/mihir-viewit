@@ -29,6 +29,7 @@ export interface XlsxSheet {
   name: string;
   rows: (string | number | null)[][];
   merged_cells?: string[];
+  preview_formulas?: string[][];
 }
 
 export interface PptxSlide {

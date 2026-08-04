@@ -175,6 +175,7 @@ fn iwork_numbers_sheets(
         preview_rows: rows,
         total_rows_hint: Some(total_rows),
         total_cols_hint: Some(total_cols),
+        preview_formulas: None,
     }]
 }
 

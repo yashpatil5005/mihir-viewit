@@ -29,6 +29,7 @@ pub fn parse_xlsx(bytes: &[u8]) -> Result<Document, Error> {
             preview_rows,
             total_rows_hint: Some(range.height()),
             total_cols_hint: Some(range.width()),
+            preview_formulas: None,
         });
     }
     Ok(Document::Xlsx {
@@ -66,6 +67,7 @@ pub fn parse_xlsb(bytes: &[u8]) -> Result<Document, Error> {
             preview_rows,
             total_rows_hint: Some(range.height()),
             total_cols_hint: Some(range.width()),
+            preview_formulas: None,
         });
     }
     Ok(Document::Xlsx {
@@ -96,6 +98,7 @@ pub fn parse_xls_binary(bytes: &[u8]) -> Result<Document, Error> {
             preview_rows,
             total_rows_hint: Some(range.height()),
             total_cols_hint: Some(range.width()),
+            preview_formulas: None,
         });
     }
     Ok(Document::Xlsx {

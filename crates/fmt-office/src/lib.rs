@@ -100,6 +100,7 @@ fn parse_xls_binary(bytes: &[u8]) -> Result<Document, Error> {
             preview_rows,
             total_rows_hint: Some(range.height()),
             total_cols_hint: Some(range.width()),
+            preview_formulas: None,
         });
     }
     Ok(Document::Xlsx {
@@ -324,6 +325,7 @@ fn parse_xlsx_ods(bytes: &[u8], format: Format) -> Result<Document, Error> {
             preview_rows,
             total_rows_hint: Some(range.height()),
             total_cols_hint: Some(range.width()),
+            preview_formulas: None,
         });
     }
 
@@ -357,6 +359,7 @@ fn parse_xlsx(bytes: &[u8]) -> Result<Document, Error> {
             preview_rows,
             total_rows_hint: Some(range.height()),
             total_cols_hint: Some(range.width()),
+            preview_formulas: None,
         });
     }
     Ok(Document::Xlsx {
