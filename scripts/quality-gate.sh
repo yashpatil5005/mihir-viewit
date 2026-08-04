@@ -81,7 +81,7 @@ fi
 # 4. Catalog checksum matches ZIP
 echo "[5/7] Catalog checksum verification..."
 if [[ -f plugins/catalog.json ]]; then
-  CATALOG_CHECK=$(python3 - <<'PY'
+  python3 - <<'PY'
 import hashlib, json, sys
 from pathlib import Path
 catalog = json.loads(Path("plugins/catalog.json").read_text())["plugins"]
@@ -102,7 +102,7 @@ for e in catalog:
         failed = True
 sys.exit(1 if failed else 0)
 PY
-)
+  CATALOG_CHECK=$?
   if [[ "$CATALOG_CHECK" == "0" ]]; then
     echo -e "${GREEN}PASS${NC}  Catalog checksum verification"
     PASSED=$((PASSED+1))
