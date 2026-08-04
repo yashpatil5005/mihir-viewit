@@ -118,7 +118,7 @@ fi
 # 5. Size budget
 echo "[6/7] Size budget..."
 if [[ -f scripts/size-budget.ts ]] && [[ -f scripts/size-budget.json ]]; then
-  if npx tsx scripts/size-budget.ts >/tmp/viewit-size.log 2>&1; then
+  if (node --experimental-strip-types scripts/size-budget.ts 2>/dev/null || npx tsx scripts/size-budget.ts) >/tmp/viewit-size.log 2>&1; then
     echo -e "${GREEN}PASS${NC}  Size budget"
     PASSED=$((PASSED+1))
   else

@@ -128,7 +128,7 @@ fi
 echo "[android] APK size OK: $APK_BYTES bytes <= $MAX_APK_BYTES bytes"
 
 echo "[android] size budget"
-(cd "$ROOT" && npx tsx scripts/size-budget.ts)
+(cd "$ROOT" && (node --experimental-strip-types scripts/size-budget.ts 2>/dev/null || npx tsx scripts/size-budget.ts))
 
 echo ""
 echo "Signed APK (USB install): $APK_SIGNED"

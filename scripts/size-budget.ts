@@ -178,8 +178,18 @@ function main(): void {
     process.exit(0);
   }
 
-  // Persist back so subsequent runs show the latest measurement.
-  writeFileSync(budgetPathFull, JSON.stringify(updated, null, 2) + '\n');
+  // Persist back so subsequent runs show the latest measurement — but only when
+  // a value actually changed, so a quality-gate run leaves the worktree clean
+  // (keeps step [1/7] "Git worktree clean" meaningful on re-runs).
+  const changed = Object.keys(updated.last_measured).some(
+    (k) => k !== '_status' && updated.last_measured[k] !== budget.last_measured[k],
+  );
+  if (changed) {
+    writeFileSync(budgetPathFull, JSON.stringify(updated, null, 2) + '\n');
+    console.log('\n[size-budget] measurement persisted (values changed)');
+  } else {
+    console.log('\n[size-budget] unchanged (no rewrite)');
+  }
   if (failed) {
     console.error('\n[size-budget] FAILED — at least one artifact exceeded budget. Adjust budget or shrink bundle.');
     process.exit(1);
