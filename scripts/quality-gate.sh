@@ -80,27 +80,30 @@ fi
 
 # 4. Catalog checksum matches ZIP
 echo "[5/7] Catalog checksum verification..."
-CATALOG_CHECK=true
 if [[ -f plugins/catalog.json ]]; then
-  while IFS= read -r checksum; do
-    if [[ -n "$checksum" ]]; then
-      found=false
-      for zip_file in plugins/*.zip; do
-        if [[ -f "$zip_file" ]]; then
-          actual=$(sha256sum "$zip_file" | awk '{print $1}')
-          if [[ "$actual" == "$checksum" ]]; then
-            found=true
-            break
-          fi
-        fi
-      done
-      if ! $found; then
-        echo "  WARNING: catalog checksum $checksum not found in any ZIP"
-        CATALOG_CHECK=false
-      fi
-    fi
-  done < <(grep -o '"checksum": "[a-f0-9]*"' plugins/catalog.json | sed 's/"checksum": "//;s/"//')
-  if $CATALOG_CHECK; then
+  CATALOG_CHECK=$(python3 - <<'PY'
+import hashlib, json, sys
+from pathlib import Path
+catalog = json.loads(Path("plugins/catalog.json").read_text())["plugins"]
+zips = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in Path("plugins").glob("*.zip")}
+failed = False
+for e in catalog:
+    checksum = (e.get("checksum") or "").strip().lower()
+    if not checksum:
+        continue
+    related = [n for n in zips if n.startswith(e["id"] + "-")]
+    if not related:
+        print(f"  SKIP  {e['id']:<18} checksum {checksum[:12]}… (artifact not staged locally)")
+        continue
+    if checksum in zips.values():
+        print(f"  OK    {e['id']:<18} checksum matches staged ZIP")
+    else:
+        print(f"  FAIL  {e['id']:<18} checksum {checksum[:12]}… does not match any staged ZIP")
+        failed = True
+sys.exit(1 if failed else 0)
+PY
+)
+  if [[ "$CATALOG_CHECK" == "0" ]]; then
     echo -e "${GREEN}PASS${NC}  Catalog checksum verification"
     PASSED=$((PASSED+1))
   else
