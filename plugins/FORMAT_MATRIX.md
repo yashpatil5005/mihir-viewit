@@ -44,6 +44,27 @@ Status legend for current engine: **FULL** = real layout/content rendered on-dev
 | `.heic`, `.heif`, `.avif` | extension + MIME | ImageViewer (platform) | — | Depends on Android platform decoder |
 | `.psd`, `.dng`, `.cr2`, `.cr3`, `.nef`, `.arw` | extension + MIME | ImageViewer (raw fallback) | — | WebView may not render; platform-dependent |
 
+### Compression Universal — 2026-08-05
+
+`compression-universal` (native plugin, v0.1.0) lists **every** supported container precisely — zip, 7z, rar, tar, tar.gz/bz2/xz/zst/lz4/lzma chains, and standalone gz/bz2/xz/zst/lz4/lzma — by peeking at archive headers without extracting. Per-entry in-place preview, per-entry Save (system document picker), and "Extract all" to the app-scoped external storage folder.
+
+| Extension(s) | Detection | Base View | Enhanced | Notes / Limitations |
+|---|---|---|---|---|
+| `.zip` | magic `PK` | ArchiveViewer (wasm) | `compression-universal` | **FULL** — precise entries incl. sizes (deflate/bzip2/zstd/lzma members) |
+| `.7z` | magic `7z¼¯'` | UnsupportedViewer | `compression-universal` | **FULL** — entries incl. CRC + compressed sizes; encrypted (`AES256`) 7z surfaces the clear "encrypted archive" message instead of a listing |
+| `.rar` | magic `Rar!` | UnsupportedViewer | `compression-universal` | **FULL** — entries via unrar; encrypted headers return an explicit password-required error |
+| `.tar` | ustar magic | ArchiveViewer (wasm) | `compression-universal` | **FULL** |
+| `.tar.gz`, `.tgz` | gzip magic + ustar | ArchiveViewer (gz→tar chain) | `compression-universal` | **FULL** — one member is listed as the inner tar |
+| `.tar.bz2`, `.tbz2` | bzip2 magic | UnsupportedViewer | `compression-universal` | **FULL** |
+| `.tar.xz`, `.txz` | xz magic | UnsupportedViewer | `compression-universal` | **FULL** |
+| `.tar.zst`, `.tzst` | zstd magic | UnsupportedViewer | `compression-universal` | **FULL** |
+| `.tar.lz4`, `.tlz` | lz4 frame magic | UnsupportedViewer | `compression-universal` | **FULL** |
+| `.tar.lzma` | lzma-alone magic (`\x5d\x00\x00`) | UnsupportedViewer | `compression-universal` | **FULL** |
+| `.gz`, `.bz2`, `.xz`, `.zst`, `.lz4`, `.lzma` (standalone) | per-format magic | UnsupportedViewer | `compression-universal` | **FULL** — single decompressed member; large members (≥ 64 MB uncompressed) fall back to Save |
+| encrypted `.rar` | header flag | — | `compression-universal` | Encrypted-list error string surfaced ("password" message). No password prompt yet. |
+
+Extraction storage scope (documented in catalog): listings read app-scoped temp copies of the picked file; extraction writes only to the app's own external storage (`files/Extracted/`) or, via the system document picker, to folders the user explicitly chooses — no storage permissions requested.
+
 ### .doc (legacy binary) decision — 2026-08-05
 
 `doc` renders as a **text-only partial preview** (`44,544 bytes · encoding: utf-8 [Partial preview — Word .doc legacy binary, layout/formatting not preserved]`).
@@ -80,7 +101,7 @@ Decision (preview-tier, do NOT build a binary layout renderer):
 | TXT/MD/JSON/CSV | ✅ | ✅ | — | — |
 | Images | ✅ | ✅ | — | — |
 | PDF | ✅ | ✅ | — | — |
-| Archives | ✅ | ✅ | — | — |
+| Archives | ✅ | ✅ | ✅ (compression-universal) | — |
 | DOCX | ✅ | ✅ | ✅ (plugin) | — |
 | XLSX | ✅ | ✅ | ✅ (plugin) | — |
 | PPTX | ✅ | ✅ | ✅ (plugin) | — |

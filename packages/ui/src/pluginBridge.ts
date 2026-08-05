@@ -20,6 +20,8 @@ export interface PluginInfo {
   runtime?: string;
   jsEntry?: string;
   cssEntry?: string;
+  /** Documented storage-permission scope (for extraction-capable plugins). */
+  storageScope?: string;
 }
 
 export interface PluginCatalogSource {
@@ -80,6 +82,7 @@ function normalizeCatalogPlugin(raw: any): PluginInfo | null {
     checksum: raw.checksum ? String(raw.checksum) : undefined,
     abi: raw.abi ? String(raw.abi) : undefined,
     entryClass: raw.entryClass ? String(raw.entryClass) : undefined,
+    storageScope: raw.storageScope ? String(raw.storageScope) : undefined,
   };
 }
 

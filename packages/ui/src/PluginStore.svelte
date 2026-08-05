@@ -196,6 +196,7 @@
                 <p class="description">{plugin.description}</p>
                 <span class="formats">{plugin.formats.join(', ')}</span>
                 <span class="size">{formatPluginSize(plugin.sizeBytes)} download{plugin.installedSizeBytes ? ` · ${formatPluginSize(plugin.installedSizeBytes)} installed` : ''}</span>
+                {#if plugin.storageScope}<p class="scope">{plugin.storageScope}</p>{/if}
                 {#if plugin.sourceUrl}<span class="source-url">From {plugin.sourceUrl}</span>{/if}
               </div>
               {#if installing === plugin.id}
@@ -286,6 +287,7 @@
   .formats { display: block; font-size: 0.7rem; font-family: monospace; color: var(--text-secondary, #888); margin-top: 0.25rem; }
   .size { font-size: 0.7rem; color: var(--text-secondary, #888); }
   .source-url { display: block; margin-top: 0.25rem; font-size: 0.68rem; color: var(--text-secondary, #888); overflow-wrap: anywhere; }
+  .scope { display: block; margin-top: 0.35rem; font-size: 0.7rem; color: var(--text-secondary, #888); overflow-wrap: anywhere; border-top: 1px dashed var(--border, #ddd); padding-top: 0.3rem; }
   .source-heading { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; margin: 1rem 0 0.5rem; padding-top: 0.75rem; border-top: 1px solid var(--border, #ccc); }
   .source-heading strong { display: block; font-size: 0.84rem; overflow-wrap: anywhere; }
   .source-heading span { display: block; color: var(--text-secondary, #666); font-size: 0.72rem; }

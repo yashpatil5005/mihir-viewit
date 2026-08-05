@@ -83,6 +83,52 @@
       "downloadUrl": "https://viewit-plugin-catalog-temp.pages.dev/plugins/office-universal-0.1.0-x86_64.zip"
     },
     {
+      "id": "compression-universal",
+      "name": "Compression Universal",
+      "description": "Precise listings of every compression format (zip, 7z, rar, tar, gz, bz2, xz, zst, lz4, lzma, tar.*) without extracting first, plus per-entry previews and extraction to app storage or a folder you choose.",
+      "minAppVersion": 1,
+      "entryClass": "ai.viewit.plugins.compressionuniversal.CompressionUniversalPlugin",
+      "supportedFormats": [
+        "zip", "7z", "rar", "tar",
+        "gz", "tgz", "bz2", "tbz2", "xz", "txz", "zst", "tzst",
+        "lz4", "lzma", "tlz",
+        "tar.gz", "tar.bz2", "tar.xz", "tar.zst", "tar.lz4", "tar.lzma"
+      ],
+      "capabilities": ["archive-list", "archive-preview", "archive-extract"],
+      "storageScope": "Listing reads app-scoped copies of the picked file (temporary cache). Extraction writes only to the app's own external storage (files/Extracted/) and, via the system document picker, to folders you explicitly choose — no storage permissions are requested.",
+      "abiVersion": 1,
+      "runtime": "native",
+      "version": "0.1.0",
+      "abi": "arm64-v8a",
+      "sizeBytes": 628531,
+      "installedSizeBytes": 1279172,
+      "checksum": "4846b1798dca464c4cfa84c908af419a3ac9eb792a71196a3b2b2ffb42e264d6",
+      "downloadUrl": "https://viewit-plugin-catalog-temp.pages.dev/plugins/compression-universal-0.1.0-arm64-v8a.zip"
+    },
+    {
+      "id": "compression-universal",
+      "name": "Compression Universal",
+      "description": "Precise listings of every compression format (zip, 7z, rar, tar, gz, bz2, xz, zst, lz4, lzma, tar.*) without extracting first, plus per-entry previews and extraction to app storage or a folder you choose.",
+      "minAppVersion": 1,
+      "entryClass": "ai.viewit.plugins.compressionuniversal.CompressionUniversalPlugin",
+      "supportedFormats": [
+        "zip", "7z", "rar", "tar",
+        "gz", "tgz", "bz2", "tbz2", "xz", "txz", "zst", "tzst",
+        "lz4", "lzma", "tlz",
+        "tar.gz", "tar.bz2", "tar.xz", "tar.zst", "tar.lz4", "tar.lzma"
+      ],
+      "capabilities": ["archive-list", "archive-preview", "archive-extract"],
+      "storageScope": "Listing reads app-scoped copies of the picked file (temporary cache). Extraction writes only to the app's own external storage (files/Extracted/) and, via the system document picker, to folders you explicitly choose — no storage permissions are requested.",
+      "abiVersion": 1,
+      "runtime": "native",
+      "version": "0.1.0",
+      "abi": "x86_64",
+      "sizeBytes": 666387,
+      "installedSizeBytes": 1438284,
+      "checksum": "e5dfe3c92724a0962293317befc49e9931bfeeb03853a483164a5b6405046c4a",
+      "downloadUrl": "https://viewit-plugin-catalog-temp.pages.dev/plugins/compression-universal-0.1.0-x86_64.zip"
+    },
+    {
       "id": "ffmpeg-transcoder",
       "name": "FFmpeg Transcoder",
       "description": "Optional media transcode plugin for unsupported video and audio formats. Converts legacy containers/codecs to MP4 using FFmpeg.",

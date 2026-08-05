@@ -18,9 +18,66 @@ import java.security.MessageDigest
 class MainActivity : TauriActivity() {
   private var bridgeWebView: WebView? = null
 
+  /** Archive "Save entry as…" flow: SAF ACTION_CREATE_DOCUMENT handed to the
+   *  system picker; bytes are written on onActivityResult. */
+  private data class PendingSave(
+    val plugin: ArchivePlugin,
+    val uri: String,
+    val name: String,
+    val entryName: String,
+    val displayName: String,
+    val callbackId: String,
+  )
+  private val pendingSaves = java.util.concurrent.ConcurrentHashMap<Int, PendingSave>()
+  private var saveRequestCode = 9001
+
   companion object {
     const val ACTION_DEBUG_OPEN = "ai.viewit.app.action.DEBUG_OPEN"
     const val ACTION_DEBUG_INSTALL_PLUGIN = "ai.viewit.app.action.DEBUG_INSTALL_PLUGIN"
+  }
+
+  override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+    super.onActivityResult(requestCode, resultCode, data)
+    val pending = pendingSaves.remove(requestCode) ?: return
+    val webView = bridgeWebView ?: return
+    val payload = JSONObject().apply {
+      put("id", pending.callbackId)
+      put("op", "save")
+    }
+    if (resultCode != RESULT_OK || data?.data == null) {
+      payload.put("ok", false)
+      payload.put("error", "Save cancelled")
+      webView.post { webView.evaluateJavascript("window._pluginArchiveCallback && window._pluginArchiveCallback($payload)", null) }
+      return
+    }
+    val outUri = data.data!!
+    Thread {
+      try {
+        val tmp = File(applicationContext.cacheDir, "save_stage_$requestCode")
+        val thread = Thread.currentThread()
+        val prev = thread.contextClassLoader
+        val resultJson = try {
+          thread.contextClassLoader = pending.plugin.javaClass.classLoader
+          pending.plugin.extractEntryToFile(Uri.parse(pending.uri), pending.name, pending.entryName, tmp)
+        } finally {
+          thread.contextClassLoader = prev
+        }
+        val result = JSONObject(resultJson)
+        if (!result.optBoolean("ok", false)) {
+          payload.put("ok", false)
+          payload.put("error", result.optString("error", "Extraction failed"))
+        } else {
+          contentResolver.openOutputStream(outUri)?.use { it.write(tmp.readBytes()) } ?: error("No writable stream")
+          payload.put("ok", true)
+          payload.put("size", tmp.length())
+        }
+        tmp.delete()
+      } catch (e: Throwable) {
+        payload.put("ok", false)
+        payload.put("error", e.message ?: e.javaClass.simpleName)
+      }
+      webView.post { webView.evaluateJavascript("window._pluginArchiveCallback && window._pluginArchiveCallback($payload)", null) }
+    }.start()
   }
 
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -535,6 +592,153 @@ class MainActivity : TauriActivity() {
           )
         }
       }.start()
+    }
+
+    // ---- Archive bridge (compression-universal) ---------------------------------
+
+    private fun archivePlugin(pluginId: String): ArchivePlugin {
+      val pm = (application as? ViewItApp)?.pluginManager
+        ?: throw IllegalStateException("Plugin manager unavailable")
+      return pm.documentPluginForId(pluginId)?.documentPlugin as? ArchivePlugin
+        ?: throw IllegalArgumentException("Plugin $pluginId is not an archive plugin")
+    }
+
+    private fun <T> withArchivePluginLoader(instance: Any, block: () -> T): T {
+      val thread = Thread.currentThread()
+      val prev = thread.contextClassLoader
+      return try {
+        thread.contextClassLoader = instance.javaClass.classLoader
+        block()
+      } finally {
+        thread.contextClassLoader = prev
+      }
+    }
+
+    private fun emitArchiveCallback(payload: JSONObject) {
+      runOnUiThread {
+        webView.evaluateJavascript(
+          "window._pluginArchiveCallback && window._pluginArchiveCallback($payload)",
+          null
+        )
+      }
+    }
+
+    @JavascriptInterface
+    fun listPluginArchiveAsync(pluginId: String, uri: String, name: String, callbackId: String) {
+      Thread {
+        val payload = JSONObject().apply {
+          put("id", callbackId)
+          put("op", "list")
+        }
+        try {
+          val plugin = archivePlugin(pluginId)
+          val json = withArchivePluginLoader(plugin) { plugin.listArchive(Uri.parse(uri), name) }
+          val obj = JSONObject(json)
+          if (obj.optBoolean("ok", false)) payload.put("manifest", obj)
+          else payload.put("error", obj.optString("error", "Listing failed"))
+        } catch (e: Throwable) {
+          android.util.Log.e("ViewIt", "Archive list failed", e)
+          payload.put("error", e.message ?: e.javaClass.simpleName)
+        }
+        emitArchiveCallback(payload)
+      }.start()
+    }
+
+    @JavascriptInterface
+    fun extractPluginArchiveEntryAsync(pluginId: String, uri: String, name: String, entryName: String, callbackId: String) {
+      Thread {
+        val payload = JSONObject().apply {
+          put("id", callbackId)
+          put("op", "entry")
+        }
+        try {
+          val plugin = archivePlugin(pluginId)
+          val bytes = withArchivePluginLoader(plugin) { plugin.extractEntry(Uri.parse(uri), name, entryName) }
+          if (bytes == null) {
+            payload.put("error", "Entry is too large for an in-place preview or could not be read — use Save to extract it")
+            payload.put("tooLarge", true)
+          } else {
+            payload.put("base64", java.util.Base64.getEncoder().encodeToString(bytes))
+            payload.put("size", bytes.size)
+          }
+        } catch (e: Throwable) {
+          android.util.Log.e("ViewIt", "Archive entry extract failed", e)
+          payload.put("error", e.message ?: e.javaClass.simpleName)
+        }
+        emitArchiveCallback(payload)
+      }.start()
+    }
+
+    @JavascriptInterface
+    fun extractPluginArchiveAllAsync(pluginId: String, uri: String, name: String, callbackId: String) {
+      Thread {
+        val payload = JSONObject().apply {
+          put("id", callbackId)
+          put("op", "extract-all")
+        }
+        try {
+          val plugin = archivePlugin(pluginId)
+          val root = getExternalFilesDir(null)?.takeIf { it.exists() || it.mkdirs() }
+            ?: File(applicationContext.filesDir, "Extracted").also { it.mkdirs() }
+            ?: throw IllegalStateException("No writable storage")
+          val folder = File(root, "Extracted")
+          folder.mkdirs()
+          val sub = safeFolderName(name)
+          val dest = File(folder, sub)
+          dest.mkdirs()
+          val json = withArchivePluginLoader(plugin) { plugin.extractAll(Uri.parse(uri), name, dest) }
+          val obj = JSONObject(json)
+          if (obj.optBoolean("ok", false)) {
+            payload.put("result", obj)
+            payload.put("dir", dest.absolutePath)
+          } else {
+            payload.put("error", obj.optString("error", "Extraction failed"))
+          }
+        } catch (e: Throwable) {
+          android.util.Log.e("ViewIt", "Archive extract-all failed", e)
+          payload.put("error", e.message ?: e.javaClass.simpleName)
+        }
+        emitArchiveCallback(payload)
+      }.start()
+    }
+
+    @JavascriptInterface
+    fun savePluginArchiveEntryAsync(pluginId: String, uri: String, name: String, entryName: String, displayName: String, mime: String, callbackId: String) {
+      try {
+        val plugin = archivePlugin(pluginId)
+        val code = saveRequestCode++
+        pendingSaves[code] = PendingSave(plugin, uri, name, entryName, displayName, callbackId)
+        runOnUiThread {
+          try {
+            val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+              addCategory(Intent.CATEGORY_OPENABLE)
+              type = mime.ifBlank { "application/octet-stream" }
+              putExtra(Intent.EXTRA_TITLE, displayName)
+              addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivityForResult(intent, code)
+          } catch (e: Throwable) {
+            pendingSaves.remove(code)
+            emitArchiveCallback(JSONObject().apply {
+              put("id", callbackId)
+              put("op", "save")
+              put("error", e.message ?: e.javaClass.simpleName)
+            })
+          }
+        }
+      } catch (e: Throwable) {
+        emitArchiveCallback(JSONObject().apply {
+          put("id", callbackId)
+          put("op", "save")
+          put("error", e.message ?: e.javaClass.simpleName)
+        })
+      }
+    }
+
+    private fun safeFolderName(name: String): String {
+      var base = name.substringBeforeLast('.', name)
+      if (base.isBlank()) base = "archive"
+      return base.replace(Regex("[^A-Za-z0-9._-]"), "_").take(48).ifBlank { "archive" }
     }
   }
 }

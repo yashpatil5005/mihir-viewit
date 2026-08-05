@@ -121,6 +121,22 @@ for DEST in "$JNI/libviewit_mobile_lib.so" "$FLAVOR_JNI/libviewit_mobile_lib.so"
   fi
 done
 
+# Sync plugin .so files into BOTH src/main/jniLibs and src/arm64/jniLibs
+# BEFORE gradle: the arm64 flavor merges the two source dirs, so stale or
+# differing copies in either produce a "Duplicate resources" merge failure.
+PLUGIN_LIBS=(
+  "$ROOT/apps/mobile/plugins/office-universal/build/output/arm64-v8a/libviewit_plugin_office_universal.so"
+  "$ROOT/apps/mobile/plugins/compression-universal/build/output/arm64-v8a/libviewit_plugin_compression_universal.so"
+)
+for PLIB in "${PLUGIN_LIBS[@]}"; do
+  [[ -f "$PLIB" ]] || continue
+  for DEST in "$JNI" "$FLAVOR_JNI"; do
+    if [[ "$(realpath "$PLIB")" != "$(realpath -m "$DEST/$(basename "$PLIB")")" ]]; then
+      cp "$PLIB" "$DEST/"
+    fi
+  done
+done
+
 echo "[android] sync frontend into APK assets (WebViewAssetLoader fallback)"
 ASSETS="$GEN/app/src/main/assets"
 mkdir -p "$ASSETS"
@@ -166,7 +182,20 @@ if [[ -f "$OFFICE_LIB" ]]; then
   cp "$OFFICE_LIB" "$TMP_LIB_DIR/lib/arm64-v8a/libviewit_plugin_office_universal.so"
   echo "[android] adding office-universal plugin to APK ($OFFICE_LIB)"
 fi
-(cd "$TMP_LIB_DIR" && zip -0 -q "$APK_WITH_LIB" lib/arm64-v8a/libviewit_mobile_lib.so lib/arm64-v8a/libviewit_plugin_office_universal.so 2>/dev/null || zip -0 -q "$APK_WITH_LIB" lib/arm64-v8a/libviewit_mobile_lib.so)
+# compression-universal plugin .so — staged into jniLibs before gradle above;
+# here just carried into the tmp staging dir for the final zip step.
+COMPRESSION_LIB="$ROOT/apps/mobile/plugins/compression-universal/build/output/arm64-v8a/libviewit_plugin_compression_universal.so"
+[[ -f "$COMPRESSION_LIB" ]] || COMPRESSION_LIB="$GEN/app/src/main/jniLibs/arm64-v8a/libviewit_plugin_compression_universal.so"
+if [[ -f "$COMPRESSION_LIB" ]]; then
+  cp "$COMPRESSION_LIB" "$TMP_LIB_DIR/lib/arm64-v8a/libviewit_plugin_compression_universal.so"
+  echo "[android] adding compression-universal plugin to APK ($COMPRESSION_LIB)"
+fi
+# The main Rust lib must stay stored + 16 KB-aligned (verify-android-16kb.sh).
+# Plugin .so files load via System.loadLibrary from the extracted native-lib
+# dir (useLegacyPackaging=true), so they can be deflated to save APK budget.
+(cd "$TMP_LIB_DIR" && zip -0 -q "$APK_WITH_LIB" lib/arm64-v8a/libviewit_mobile_lib.so \
+  && zip -9 -q "$APK_WITH_LIB" lib/arm64-v8a/libviewit_plugin_office_universal.so lib/arm64-v8a/libviewit_plugin_compression_universal.so 2>/dev/null \
+  || zip -0 -q "$APK_WITH_LIB" lib/arm64-v8a/libviewit_mobile_lib.so)
 "$BUILD_TOOLS/zipalign" -P 16 -f 4 "$APK_WITH_LIB" "$APK_ALIGNED"
 "$BUILD_TOOLS/apksigner" sign --ks "$KEYSTORE" --ks-pass pass:android --key-pass pass:android \
   --out "$APK_SIGNED" "$APK_ALIGNED"

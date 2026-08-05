@@ -267,8 +267,12 @@ DOM_QUERY = """(() => {
     hasRawHtml: body.includes('<html') || body.includes('<head') || body.includes('<body') || body.includes('<p ') || body.includes('<div ') || body.includes('<guide') || body.includes('<reference '),
     hasPartial: body.includes('Partial') || body.includes('partial'),
     archiveFallback: /Archive contents|zip entries|\\bindex\\/|\\[Content_Types\\]/.test(body) || !!document.querySelector('.archive-viewer'),
-    archiveEntryCount: parseInt(document.querySelector('.archive-viewer .meta strong')?.textContent?.match(/(\\d+)/)?.[1] ?? '0', 10),
+    archiveEntryCount: parseInt(document.querySelector('.archive-viewer .meta strong')?.textContent?.match(/(\d+)/)?.[1] ?? '0', 10),
     archiveDrillButtons: document.querySelectorAll('.archive-viewer .drill').length,
+    archivePluginSaveButtons: document.querySelectorAll('.archive-viewer .save').length,
+    listedByPlugin: body.includes('listed by'),
+    archiveNotice: (document.querySelector('.archive-viewer .notice, .archive-viewer .error')?.textContent ?? '').slice(0, 200),
+    hasEncryptedNotice: /encrypt|password-protected|password required|wrong password/i.test(body),
 
     // Runtime / metadata
     runtimeChooser: runtimeChooser,
@@ -692,6 +696,85 @@ ASSERTIONS: dict[str, list[tuple[str, callable]]] = {
         ("archive viewer", lambda m: assert_truthy(m.get("archiveViewer"), what="archiveViewer")),
         ("has entries", lambda m: assert_min(m.get("archiveEntryCount"), what="archiveEntryCount", n=1)),
         ("has drill buttons", lambda m: assert_min(m.get("archiveDrillButtons"), what="archiveDrillButtons", n=1)),
+    ],
+    # --- Compression Universal plugin (precise listings) ---
+    "sample.7z": [
+        ("no error", _no_error),
+        ("archive viewer", lambda m: assert_truthy(m.get("archiveViewer"), what="archiveViewer")),
+        ("listed by plugin", lambda m: assert_truthy(m.get("listedByPlugin"), what="listedByPlugin")),
+        ("has entries", lambda m: assert_min(m.get("archiveEntryCount"), what="archiveEntryCount", n=1)),
+        ("has drill buttons", lambda m: assert_min(m.get("archiveDrillButtons"), what="archiveDrillButtons", n=1)),
+        ("has save buttons", lambda m: assert_min(m.get("archivePluginSaveButtons"), what="archivePluginSaveButtons", n=1)),
+    ],
+    "sample.rar": [
+        ("no error", _no_error),
+        ("archive viewer", lambda m: assert_truthy(m.get("archiveViewer"), what="archiveViewer")),
+        ("listed by plugin", lambda m: assert_truthy(m.get("listedByPlugin"), what="listedByPlugin")),
+        ("has entries", lambda m: assert_min(m.get("archiveEntryCount"), what="archiveEntryCount", n=1)),
+        ("has drill buttons", lambda m: assert_min(m.get("archiveDrillButtons"), what="archiveDrillButtons", n=1)),
+    ],
+    "sample.tar.bz2": [
+        ("no error", _no_error),
+        ("archive viewer", lambda m: assert_truthy(m.get("archiveViewer"), what="archiveViewer")),
+        ("listed by plugin", lambda m: assert_truthy(m.get("listedByPlugin"), what="listedByPlugin")),
+        ("has entries", lambda m: assert_min(m.get("archiveEntryCount"), what="archiveEntryCount", n=1)),
+        ("has drill buttons", lambda m: assert_min(m.get("archiveDrillButtons"), what="archiveDrillButtons", n=1)),
+    ],
+    "sample.tar.xz": [
+        ("no error", _no_error),
+        ("archive viewer", lambda m: assert_truthy(m.get("archiveViewer"), what="archiveViewer")),
+        ("listed by plugin", lambda m: assert_truthy(m.get("listedByPlugin"), what="listedByPlugin")),
+        ("has entries", lambda m: assert_min(m.get("archiveEntryCount"), what="archiveEntryCount", n=1)),
+        ("has drill buttons", lambda m: assert_min(m.get("archiveDrillButtons"), what="archiveDrillButtons", n=1)),
+    ],
+    "sample.tar.zst": [
+        ("no error", _no_error),
+        ("archive viewer", lambda m: assert_truthy(m.get("archiveViewer"), what="archiveViewer")),
+        ("listed by plugin", lambda m: assert_truthy(m.get("listedByPlugin"), what="listedByPlugin")),
+        ("has entries", lambda m: assert_min(m.get("archiveEntryCount"), what="archiveEntryCount", n=1)),
+        ("has drill buttons", lambda m: assert_min(m.get("archiveDrillButtons"), what="archiveDrillButtons", n=1)),
+    ],
+    "sample.tar.lz4": [
+        ("no error", _no_error),
+        ("archive viewer", lambda m: assert_truthy(m.get("archiveViewer"), what="archiveViewer")),
+        ("listed by plugin", lambda m: assert_truthy(m.get("listedByPlugin"), what="listedByPlugin")),
+        ("has entries", lambda m: assert_min(m.get("archiveEntryCount"), what="archiveEntryCount", n=1)),
+        ("has drill buttons", lambda m: assert_min(m.get("archiveDrillButtons"), what="archiveDrillButtons", n=1)),
+    ],
+    "sample.tar.lzma": [
+        ("no error", _no_error),
+        ("archive viewer", lambda m: assert_truthy(m.get("archiveViewer"), what="archiveViewer")),
+        ("listed by plugin", lambda m: assert_truthy(m.get("listedByPlugin"), what="listedByPlugin")),
+        ("has entries", lambda m: assert_min(m.get("archiveEntryCount"), what="archiveEntryCount", n=1)),
+        ("has drill buttons", lambda m: assert_min(m.get("archiveDrillButtons"), what="archiveDrillButtons", n=1)),
+    ],
+    "sample.bz2": [
+        ("no error", _no_error),
+        ("archive viewer", lambda m: assert_truthy(m.get("archiveViewer"), what="archiveViewer")),
+        ("listed by plugin", lambda m: assert_truthy(m.get("listedByPlugin"), what="listedByPlugin")),
+    ],
+    "sample.xz": [
+        ("no error", _no_error),
+        ("archive viewer", lambda m: assert_truthy(m.get("archiveViewer"), what="archiveViewer")),
+        ("listed by plugin", lambda m: assert_truthy(m.get("listedByPlugin"), what="listedByPlugin")),
+    ],
+    "sample.zst": [
+        ("no error", _no_error),
+        ("archive viewer", lambda m: assert_truthy(m.get("archiveViewer"), what="archiveViewer")),
+        ("listed by plugin", lambda m: assert_truthy(m.get("listedByPlugin"), what="listedByPlugin")),
+    ],
+    "sample.lz4": [
+        ("no error", _no_error),
+        ("archive viewer", lambda m: assert_truthy(m.get("archiveViewer"), what="archiveViewer")),
+        ("listed by plugin", lambda m: assert_truthy(m.get("listedByPlugin"), what="listedByPlugin")),
+    ],
+    "sample.lzma": [
+        ("no error", _no_error),
+        ("archive viewer", lambda m: assert_truthy(m.get("archiveViewer"), what="archiveViewer")),
+        ("listed by plugin", lambda m: assert_truthy(m.get("listedByPlugin"), what="listedByPlugin")),
+    ],
+    "sample.7z.enc": [
+        ("encrypted notice visible", lambda m: assert_truthy(m.get("hasEncryptedNotice"), what="hasEncryptedNotice")),
     ],
     # --- Calendar / contacts ---
     "sample.ics": [

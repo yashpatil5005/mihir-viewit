@@ -564,6 +564,7 @@
     // container precisely (zip, 7z, rar, tar, gz/bz2/xz/zst/lz4/lzma, and
     // tar.* chains) without extracting first, where the browser wasm covers
     // only a subset. Prefer the plugin on Android; fall back to built-in.
+    let pluginArchiveError: string | null = null;
     if (hasAndroidBridge() && ARCHIVE_EXTS.has(ext)) {
       const archivePlugins = await listInstalledPlugins();
       const archivePlugin = archivePlugins.find(
@@ -587,13 +588,27 @@
               renderer: { id: archivePlugin.id, label: archivePlugin.name },
             } as Document;
           }
-          await dbg(`archive[${ext}] ${archivePlugin.id} listing failed: ${listing.error ?? 'no entries'}`);
+          pluginArchiveError = listing.error ?? 'Archive could not be listed';
+          await dbg(`archive[${ext}] ${archivePlugin.id} listing failed: ${pluginArchiveError}`);
         } catch (e) {
-          await dbg(`archive[${ext}] ${archivePlugin.id} error: ${e instanceof Error ? e.message : String(e)}`);
+          pluginArchiveError = e instanceof Error ? e.message : String(e);
+          await dbg(`archive[${ext}] ${archivePlugin.id} error: ${pluginArchiveError}`);
         }
       }
     }
     const builtIn = await openFile(readableUri, nameHint);
+    // The built-in runtime emits kind 'placeholder' (not 'unsupported') for
+    // archives it can't read — e.g. encrypted 7z headers. Surface the plugin's
+    // reason (encrypted/password-protected/corrupted) instead of the generic
+    // "Phase 1 scaffold" page in that case too.
+    if ((builtIn.kind === 'unsupported' || builtIn.kind === 'placeholder') && pluginArchiveError) {
+      return {
+        kind: 'unsupported',
+        format: toArchiveFormat(ext),
+        reason: pluginArchiveError,
+        suggestion: 'open-with-external',
+      } as Document;
+    }
     const detectedKind = builtIn.kind;
     if (hasAndroidBridge() && OFFICE_KINDS.has(detectedKind) && OFFICE_ALL_EXTS.has(ext)) {
       const prefId = getRuntimePref(detectedKind);

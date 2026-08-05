@@ -43,7 +43,18 @@ for i in "${!TARGETS[@]}"; do
     # cc crate picks these up when the target env vars are absent; set both.
     export "CC_${TARGET//-/_}"="${CC}"
     export "CXX_${TARGET//-/_}"="${CXX}"
-    export "CARGO_TARGET_$(echo "${TARGET//-/_}" | tr '[:lower:]' '[:upper:]')_LINKER"="${CC}"
+    # Link libc++ statically so the plugin .so has no runtime dependency on
+    # libc++_shared.so (which the host app does not bundle). The cc crate
+    # defaults to c++_shared on Android; clang++ more than makes up the whole
+    # static set (libc++abi + libunwind) when driven with -static-libstdc++.
+    export CXXSTDLIB=c++_static
+    export "CARGO_TARGET_$(echo "${TARGET//-/_}" | tr '[:lower:]' '[:upper:]')_LINKER"="${CXX}"
+    # rustc drives the final link itself, so clang++'s automatic C++ runtime
+    # for source builds never runs. Pass the whole static libc++ set explicitly:
+    # libc++_static.a for the library, libc++abi.a for RTTI/exception symbols
+    # (__cxa_throw, __cxa_begin_catch, the __enum_type_info vtable, ...),
+    # libunwind.a for unwinding. Ordering matters — these must come last.
+    export "CARGO_TARGET_$(echo "${TARGET//-/_}" | tr '[:lower:]' '[:upper:]')_RUSTFLAGS"="-C link-arg=-lc++_static -C link-arg=-lc++abi -C link-arg=-lunwind"
 
     (cd "$CARGO_DIR" && cargo build --target "$TARGET" --release)
     TARGET_DIR="$(cd "$CARGO_DIR" && cargo metadata --format-version 1 --no-deps | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
