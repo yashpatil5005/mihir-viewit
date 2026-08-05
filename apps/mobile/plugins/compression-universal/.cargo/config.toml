@@ -1,0 +1,10 @@
+[env]
+# bionic headers: lutimes() is guarded by __USE_BSD (need -D_BSD_SOURCE, NOT
+# _GNU_SOURCE — NDK has no qsort_r, and zstd-sys's cover.c only takes the
+# qsort_r path under _GNU_SOURCE). It is also annotated with
+# __INTRODUCED_IN(26), so __ANDROID_API__ must be 26 and unavailable symbols
+# must be weak. Matches the validated android cross-compile probe settings.
+CFLAGS_aarch64_linux_android = "-D__ANDROID_API__=26 -D_BSD_SOURCE -D__ANDROID_UNAVAILABLE_SYMBOLS_ARE_WEAK__=1"
+CXXFLAGS_aarch64_linux_android = "-D__ANDROID_API__=26 -D_BSD_SOURCE -D__ANDROID_UNAVAILABLE_SYMBOLS_ARE_WEAK__=1"
+CFLAGS_x86_64_linux_android = "-D__ANDROID_API__=26 -D_BSD_SOURCE -D__ANDROID_UNAVAILABLE_SYMBOLS_ARE_WEAK__=1"
+CXXFLAGS_x86_64_linux_android = "-D__ANDROID_API__=26 -D_BSD_SOURCE -D__ANDROID_UNAVAILABLE_SYMBOLS_ARE_WEAK__=1"

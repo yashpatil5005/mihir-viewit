@@ -28,6 +28,7 @@
   import RuntimeChooser from './RuntimeChooser.svelte';
   import OfficePluginHtmlViewer from './OfficePluginHtmlViewer.svelte';
   import {
+    archiveBridgeFor,
     hasAndroidBridge,
     isJsPlugin,
     listInstalledPlugins,
@@ -43,6 +44,11 @@
     'pptx', 'pptm', 'potx',
     'odt', 'ott', 'ods', 'ots', 'odp', 'otp',
     'doc', 'ppt',
+  ]);
+  const ARCHIVE_EXTS = new Set([
+    'zip', '7z', 'rar', 'tar',
+    'gz', 'tgz', 'bz2', 'tbz2', 'xz', 'txz', 'zst', 'tzst',
+    'lz4', 'lzma', 'tlz',
   ]);
   const OFFICE_KINDS = new Set(['docx', 'xlsx', 'pptx']);
 
@@ -422,6 +428,19 @@
     return '';
   }
 
+  /** Normalize a plugin-returned format id ("zip", "tar.gz", …) into the
+   *  Format union so other viewers can switch on it. Unknown id is passed
+   *  through for display only. */
+  function toArchiveFormat(value: string): string {
+    const v = value.toLowerCase();
+    if (v === 'zip') return 'archive-zip';
+    if (v === 'tar') return 'archive-tar';
+    if (v === 'rar') return 'archive-rar';
+    if (v === '7z') return 'archive-7z';
+    if (v === 'gz' || v === 'tgz' || v === 'tar.gz' || v === 'tbz2' || v === 'tzst' || v === 'txz' || v === 'tlz' || v.includes('.tar')) return 'archive-tar-gz';
+    return v;
+  }
+
   function extFromMime(mime: string): string {
     const normalized = mime.toLowerCase();
     const map: Record<string, string> = {
@@ -538,6 +557,39 @@
             selectedOfficePlugin = null;
             failedPluginId = plugin.id;
           }
+        }
+      }
+    }
+    // Archive — native compression-universal plugin. It lists every supported
+    // container precisely (zip, 7z, rar, tar, gz/bz2/xz/zst/lz4/lzma, and
+    // tar.* chains) without extracting first, where the browser wasm covers
+    // only a subset. Prefer the plugin on Android; fall back to built-in.
+    if (hasAndroidBridge() && ARCHIVE_EXTS.has(ext)) {
+      const archivePlugins = await listInstalledPlugins();
+      const archivePlugin = archivePlugins.find(
+        (candidate) => candidate.id === 'compression-universal' && !isJsPlugin(candidate) && pluginSupports(candidate, ext)
+      );
+      if (archivePlugin) {
+        const displayName = (nameHint ?? uri.split('/').pop()?.split('?')[0] ?? uri) || 'archive';
+        try {
+          busyHint = `Reading archive with ${archivePlugin.name}…`;
+          const api = archiveBridgeFor(archivePlugin, uri, displayName);
+          if (!api) throw new Error('Archive bridge unavailable');
+          const listing = await api.listArchive();
+          if (listing.ok && listing.entries) {
+            await dbg(`archive[${ext}] via ${archivePlugin.id}: ${listing.entries.length} entries`);
+            return {
+              kind: 'archive',
+              entries: listing.entries,
+              format: toArchiveFormat(listing.format ?? ext),
+              byte_len: 0,
+              name: displayName,
+              renderer: { id: archivePlugin.id, label: archivePlugin.name },
+            } as Document;
+          }
+          await dbg(`archive[${ext}] ${archivePlugin.id} listing failed: ${listing.error ?? 'no entries'}`);
+        } catch (e) {
+          await dbg(`archive[${ext}] ${archivePlugin.id} error: ${e instanceof Error ? e.message : String(e)}`);
         }
       }
     }
@@ -725,7 +777,7 @@
         {/key}
       {:else if doc.kind === 'archive' && ArchiveViewer}
         {#key docUri}
-        <ArchiveViewer {...(doc as any)} />
+        <ArchiveViewer {...(doc as any)} name={pendingName ?? ''} uri={docUri ?? ''} />
         {/key}
       {:else if isOfficePluginHtml()}
         {#key docUri}

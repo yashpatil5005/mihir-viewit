@@ -157,6 +157,48 @@ class PluginManager(private val context: Context) {
         } catch (e: Throwable) {
             Log.w(TAG, "Failed to register built-in office-universal plugin", e)
         }
+
+        // Compression Universal — precise archive listings + extraction.
+        try {
+            System.loadLibrary("viewit_plugin_compression_universal")
+            val clazz = Class.forName("ai.viewit.plugins.compressionuniversal.CompressionUniversalPlugin")
+            val instance = clazz.getDeclaredConstructor().newInstance() as ViewItDocumentPlugin
+            instance.initialize(context)
+
+            val manifest = PluginManifest(
+                id = "compression-universal",
+                name = "Compression Universal",
+                version = "0.1.0",
+                description = "Precise listings of zip, 7z, rar, tar, gz, bz2, xz, zst, lz4, lzma and tar.* chains without extracting first, plus entry previews and full extraction.",
+                minAppVersion = 1,
+                entryClass = "ai.viewit.plugins.compressionuniversal.CompressionUniversalPlugin",
+                supportedFormats = listOf(
+                    "zip", "7z", "rar", "tar",
+                    "gz", "tgz", "bz2", "tbz2", "xz", "txz", "zst", "tzst",
+                    "lz4", "lzma", "tlz",
+                    "tar.gz", "tar.bz2", "tar.xz", "tar.zst", "tar.lz4", "tar.lzma"
+                ),
+                downloadUrl = "",
+                sizeBytes = 0,
+                installedSizeBytes = 0,
+                checksum = "",
+                abi = runtimeAbi(),
+                abiVersion = 1,
+                capabilities = listOf("archive-list", "archive-preview", "archive-extract"),
+                runtime = "native"
+            )
+
+            installed["compression-universal"] = InstalledPlugin(
+                manifest = manifest,
+                instance = instance,
+                mediaPlugin = null,
+                documentPlugin = instance,
+                installDir = File(context.filesDir, "plugins/compression-universal")
+            )
+            Log.i(TAG, "Registered built-in plugin: compression-universal")
+        } catch (e: Throwable) {
+            Log.w(TAG, "Failed to register built-in compression-universal plugin", e)
+        }
     }
 
     fun getInstalledPlugins(): List<InstalledPlugin> = installed.values.toList()
@@ -172,6 +214,11 @@ class PluginManager(private val context: Context) {
     fun documentPluginForExt(pluginId: String, ext: String): InstalledPlugin? {
         val plugin = installed[pluginId] ?: return null
         return if (plugin.documentPlugin?.canHandleExt(ext) == true) plugin else null
+    }
+
+    /** Look up a plugin by id without an extension filter (archive bridge). */
+    fun documentPluginForId(pluginId: String): InstalledPlugin? {
+        return installed[pluginId]
     }
 
     fun installPlugin(

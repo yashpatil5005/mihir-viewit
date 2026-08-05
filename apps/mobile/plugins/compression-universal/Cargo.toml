@@ -1,0 +1,42 @@
+[package]
+name = "viewit-compression-universal-plugin"
+version = "0.1.0"
+edition = "2021"
+description = "ViewIt Android native plugin for compression formats"
+license = "MIT OR Apache-2.0"
+
+[lib]
+name = "viewit_plugin_compression_universal"
+path = "src/main/rust/lib.rs"
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+jni = "0.21"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+zip = { version = "8.6.0", default-features = false, features = ["deflate", "bzip2", "zstd", "lzma"] }
+tar = "0.4"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+bzip2 = "0.4"
+xz2 = "0.1"
+zstd = "0.13"
+lz4_flex = { version = "0.11", features = ["frame"] }
+lzma-rs = { version = "0.3", features = ["raw_decoder"] }
+sevenz-rust = "=0.6.1"
+unrar = "0.4"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[target.aarch64-linux-android]
+linker = "aarch64-linux-android24-clang"
+
+[target.x86_64-linux-android]
+linker = "x86_64-linux-android24-clang"
+
+[workspace]

@@ -1,0 +1,32 @@
+{
+  "id": "compression-universal",
+  "name": "Compression Universal",
+  "version": "0.1.0",
+  "description": "Precise listings of every compression format (zip, 7z, rar, tar, gz, bz2, xz, zst, lz4, lzma, tar.*) without extracting first, plus entry previews and extraction to app storage or a folder you choose.",
+  "minAppVersion": 1,
+  "entryClass": "ai.viewit.plugins.compressionuniversal.CompressionUniversalPlugin",
+  "supportedFormats": [
+    "zip", "7z", "rar", "tar",
+    "gz", "tgz", "bz2", "tbz2", "xz", "txz", "zst", "tzst",
+    "lz4", "lzma", "tlz",
+    "tar.gz", "tar.bz2", "tar.xz", "tar.zst", "tar.lz4", "tar.lzma"
+  ],
+  "capabilities": ["archive-list", "archive-preview", "archive-extract"],
+  "permissions": [
+    {
+      "name": "storage.read",
+      "scope": "app-scoped temp (materialized content) + system document picker locations"
+    },
+    {
+      "name": "storage.write",
+      "scope": "app-scoped external storage (Extracted/ folder) + system document picker locations"
+    }
+  ],
+  "downloadUrl": "https://viewit-plugin-catalog-temp.pages.dev/plugins/compression-universal-0.1.0-arm64-v8a.zip",
+  "sizeBytes": 0,
+  "installedSizeBytes": 0,
+  "checksum": "",
+  "abi": "arm64-v8a",
+  "abiVersion": 1,
+  "runtime": "native"
+}

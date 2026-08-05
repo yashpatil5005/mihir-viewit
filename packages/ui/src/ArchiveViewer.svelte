@@ -1,54 +1,191 @@
 <script lang="ts">
-  // Phase 2.9 — Archive viewer with drill-down.
-  // Tap on a file entry → extract to a temp object URL → re-route through
-  // openFile() so the inner format's viewer renders.
-
+  // Archive viewer with drill-down.
+  // Tap on a file entry → open it in-place (native plugin: single-member
+  // preview without extracting the whole archive; Tauri/web: wasm extract).
+  // When the compression-universal plugin is installed the toolbar offers
+  // per-entry Save and full "Extract all" to app-scoped storage.
+  // Storage scope note: plugin writes go to the app-specific external
+  // storage directory — no runtime permission is required on any API level.
   let {
     entries = [],
     format = 'archive-zip',
-    byte_len = 0
+    byte_len = 0,
+    name = '',
+    uri = '',
+    renderer = undefined
   }: {
     entries: { name: string; size: number; is_dir: boolean; compressed_size: number }[];
     format: string;
     byte_len: number;
+    name?: string;
+    uri?: string;
+    renderer?: { id?: string; label?: string };
   } = $props();
 
+  import { onMount } from 'svelte';
   import { openFile } from '@viewit/platform';
+  import {
+    archiveBridgeFor,
+    hasAndroidBridge,
+    isJsPlugin,
+    listInstalledPlugins,
+    pluginSupports,
+    type ArchiveBridgeApi,
+    type PluginInfo,
+  } from './pluginBridge';
 
-  async function drill(entry: any) {
-    if (entry.is_dir) return;
-    // Phase 2.9 — best-effort drill-down: re-fetches via Tauri command
-    // (archive_extract) or web fallback. Web path: fetch+zip lib heavy; skip.
-    if (typeof (window as any).__TAURI_INTERNALS__ === 'undefined') {
-      alert(`Drill-down requires Tauri. Entry: ${entry.name}`);
-      return;
-    }
+  let plugin: PluginInfo | null = $state(null);
+  let bridge: ArchiveBridgeApi | null = $state(null);
+  let busy = $state('');
+  let notice = $state('');
+  let error = $state('');
+  let extractDir: string | null = $state(null);
+
+  const TOO_LARGE = 'Too large for in-place preview — use Save to extract this member.';
+
+  function decodeB64(b64: string): Uint8Array {
+    const raw = atob(b64);
+    const bytes = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+    return bytes;
+  }
+
+  async function resolvePlugin(): Promise<void> {
+    if (!hasAndroidBridge()) return;
     try {
+      const ext = extFromFormat(format);
+      const installed = await listInstalledPlugins();
+      const byRenderer = renderer?.id ? installed.find((p) => p.id === renderer.id) : undefined;
+      const byFormat = installed.find(
+        (p) => p.id === 'compression-universal' && !isJsPlugin(p) && (pluginSupports(p, ext) || pluginSupports(p, 'zip'))
+      );
+      const resolved = byRenderer ?? byFormat ?? null;
+      if (resolved) {
+        plugin = resolved;
+        bridge = archiveBridgeFor(resolved, uri, name);
+      }
+    } catch (e) {
+      console.error('resolve compression plugin failed:', e);
+    }
+  }
+
+  function extFromFormat(fmt: string): string {
+    const map: Record<string, string> = {
+      'archive-zip': 'zip',
+      'archive-tar': 'tar',
+      'archive-tar-gz': 'gz',
+      'archive-7z': '7z',
+      'archive-rar': 'rar',
+    };
+    return map[fmt] ?? fmt.split('.').pop() ?? fmt;
+  }
+
+  async function openMember(entry: any) {
+    if (entry.is_dir) return;
+    busy = `Opening ${entry.name}…`;
+    error = '';
+    notice = '';
+    try {
+      if (bridge) {
+        const res = await bridge.readEntry(entry.name);
+        if (res.error) {
+          error = res.error;
+          if (res.tooLarge) notice = TOO_LARGE;
+          return;
+        }
+        const bytes = decodeB64(res.base64 ?? '');
+        const blob = new Blob([bytes.buffer as ArrayBuffer], { type: 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+        await openFile(url, entry.name.split('/').pop() ?? entry.name);
+        URL.revokeObjectURL(url);
+        return;
+      }
+      if (typeof (window as any).__TAURI_INTERNALS__ === 'undefined') {
+        error = `In-place preview of ${entry.name} needs the Compression Universal plugin (Android) or the desktop app.`;
+        return;
+      }
       const invoke = (await import('@tauri-apps/api/core')).invoke;
       const bytes: number[] = await invoke('archive_extract', {
         uri: (window as any).__viewit_uri__,
         entryName: entry.name,
       });
-      const ext = entry.name.split('.').pop()?.toLowerCase() ?? '';
       const blob = new Blob([new Uint8Array(bytes)], { type: 'application/octet-stream' });
       const url = URL.createObjectURL(blob);
       await openFile(url);
       URL.revokeObjectURL(url);
     } catch (e) {
-      console.error('archive drill-down failed:', e);
-      alert(`Failed to extract ${entry.name}: ${e}`);
+      console.error('archive member open failed:', e);
+      error = `Failed to open ${entry.name}: ${e instanceof Error ? e.message : String(e)}`;
+    } finally {
+      busy = '';
     }
   }
+
+  async function saveMember(entry: any) {
+    if (!bridge) return;
+    busy = `Saving ${entry.name}…`;
+    error = '';
+    notice = '';
+    try {
+      const res = await bridge.saveEntry(entry.name);
+      if (res.error) error = res.error;
+      else notice = `Saved ${entry.displayName ?? entry.name.split('/').pop() ?? entry.name}`;
+    } finally {
+      busy = '';
+    }
+  }
+
+  async function extractAll() {
+    if (!bridge) return;
+    busy = 'Extracting archive…';
+    error = '';
+    notice = '';
+    try {
+      const res = await bridge.extractAll();
+      if (res.error) {
+        error = res.error;
+      } else {
+        extractDir = res.dir ?? null;
+        const count = res.result?.files_count ?? res.result?.count ?? 0;
+        notice = `Extracted ${count} file${count === 1 ? '' : 's'} to ${res.dir ?? res.result?.dir ?? 'app storage'}`;
+      }
+    } finally {
+      busy = '';
+    }
+  }
+
+  onMount(resolvePlugin);
 </script>
 
 <article class="archive-viewer">
   <aside class="meta">
-    <strong>{entries.length} entries</strong> · {format} · {byte_len.toLocaleString()} bytes
+    <strong>{entries.length} entries</strong> · {format}
+    {#if byte_len > 0} · {byte_len.toLocaleString()} bytes{/if}
+    {#if renderer?.label} · listed by <em>{renderer.label}</em>{/if}
   </aside>
+
+  {#if plugin}
+    <div class="toolbar">
+      <button class="act" onclick={extractAll} disabled={Boolean(busy)}>Export all</button>
+      <span class="scope">Extraction saves to app-scoped storage — no storage permission needed.</span>
+    </div>
+  {/if}
+
+  {#if busy}<p class="busy">{busy}</p>{/if}
+  {#if notice}<p class="notice">{notice}</p>{/if}
+  {#if error}<p class="error">{error}</p>{/if}
+  {#if extractDir}
+    <p class="scope">
+      Exported to <code>{extractDir}</code>. This folder is app-private
+      (Android/data/…/files/Extracted), so only ViewIt and file managers that
+      opt into app data can see it.
+    </p>
+  {/if}
+
   <div class="table-frame">
     <table>
       <thead>
-        <tr><th>Name</th><th>Size</th><th>Compressed</th></tr>
+        <tr><th>Name</th><th>Size</th><th>Compressed</th>{#if plugin}<th></th>{/if}</tr>
       </thead>
       <tbody>
         {#each entries as entry}
@@ -57,13 +194,20 @@
               {#if entry.is_dir}
                 <span>📁 {entry.name}</span>
               {:else}
-                <button class="drill" onclick={() => drill(entry)} aria-label="Open {entry.name}">
+                <button class="drill" onclick={() => openMember(entry)} aria-label="Open {entry.name}">
                   📄 {entry.name}
                 </button>
               {/if}
             </td>
             <td>{entry.size.toLocaleString()}</td>
             <td>{entry.compressed_size.toLocaleString()}</td>
+            {#if plugin}
+              <td>
+                {#if !entry.is_dir}
+                  <button class="save" onclick={() => saveMember(entry)} aria-label="Save {entry.name}">Save…</button>
+                {/if}
+              </td>
+            {/if}
           </tr>
         {/each}
       </tbody>
@@ -74,6 +218,14 @@
 <style>
   .archive-viewer { padding: 0.5rem 1rem; color: var(--text-primary); }
   .meta { color: var(--text-secondary); margin-bottom: 0.5rem; font-size: 0.75rem; }
+  .toolbar { display: flex; align-items: center; gap: 0.75rem; margin: 0 0 0.5rem; flex-wrap: wrap; }
+  .act { cursor: pointer; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border); border-radius: 0.4rem; padding: 0.35rem 0.8rem; font-size: 0.85rem; }
+  .act:hover { background: var(--border); }
+  .busy { color: var(--text-secondary); font-style: italic; margin: 0 0 0.5rem; font-size: 0.85rem; }
+  .notice { color: var(--link); margin: 0 0 0.5rem; font-size: 0.85rem; }
+  .error { color: var(--error); margin: 0 0 0.5rem; font-size: 0.85rem; white-space: pre-wrap; }
+  .scope { color: var(--text-secondary); font-size: 0.78rem; margin: 0 0 0.5rem; }
+  .scope code { background: var(--bg-secondary); padding: 0.05rem 0.3rem; border-radius: 0.25rem; }
   .table-frame { overflow: auto; max-height: 75vh; border: 1px solid var(--border); border-radius: 0.4rem; }
   table { border-collapse: collapse; width: 100%; font-family: ui-monospace, monospace; font-size: 0.85rem; }
   th, td { border-bottom: 1px solid var(--border); padding: 0.3rem 0.6rem; text-align: left; }
@@ -81,4 +233,6 @@
   .dir td { font-weight: 600; color: var(--text-primary); }
   .drill { cursor: pointer; background: none; border: none; padding: 0; color: var(--link); font-family: inherit; font-size: inherit; text-align: left; }
   .drill:hover { text-decoration: underline; }
+  .save { cursor: pointer; background: none; border: 1px solid var(--border); border-radius: 999px; padding: 0.1rem 0.5rem; color: var(--text-secondary); font-size: 0.72rem; }
+  .save:hover { color: var(--text-primary); background: var(--bg-secondary); }
 </style>

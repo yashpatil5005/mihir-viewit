@@ -322,6 +322,116 @@ export async function removePlugin(pluginId: string): Promise<void> {
   (window as any).AndroidBridge.removePlugin(pluginId);
 }
 
+export interface ArchiveEntry {
+  name: string;
+  size: number;
+  compressed_size: number;
+  is_dir: boolean;
+}
+
+export interface ArchiveBridgeResult {
+  ok: boolean;
+  error?: string;
+  tooLarge?: boolean;
+  entries?: ArchiveEntry[];
+  base64?: string;
+  size?: number;
+  dir?: string;
+  result?: Record<string, unknown>;
+  format?: string;
+}
+
+export interface ArchiveBridgeApi {
+  plugin: PluginInfo;
+  uri: string;
+  name: string;
+  /** List the archive's contents (native plugin, non-destructive preview). */
+  listArchive(): Promise<ArchiveBridgeResult>;
+  /** Read a single entry as bytes for in-place preview. Falls back to save-if-too-large. */
+  readEntry(entryName: string): Promise<ArchiveBridgeResult>;
+  /** Extract the entire archive to the app's external-files directory. */
+  extractAll(): Promise<ArchiveBridgeResult>;
+  /** Send one entry to the system storage-saver (ACTION_CREATE_DOCUMENT). */
+  saveEntry(entryName: string, displayName?: string, mime?: string): Promise<ArchiveBridgeResult>;
+}
+
+export function archiveBridgeFor(plugin: PluginInfo, uri: string, name: string): ArchiveBridgeApi | null {
+  if (!hasAndroidBridge()) return null;
+  return {
+    plugin,
+    uri,
+    name,
+    async listArchive() {
+      return callPluginArchive('list', plugin, uri, name);
+    },
+    async readEntry(entryName) {
+      const res = await callPluginArchive('entry', plugin, uri, name, { entryName });
+      if (!res.ok && !res.tooLarge) return res;
+      return res;
+    },
+    async extractAll() {
+      return callPluginArchive('extract-all', plugin, uri, name);
+    },
+    async saveEntry(entryName, displayName, mime) {
+      return callPluginArchive('save', plugin, uri, name, {
+        entryName,
+        displayName: displayName || entryName.split('/').pop() || entryName,
+        mime: mime || '',
+      });
+    },
+  };
+}
+
+function callPluginArchive(op: string, plugin: PluginInfo, uri: string, name: string, extra: Record<string, string> = {}): Promise<ArchiveBridgeResult> {
+  return new Promise<ArchiveBridgeResult>((resolve) => {
+    if (!hasAndroidBridge()) {
+      resolve({ ok: false, error: 'Archive preview is only available in the Android app' });
+      return;
+    }
+    const id = `arch_${op}_${plugin.id}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const previousCallback = (window as any)._pluginArchiveCallback;
+    (window as any)._pluginArchiveCallback = (payload: { id: string }) => {
+      if (payload.id !== id) {
+        previousCallback?.(payload);
+        return;
+      }
+      (window as any)._pluginArchiveCallback = previousCallback;
+      const data = payload as Record<string, any>;
+      const result: ArchiveBridgeResult = {
+        ok: !data.error,
+        error: data.error,
+        tooLarge: data.tooLarge,
+        base64: data.base64,
+        size: data.size,
+        dir: data.dir,
+        result: data.result,
+      };
+      if (op === 'list' && data.manifest) {
+        result.entries = data.manifest.entries;
+        result.format = data.manifest.format;
+      }
+      resolve(result);
+    };
+    const bridge = (window as any).AndroidBridge;
+    switch (op) {
+      case 'list':
+        bridge.listPluginArchiveAsync(plugin.id, uri, name, id);
+        break;
+      case 'entry':
+        bridge.extractPluginArchiveEntryAsync(plugin.id, uri, name, extra.entryName, id);
+        break;
+      case 'extract-all':
+        bridge.extractPluginArchiveAllAsync(plugin.id, uri, name, id);
+        break;
+      case 'save':
+        bridge.savePluginArchiveEntryAsync(plugin.id, uri, name, extra.entryName, extra.displayName, extra.mime, id);
+        break;
+      default:
+        resolve({ ok: false, error: `Unknown archive op ${op}` });
+    }
+  });
+}
+
 export async function renderDocumentWithPlugin(plugin: PluginInfo, uri: string, ext: string): Promise<unknown> {
   if (!hasAndroidBridge()) throw new Error('Android document plugins are only available in the Android app');
   return new Promise((resolve, reject) => {
