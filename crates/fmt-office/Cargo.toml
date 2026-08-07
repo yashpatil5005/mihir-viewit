@@ -17,17 +17,17 @@ serde_json.workspace = true
 bytes.workspace = true
 
 # Phase 3.2 XLSX + 3.4 ODS
-calamine = "=0.36.0"
+calamine.workspace = true
 # Phase 3.1 DOCX (lightweight built-in reader)
-docx-rust = "=0.1.11"
+docx-rust.workspace = true
 # Phase 3.3 PPTX (zip reader)
-zip = "=8.6.0"
+zip.workspace = true
 # Phase 3.7 Encrypted Office
-office-crypto = { version = "=0.2.0", optional = true }
+office-crypto = { workspace = true, optional = true }
 
 # Phase 3.3 PPTX + 3.4 ODT/ODP — quick-xml for OOXML zip+XML parsing
-quick-xml = "0.36"
-cfb = "=0.7.3"
+quick-xml.workspace = true
+cfb.workspace = true
 
 [features]
 default = []

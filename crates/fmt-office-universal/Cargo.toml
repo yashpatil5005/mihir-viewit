@@ -20,16 +20,16 @@ serde_json.workspace = true
 bytes.workspace = true
 
 # XLSX + ODS via calamine (disable zstd for WASM)
-calamine = { version = "=0.36.0", default-features = false }
+calamine = { workspace = true, default-features = false }
 # DOCX via docx-rust
-docx-rust = "=0.1.11"
+docx-rust.workspace = true
 # PPTX / ODT / ODP zip+XML parsing
-zip = { version = "=8.6.0", default-features = false }
-quick-xml = "0.36"
+zip = { workspace = true, default-features = false }
+quick-xml.workspace = true
 # Legacy binary (.doc/.ppt) via CFB
-cfb = "=0.7.3"
+cfb.workspace = true
 # Encrypted Office (optional)
-office-crypto = { version = "=0.2.0", optional = true }
+office-crypto = { workspace = true, optional = true }
 
 [features]
 default = []
@@ -42,11 +42,11 @@ log = ["dep:console_log"]
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # wasm-bindgen for WASM exports
-wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
+wasm-bindgen.workspace = true
 # console_error_panic_hook for better panic messages in browser
-console_error_panic_hook = "0.1.7"
+console_error_panic_hook.workspace = true
 # Optional console logging
-console_log = { version = "0.2", optional = true }
+console_log = { workspace = true, optional = true }
 
 [package.metadata.wasm-pack]
 [package.metadata.wasm-pack.profile.release]

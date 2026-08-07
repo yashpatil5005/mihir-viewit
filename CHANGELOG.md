@@ -27,6 +27,8 @@ semantic versioning (see `.git` history / tags for exact cut points).
   (catalog signature reverify); supply-chain `deny.toml` + `dependabot.yml`.
 - Tests: unit tests added to a non-office format crate; vitest unit coverage
   for `packages/platform` pure logic.
+- Tests: Playwright E2E harness for `apps/web` (`npm run test:e2e`), with a
+  chromium project serving the production build.
 - `docs/architecture/` diagram; `plugins/_template/` + `plugins/CONTRIBUTING.md`.
 
 ## [0.1.0-scaffold]

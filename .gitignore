@@ -96,6 +96,11 @@ apps/mobile/plugins/*/web/
 scripts/.catalog-signing-key.priv
 scripts/.catalog-signing-key.pub
 
+# --- Playwright E2E ---
+test-results/
+playwright-report/
+playwright/.cache/
+
 # --- Misc project artifacts ---
 *.pid
 *.seed

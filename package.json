@@ -23,10 +23,13 @@
     "check": "tsc --noEmit -p packages/platform",
     "test:ts": "vitest run -c packages/platform/vitest.config.ts",
     "test:rust": "cargo test --workspace --exclude viewit-mobile --exclude viewit-desktop --lib",
+    "test:e2e": "playwright test --config e2e/web/playwright.config.ts",
     "test": "npm run test:rust && npm run test:ts",
     "size-check": "node scripts/size-budget.ts"
   },
   "devDependencies": {
+    "@playwright/browser-chromium": "^1.50.0",
+    "@playwright/test": "^1.50.0",
     "@tauri-apps/cli": "^2.11.4",
     "prettier": "^3.3.3",
     "prettier-plugin-svelte": "^3.2.6",

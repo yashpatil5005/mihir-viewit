@@ -19,16 +19,16 @@ serde.workspace = true
 serde_json.workspace = true
 bytes.workspace = true
 # ZIP
-zip = { version = "=8.6.0", default-features = false, features = ["chrono"] }
+zip = { workspace = true, default-features = false, features = ["chrono"] }
 # TAR
-tar = "0.4"
+tar.workspace = true
 # Compression
-flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+flate2 = { workspace = true, default-features = false, features = ["rust_backend"] }
 bzip2 = { version = "0.4", default-features = false, optional = true }
 zstd = { version = "0.13", default-features = false, optional = true, features = ["wasm"] }
-chrono = { version = "0.4" }
+chrono.workspace = true
 # 7z
-sevenz-rust = { version = "=0.6.1", optional = true }
+sevenz-rust = { workspace = true, optional = true }
 # RAR
 unrar = { version = "0.4", optional = true }
 
@@ -67,9 +67,9 @@ wasm = ["viewit-core-types/wasm"]
 log = ["dep:console_log"]
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
-console_error_panic_hook = "0.1.7"
-console_log = { version = "0.2", optional = true }
+wasm-bindgen.workspace = true
+console_error_panic_hook.workspace = true
+console_log = { workspace = true, optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 lz4 = { version = "1.25", optional = true }

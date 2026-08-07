@@ -47,3 +47,31 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 bytes = "1"
 zip = "=8.6.0"
+# Foundational / widely-used.
+chrono = "0.4"
+csv = "1"
+log = "0.4"
+# Office parser stack (fmt-office, fmt-office-universal).
+calamine = "=0.36.0"
+docx-rust = "=0.1.11"
+quick-xml = "0.36"
+cfb = "=0.7.3"
+office-crypto = "=0.2.0"
+# Image / PDF / misc.
+image = "0.25"
+base64 = "0.22"
+# Archive stack.
+flate2 = "1"
+tar = "0.4"
+sevenz-rust = "=0.6.1"
+# WASM (fmt-office-universal, fmt-archive-universal).
+wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
+console_error_panic_hook = "0.1.7"
+console_log = "0.2"
+# Desktop / mobile apps.
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-build = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-shell = "2"
+tauri-plugin-notification = "2"
