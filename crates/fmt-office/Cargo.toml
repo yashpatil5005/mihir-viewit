@@ -48,6 +48,13 @@ console_error_panic_hook.workspace = true
 # Optional console logging
 console_log = { workspace = true, optional = true }
 
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "office"
+harness = false
+
 [package.metadata.wasm-pack]
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false

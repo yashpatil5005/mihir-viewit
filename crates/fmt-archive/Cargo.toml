@@ -77,6 +77,13 @@ console_log = { workspace = true, optional = true }
 lz4 = { version = "1.25", optional = true }
 xz2 = { version = "0.1", optional = true }
 
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "archive"
+harness = false
+
 [package.metadata.wasm-pack]
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false
