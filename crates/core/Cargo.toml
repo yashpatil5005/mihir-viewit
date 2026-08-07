@@ -18,7 +18,6 @@ fmt-iwork     = ["dep:viewit-fmt-iwork"]
 fmt-pdf       = ["dep:viewit-fmt-pdf"]
 fmt-image     = ["dep:viewit-fmt-image"]
 fmt-archive   = ["dep:viewit-fmt-archive"]
-fmt-archive-universal = ["dep:viewit-fmt-archive-universal"]
 fmt-ebook     = ["dep:viewit-fmt-ebook"]
 fmt-font      = ["dep:viewit-fmt-font"]
 archive-7z    = ["fmt-archive", "viewit-fmt-archive?/support-7z"]
@@ -38,6 +37,5 @@ viewit-fmt-iwork     = { path = "../fmt-iwork",     optional = true }
 viewit-fmt-pdf       = { path = "../fmt-pdf",       optional = true }
 viewit-fmt-image     = { path = "../fmt-image",     optional = true }
 viewit-fmt-archive   = { path = "../fmt-archive",   optional = true }
-viewit-fmt-archive-universal = { path = "../fmt-archive-universal", optional = true }
 viewit-fmt-ebook     = { path = "../fmt-ebook",     optional = true }
 viewit-fmt-font      = { path = "../fmt-font",      optional = true }

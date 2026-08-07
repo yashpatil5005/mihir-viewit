@@ -6100,7 +6100,6 @@ dependencies = [
  "thiserror 2.0.18",
  "viewit-core-types",
  "viewit-fmt-archive",
- "viewit-fmt-archive-universal",
  "viewit-fmt-ebook",
  "viewit-fmt-font",
  "viewit-fmt-image",
@@ -6145,22 +6144,6 @@ dependencies = [
 
 [[package]]
 name = "viewit-fmt-archive"
-version = "0.1.0-scaffold"
-dependencies = [
- "anyhow",
- "bytes",
- "flate2",
- "serde",
- "serde_json",
- "sevenz-rust",
- "tar",
- "thiserror 2.0.18",
- "viewit-core-types",
- "zip 8.6.0",
-]
-
-[[package]]
-name = "viewit-fmt-archive-universal"
 version = "0.1.0-scaffold"
 dependencies = [
  "anyhow",
@@ -6239,24 +6222,6 @@ dependencies = [
 
 [[package]]
 name = "viewit-fmt-office"
-version = "0.1.0-scaffold"
-dependencies = [
- "anyhow",
- "bytes",
- "calamine",
- "cfb",
- "docx-rust",
- "office-crypto",
- "quick-xml 0.36.2",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "viewit-core-types",
- "zip 8.6.0",
-]
-
-[[package]]
-name = "viewit-fmt-office-universal"
 version = "0.1.0-scaffold"
 dependencies = [
  "anyhow",

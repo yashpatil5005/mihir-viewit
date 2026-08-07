@@ -1,10 +1,10 @@
-//! ODT reader (OpenDocument Text).
+//! ODT / OTT parser (OpenDocument Text).
 //!
 //! ODT is a zip containing `content.xml` with namespace
 //! `urn:oasis:names:tc:opendocument:xmlns:office:1.0`.
 //! We extract structured blocks (headings, paragraphs, list items, tables, and
 //! image placeholders) from `<office:text>`.
-//! Produces `Document::Docx` with structured blocks for the DocxViewer.
+//! Produces Document::Docx with structured blocks for the DocxViewer.
 
 use std::io::{Cursor, Read};
 use viewit_core_types::{Document, DocxBlock, Error, Format};

@@ -6,7 +6,10 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "ViewIt OOXML (docx/xlsx/pptx) + legacy binary parsers — Phase 3"
+description = "ViewIt office parsers — OOXML + Legacy Binary + OpenDocument (docx/xlsx/pptx + doc/ppt + odt/ods/odp + templates), unified native & WASM"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 viewit-core-types = { path = "../core-types" }
@@ -16,19 +19,35 @@ serde.workspace = true
 serde_json.workspace = true
 bytes.workspace = true
 
-# Phase 3.2 XLSX + 3.4 ODS
-calamine.workspace = true
-# Phase 3.1 DOCX (lightweight built-in reader)
+# XLSX + ODS via calamine (disable zstd for WASM)
+calamine = { workspace = true, default-features = false }
+# DOCX via docx-rust
 docx-rust.workspace = true
-# Phase 3.3 PPTX (zip reader)
-zip.workspace = true
-# Phase 3.7 Encrypted Office
-office-crypto = { workspace = true, optional = true }
-
-# Phase 3.3 PPTX + 3.4 ODT/ODP — quick-xml for OOXML zip+XML parsing
+# PPTX / ODT / ODP zip+XML parsing
+zip = { workspace = true, default-features = false }
 quick-xml.workspace = true
+# Legacy binary (.doc/.ppt) via CFB
 cfb.workspace = true
+# Encrypted Office (optional)
+office-crypto = { workspace = true, optional = true }
 
 [features]
 default = []
+# Encrypted Office files (.docx/.xlsx/.pptx with password)
 support-encrypted = ["dep:office-crypto"]
+# WASM build target
+wasm = ["viewit-core-types/wasm"]
+# Optional logging in WASM
+log = ["dep:console_log"]
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# wasm-bindgen for WASM exports
+wasm-bindgen.workspace = true
+# console_error_panic_hook for better panic messages in browser
+console_error_panic_hook.workspace = true
+# Optional console logging
+console_log = { workspace = true, optional = true }
+
+[package.metadata.wasm-pack]
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false

@@ -599,16 +599,11 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
         | Format::ArchiveTarLz4
         | Format::ArchiveTarLzma
         | Format::ArchiveRar => {
-            #[cfg(feature = "fmt-archive-universal")]
-            {
-                return viewit_fmt_archive_universal::parse(bytes, format, name)
-                    .map_err(Error::from_parse);
-            }
-            #[cfg(all(feature = "fmt-archive", not(feature = "fmt-archive-universal")))]
+            #[cfg(feature = "fmt-archive")]
             {
                 return viewit_fmt_archive::parse(bytes, format, name).map_err(Error::from_parse);
             }
-            #[cfg(not(any(feature = "fmt-archive", feature = "fmt-archive-universal")))]
+            #[cfg(not(feature = "fmt-archive"))]
             return Ok(Document::Placeholder {
                 format,
                 name: name.to_string(),

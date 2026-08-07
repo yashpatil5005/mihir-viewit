@@ -1,12 +1,7 @@
-//! Phase 3.3 — PPTX custom OOXML reader.
+//! PPTX / PPTM / POTX parser — unified for office-universal.
 //!
-//! PPTX is a zip containing:
-//! - `ppt/presentation.xml` — slide list
-//! - `ppt/slides/slide1.xml`, `slide2.xml`, ... — each slide's content
-//! - `ppt/slideLayouts/`, `ppt/slideMasters/` — templates (skipped for MVP)
-//!
-//! We extract each slide's text (titles + body text) and return a structured
-//! `Document::Pptx` with a list of slides.
+//! Custom OOXML reader for presentation text extraction.
+//! Produces Document::Pptx with slide list (title + body).
 
 use std::io::{Cursor, Read};
 use viewit_core_types::{Document, Error, Format, PptxSlide};
@@ -57,16 +52,17 @@ fn count_slides_in_presentation(xml: &str) -> usize {
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
-                if e.name().as_ref() == b"p:sldIdLst" {
-                    // Count child sldId elements
+                if e.name().local_name().as_ref() == b"sldIdLst" {
                     loop {
                         match reader.read_event_into(&mut buf) {
                             Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
-                                if e.name().as_ref() == b"p:sldId" {
+                                if e.name().local_name().as_ref() == b"sldId" {
                                     count += 1;
                                 }
                             }
-                            Ok(Event::End(e)) if e.name().as_ref() == b"p:sldIdLst" => break,
+                            Ok(Event::End(e)) if e.name().local_name().as_ref() == b"sldIdLst" => {
+                                break
+                            }
                             Ok(Event::Eof) => break,
                             _ => {}
                         }
@@ -88,6 +84,7 @@ fn extract_slide_text(xml: &str) -> (String, String) {
     use quick_xml::Reader;
 
     let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(true);
     let mut buf = Vec::new();
     let mut title = String::new();
     let mut body = String::new();
@@ -97,9 +94,8 @@ fn extract_slide_text(xml: &str) -> (String, String) {
 
     loop {
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) => {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
                 let name = e.name();
-                // Check for placeholder type (title vs body)
                 for attr in e.attributes().flatten() {
                     if attr.key.as_ref() == b"type" {
                         let val = attr.value.as_ref();
@@ -110,8 +106,7 @@ fn extract_slide_text(xml: &str) -> (String, String) {
                         }
                     }
                 }
-                if name.as_ref() == b"a:t" {
-                    // Text run — accumulate
+                if name.local_name().as_ref() == b"t" {
                     current_text.clear();
                 }
             }
@@ -120,7 +115,7 @@ fn extract_slide_text(xml: &str) -> (String, String) {
                 current_text.push_str(&s);
             }
             Ok(Event::End(e)) => {
-                if e.name().as_ref() == b"a:t" {
+                if e.name().local_name().as_ref() == b"t" {
                     if in_title && title.is_empty() {
                         title = current_text.clone();
                     } else if in_body {
@@ -131,7 +126,9 @@ fn extract_slide_text(xml: &str) -> (String, String) {
                     }
                     current_text.clear();
                 }
-                if e.name().as_ref() == b"p:sp" || e.name().as_ref() == b"p:txBody" {
+                if e.name().local_name().as_ref() == b"sp"
+                    || e.name().local_name().as_ref() == b"txBody"
+                {
                     in_title = false;
                     in_body = false;
                 }
@@ -144,4 +141,24 @@ fn extract_slide_text(xml: &str) -> (String, String) {
     }
 
     (title, body)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_slide_text_basic() {
+        let xml = r#"
+        <p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+          <p:cSld><p:spTree>
+            <p:sp><p:nvSpPr><p:ph type="title"/></p:nvSpPr><p:txBody><a:p><a:t>Slide Title</a:t></a:p></p:txBody></p:sp>
+            <p:sp><p:nvSpPr><p:ph type="body"/></p:nvSpPr><p:txBody><a:p><a:t>Body text</a:t></a:p></p:txBody></p:sp>
+          </p:spTree></p:cSld>
+        </p:sld>
+        "#;
+        let (title, body) = extract_slide_text(xml);
+        assert_eq!(title, "Slide Title");
+        assert_eq!(body, "Body text");
+    }
 }

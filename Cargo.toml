@@ -5,12 +5,10 @@ members = [
   "crates/core",
   "crates/fmt-text",
   "crates/fmt-office",
-  "crates/fmt-office-universal",
   "crates/fmt-iwork",
   "crates/fmt-pdf",
   "crates/fmt-image",
   "crates/fmt-archive",
-  "crates/fmt-archive-universal",
   "crates/fmt-ebook",
   "crates/fmt-font",
   "apps/desktop/src-tauri",
@@ -51,7 +49,7 @@ zip = "=8.6.0"
 chrono = "0.4"
 csv = "1"
 log = "0.4"
-# Office parser stack (fmt-office, fmt-office-universal).
+# Office parser stack (fmt-office; native + WASM unified).
 calamine = "=0.36.0"
 docx-rust = "=0.1.11"
 quick-xml = "0.36"
@@ -64,7 +62,7 @@ base64 = "0.22"
 flate2 = "1"
 tar = "0.4"
 sevenz-rust = "=0.6.1"
-# WASM (fmt-office-universal, fmt-archive-universal).
+# WASM (fmt-office, fmt-archive).
 wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
 console_error_panic_hook = "0.1.7"
 console_log = "0.2"

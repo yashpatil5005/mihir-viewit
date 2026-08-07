@@ -3,7 +3,7 @@
 use jni::objects::{JClass, JString, JObject};
 use jni::sys::{jstring, jboolean, jlong, jint};
 use jni::JNIEnv;
-use viewit_fmt_office_universal::render;
+use viewit_fmt_office::render;
 
 /// Initialize the plugin (no-op for now)
 #[no_mangle]

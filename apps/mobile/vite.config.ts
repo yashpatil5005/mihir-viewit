@@ -1,5 +1,6 @@
 import { sveltekit } from "@sveltejs/kit/vite";
 import { defineConfig } from "vite";
+import { viewitAliases } from "@viewit/config/vite";
 
 function emptyWasmPlugin() {
   return {
@@ -40,10 +41,9 @@ export default defineConfig({
   // Prevent vite from resolving imports to the crates directory (wasm plugins)
   resolve: {
     alias: {
-      "../../../../crates/fmt-office-universal/pkg/viewit_fmt_office_universal.js":
-        "virtual:empty-office-wasm",
-      "../../../../crates/fmt-archive-universal/pkg/viewit_fmt_archive_universal.js":
-        "virtual:empty-archive-wasm",
+      ...viewitAliases(),
+      "../../../../crates/fmt-office/pkg/viewit_fmt_office.js": "virtual:empty-office-wasm",
+      "../../../../crates/fmt-archive/pkg/viewit_fmt_archive.js": "virtual:empty-archive-wasm",
       "@silurus/ooxml/pptx": "virtual:empty-pptx-wasm",
     },
   },

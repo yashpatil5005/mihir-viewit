@@ -1,0 +1,18 @@
+{
+  "name": "@viewit/config",
+  "version": "0.1.0-scaffold",
+  "private": true,
+  "type": "module",
+  "description": "Shared build/preset configs (tsconfig, vite, svelte) for the ViewIt apps",
+  "exports": {
+    "./tsconfig.base.json": "./tsconfig.base.json",
+    "./svelte": "./svelte.base.js",
+    "./vite": "./vite.base.ts"
+  },
+  "main": "./vite.base.ts",
+  "files": [
+    "*.json",
+    "*.ts",
+    "*.js"
+  ]
+}

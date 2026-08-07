@@ -1,4 +1,4 @@
-//! WASM entry point for viewit-fmt-office-universal.
+//! WASM entry point for viewit-fmt-office.
 //!
 //! This module provides wasm-bindgen exports for web usage.
 
@@ -11,7 +11,7 @@ pub fn init() {
     #[cfg(feature = "log")]
     {
         console_log::init_with_level(log::Level::Debug).ok();
-        log::info!("viewit-fmt-office-universal WASM initialized");
+        log::info!("viewit-fmt-office WASM initialized");
     }
 }
 

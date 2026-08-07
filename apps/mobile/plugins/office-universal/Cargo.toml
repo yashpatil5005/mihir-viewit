@@ -11,7 +11,7 @@ path = "src/main/rust/lib.rs"
 crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
-viewit-fmt-office-universal = { path = "../../../../crates/fmt-office-universal", features = ["support-encrypted"] }
+viewit-fmt-office = { path = "../../../../crates/fmt-office", features = ["support-encrypted"] }
 jni = "0.21"
 anyhow = "1"
 thiserror = "2"

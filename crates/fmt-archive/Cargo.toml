@@ -6,7 +6,10 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "ViewIt archive (zip / tar / 7z) listing — Phase 2.9. RAR5 omitted per ADR 0004."
+description = "ViewIt archive (zip / tar / 7z) listing — Phase 2.9 + unified parser (zip, tar, 7z, rar, gzip, bzip2, xz, zstd, lz4, lzma + nested). RAR5 omitted per ADR 0004."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 viewit-core-types = { path = "../core-types" }
@@ -15,11 +18,65 @@ thiserror.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 bytes.workspace = true
-zip.workspace = true
-flate2.workspace = true
+# ZIP
+zip = { workspace = true, default-features = false, features = ["chrono"] }
+# TAR
 tar.workspace = true
+# Compression
+flate2 = { workspace = true, default-features = false, features = ["rust_backend"] }
+bzip2 = { version = "0.4", default-features = false, optional = true }
+zstd = { version = "0.13", default-features = false, optional = true, features = ["wasm"] }
+chrono.workspace = true
+# 7z
 sevenz-rust = { workspace = true, optional = true }
+# RAR
+unrar = { version = "0.4", optional = true }
+
+# Optional compression (require C compiler for native, disabled for WASM)
+lz4 = { version = "1.25", optional = true }
+xz2 = { version = "0.1", optional = true }
 
 [features]
-default = []
-support-7z = ["dep:sevenz-rust"]
+default = ["zip", "tar", "gzip", "tar-gz"]
+# Individual format features for size optimization
+zip = []
+tar = []
+gzip = []
+bzip2 = ["dep:bzip2"]
+xz = ["dep:xz2"]
+zstd = ["dep:zstd"]
+lz4 = ["dep:lz4"]
+lzma = ["dep:xz2"]
+# Combined tar compression features
+tar-gz = ["tar", "gzip"]
+tar-bz2 = ["tar", "bzip2"]
+tar-xz = ["tar", "xz"]
+tar-zstd = ["tar", "zstd"]
+tar-lz4 = ["tar", "lz4"]
+tar-lzma = ["tar", "lzma"]
+# Archive formats
+sevenz = ["dep:sevenz-rust"]
+rar = ["dep:unrar"]
+# Alias kept for core's `archive-7z` feature (native desktop).
+support-7z = ["sevenz"]
+# Convenience: all formats except 7z/rar (smaller WASM)
+all-common = ["zip", "tar", "gzip", "bzip2", "xz", "zstd", "lz4", "lzma", "tar-gz", "tar-bz2", "tar-xz", "tar-zstd", "tar-lz4", "tar-lzma"]
+# All formats including 7z
+all = ["all-common", "sevenz", "rar"]
+# WASM build target
+wasm = ["viewit-core-types/wasm"]
+# Optional logging in WASM
+log = ["dep:console_log"]
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen.workspace = true
+console_error_panic_hook.workspace = true
+console_log = { workspace = true, optional = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+lz4 = { version = "1.25", optional = true }
+xz2 = { version = "0.1", optional = true }
+
+[package.metadata.wasm-pack]
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false

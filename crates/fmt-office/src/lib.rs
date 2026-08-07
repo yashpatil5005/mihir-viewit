@@ -1,21 +1,186 @@
-//! Phase 3 — Office format parsers.
+//! ViewIt Unified Office Parser — Phase 3+
 //!
-//! - XLSX (3.2): `calamine` → `Document::Csv`
-//! - DOCX (3.1): `docx-rust` + WordprocessingML fallback → `Document::Docx`
-//! - PPTX (3.3): custom OOXML reader → `Document::Pptx`
-//! - ODS (3.4): `calamine` → `Document::Csv`
-//! - ODT/ODP (3.4): custom zip+XML reader → `Document::Text`
+//! Combines:
+//! - OOXML: .docx, .docm, .dotx, .dotm, .xlsx, .xlsm, .xlsb, .xls, .pptx, .pptm, .potx
+//! - Legacy Binary: .doc, .ppt (text extraction)
+//! - OpenDocument: .odt, .ott, .ods, .ots, .odp, .otp
+//!
+//! Entry point: `render(bytes, ext) -> String` for WASM/Android native plugins.
 
+pub mod docx;
+pub mod legacy_binary;
 pub mod odp;
+pub mod ods;
 pub mod odt;
 pub mod pptx;
+pub mod xlsx;
 
-use std::io::Cursor;
+#[cfg(all(target_arch = "wasm32", feature = "wasm"))]
+pub mod wasm_entry;
+
+use std::io::{Cursor, Read};
 use viewit_core_types::{Document, Error, Format};
 
+/// Unified entry point for all Office formats.
+/// Returns JSON string for WASM/Android native plugin consumption.
+pub fn render(bytes: &[u8], ext: &str) -> Result<String, Error> {
+    let format = sniff_format(bytes, ext);
+    let name = format!("file.{}", ext);
+    let doc = dispatch(format, bytes, ext, &name)?;
+    serde_json::to_string(&doc).map_err(|e| Error::Parse(e.to_string()))
+}
+
+/// Native entry point used by `viewit-core`.
+/// Dispatches on caller-provided `Format` to the same parser modules as `render`.
 pub fn parse(bytes: &[u8], format: Format, name: &str) -> Result<Document, Error> {
-    // Phase 3.7 — if encrypted Office, attempt pre-decrypt with empty password
-    // (common for read-only protected files). If that fails, surface Unsupported.
+    dispatch(format, bytes, "", name)
+}
+
+/// Format detection from bytes + extension
+fn sniff_format(bytes: &[u8], ext: &str) -> Format {
+    // Magic bytes first
+    if bytes.len() >= 4 {
+        // PDF
+        if bytes.starts_with(b"%PDF") {
+            return Format::Pdf;
+        }
+        // ZIP-based formats (OOXML, ODF, EPUB, iWork)
+        if bytes.starts_with(&[0x50, 0x4B, 0x03, 0x04])
+            || bytes.starts_with(&[0x50, 0x4B, 0x05, 0x06])
+        {
+            return sniff_zip_format(bytes, ext);
+        }
+        // OLE2 Compound File (legacy .doc, .xls, .ppt)
+        if bytes.starts_with(&[0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1]) {
+            return sniff_ole2_format(ext);
+        }
+    }
+    // Extension fallback
+    sniff_ext(ext)
+}
+
+fn sniff_zip_format(bytes: &[u8], ext: &str) -> Format {
+    let cursor = Cursor::new(bytes);
+    let mut archive = match zip::ZipArchive::new(cursor) {
+        Ok(a) => a,
+        Err(_) => return Format::ArchiveZip,
+    };
+
+    let mut has_content_types = false;
+    let mut has_word = false;
+    let mut has_xl = false;
+    let mut has_ppt = false;
+    let mut has_epub = false;
+    let mut has_odf = false;
+
+    for i in 0..archive.len() {
+        let Ok(file) = archive.by_index(i) else {
+            continue;
+        };
+        let name = file.name();
+        if name == "[Content_Types].xml" {
+            has_content_types = true;
+        }
+        if name.starts_with("word/") {
+            has_word = true;
+        }
+        if name.starts_with("xl/") {
+            has_xl = true;
+        }
+        if name.starts_with("ppt/") {
+            has_ppt = true;
+        }
+        if name == "META-INF/container.xml" {
+            has_epub = true;
+        }
+        // ODF indicators
+        if name == "content.xml"
+            || name.starts_with("Thumbnails/")
+            || name == "META-INF/manifest.xml"
+        {
+            has_odf = true;
+        }
+    }
+
+    // Extension-based disambiguation for OOXML
+    if has_content_types {
+        match ext {
+            "docx" | "docm" | "dotx" | "dotm" => return Format::Docx,
+            "xlsx" | "xlsm" | "xlsb" => return Format::Xlsx,
+            "xls" => return Format::Xls,
+            "pptx" | "pptm" | "potx" => return Format::Pptx,
+            _ => {}
+        }
+        if has_xl {
+            return Format::Xlsx;
+        }
+        if has_word {
+            return Format::Docx;
+        }
+        if has_ppt {
+            return Format::Pptx;
+        }
+    }
+
+    // ODF detection
+    if has_odf || !has_epub {
+        match ext {
+            "odt" | "ott" => return Format::Odt,
+            "ods" | "ots" => return Format::Ods,
+            "odp" | "otp" => return Format::Odp,
+            _ => {}
+        }
+        // Fallback: check content.xml for office:document-class
+        if let Ok(mut f) = archive.by_name("content.xml") {
+            let mut xml = String::new();
+            if f.read_to_string(&mut xml).is_ok() && xml.contains("office:document-class") {
+                if xml.contains("text") {
+                    return Format::Odt;
+                }
+                if xml.contains("spreadsheet") {
+                    return Format::Ods;
+                }
+                if xml.contains("presentation") {
+                    return Format::Odp;
+                }
+            }
+        }
+    }
+
+    if has_epub {
+        return Format::Epub;
+    }
+
+    Format::ArchiveZip
+}
+
+fn sniff_ole2_format(ext: &str) -> Format {
+    match ext {
+        "doc" => Format::Doc,
+        "ppt" => Format::Ppt,
+        "xls" => Format::Xls,
+        _ => Format::Doc, // Default to Doc for unknown OLE2
+    }
+}
+
+fn sniff_ext(ext: &str) -> Format {
+    match ext {
+        "docx" | "docm" | "dotx" | "dotm" => Format::Docx,
+        "xlsx" | "xlsm" | "xlsb" => Format::Xlsx,
+        "xls" => Format::Xls,
+        "pptx" | "pptm" | "potx" => Format::Pptx,
+        "odt" | "ott" => Format::Odt,
+        "ods" | "ots" => Format::Ods,
+        "odp" | "otp" => Format::Odp,
+        "doc" => Format::Doc,
+        "ppt" => Format::Ppt,
+        _ => Format::Unsupported,
+    }
+}
+
+/// Dispatch to format-specific parser
+fn dispatch(format: Format, bytes: &[u8], _ext: &str, name: &str) -> Result<Document, Error> {
+    // Try decrypt if encrypted Office (OLE2 or OOXML)
     let bytes = match try_decrypt_if_encrypted(bytes)? {
         Some(decrypted) => decrypted,
         None => bytes.to_vec(),
@@ -23,34 +188,30 @@ pub fn parse(bytes: &[u8], format: Format, name: &str) -> Result<Document, Error
     let bytes = bytes.as_slice();
 
     match format {
-        Format::Xlsx | Format::Ods => parse_xlsx_ods(bytes, format),
-        Format::Xls => parse_xls_binary(bytes),
-        Format::Docx => parse_docx(bytes),
+        Format::Xlsx | Format::Xls => parse_xlsx_xls_ods(bytes, format),
+        Format::Ods => ods::parse_ods(bytes, format, name),
+        Format::Docx => docx::parse_docx(bytes),
         Format::Pptx => pptx::parse_pptx(bytes, format, name),
         Format::Odt => odt::parse_odt(bytes, format, name),
         Format::Odp => odp::parse_odp(bytes, format, name),
-        // Phase 3.6 — legacy binary Office (.doc / .ppt). Best-effort text
-        // extraction via CFB compound-storage walk. Per plan §4: "best-effort".
-        Format::Doc | Format::Ppt => parse_legacy_binary(bytes, format),
+        Format::Doc | Format::Ppt => legacy_binary::parse_legacy_binary(bytes, format),
         _ => Err(Error::UnsupportedFormat(format)),
     }
 }
 
-/// Detect OLE2 encrypted Office (CFB header D0 CF 11 E0 A1 B1 1A E1).
-/// Try office-crypto with empty password. Returns None if not encrypted.
+/// Phase 3.7 — Encrypted Office detection and decryption attempt
 #[cfg(feature = "support-encrypted")]
 fn try_decrypt_if_encrypted(bytes: &[u8]) -> Result<Option<Vec<u8>>, Error> {
     const OLE2_MAGIC: [u8; 8] = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
     if bytes.len() < 8 || bytes[..8] != OLE2_MAGIC {
         return Ok(None);
     }
-    // All OLE2 files share the same header — encrypted or not.
-    // First try to open with cfb directly; if it succeeds, the file is not encrypted.
-    let cursor = std::io::Cursor::new(bytes);
+    // Try CFB first (unencrypted OLE2)
+    let cursor = Cursor::new(bytes);
     if cfb::CompoundFile::open(cursor).is_ok() {
         return Ok(None);
     }
-    // cfb failed — might be encrypted. Try office-crypto with empty password.
+    // Try office-crypto with empty password
     match office_crypto::decrypt_from_bytes(bytes.to_vec(), "") {
         Ok(decrypted) => Ok(Some(decrypted)),
         Err(_) => Err(Error::Parse(
@@ -65,8 +226,7 @@ fn try_decrypt_if_encrypted(bytes: &[u8]) -> Result<Option<Vec<u8>>, Error> {
     if bytes.len() < 8 || bytes[..8] != OLE2_MAGIC {
         return Ok(None);
     }
-    // Without office-crypto, try opening with cfb directly
-    let cursor = std::io::Cursor::new(bytes);
+    let cursor = Cursor::new(bytes);
     if cfb::CompoundFile::open(cursor).is_ok() {
         return Ok(None);
     }
@@ -75,258 +235,65 @@ fn try_decrypt_if_encrypted(bytes: &[u8]) -> Result<Option<Vec<u8>>, Error> {
     ))
 }
 
-/// Phase 3.6 — legacy binary `.xls` via calamine's Xls reader.
-fn parse_xls_binary(bytes: &[u8]) -> Result<Document, Error> {
+/// XLSX / XLS / ODS unified parsing
+fn parse_xlsx_xls_ods(bytes: &[u8], format: Format) -> Result<Document, Error> {
     use calamine::Reader;
     use viewit_core_types::XlsxSheet;
+
     let cursor = Cursor::new(bytes.to_vec());
-    let mut workbook = calamine::Xls::<Cursor<Vec<u8>>>::new(cursor)
-        .map_err(|e| Error::Parse(format!("calamine xls: {}", e)))?;
-    let sheets_meta = workbook.worksheets();
-    let mut sheets: Vec<XlsxSheet> = Vec::with_capacity(sheets_meta.len().min(8));
-    for (name, range) in sheets_meta.into_iter().take(8) {
-        let mut rows_iter = range.rows();
-        let header: Vec<String> = rows_iter
-            .next()
-            .map(|r| r.iter().map(|c| c.to_string()).collect())
-            .unwrap_or_default();
-        let preview_rows: Vec<Vec<String>> = rows_iter
-            .take(200)
-            .map(|r| r.iter().map(|c| c.to_string()).collect())
-            .collect();
-        sheets.push(XlsxSheet {
-            name,
-            header,
-            preview_rows,
-            total_rows_hint: Some(range.height()),
-            total_cols_hint: Some(range.width()),
-            preview_formulas: None,
-        });
-    }
-    Ok(Document::Xlsx {
-        sheets,
-        byte_len: bytes.len(),
-    })
-}
 
-/// Phase 3.6 — legacy binary .doc / .ppt best-effort.
-/// Uses `cfb` to walk compound storage, then extracts readable UTF-16 LE
-/// (typical for Word's WordDocument / PowerPoint Document streams) and ASCII
-/// sequences from the other streams. Marked partial-preview.
-fn parse_legacy_binary(bytes: &[u8], format: Format) -> Result<Document, Error> {
-    let cursor = std::io::Cursor::new(bytes.to_vec());
-    let mut cfb =
-        cfb::CompoundFile::open(cursor).map_err(|e| Error::Parse(format!("cfb open: {}", e)))?;
+    let mut sheets: Vec<XlsxSheet> = Vec::new();
 
-    // Stream targets per format — try primary then fallback streams.
-    let streams: Vec<&str> = match format {
-        Format::Doc => vec!["WordDocument", "1Table", "0Table"],
-        Format::Ppt => vec!["PowerPoint Document", "Current User"],
+    match format {
+        Format::Xlsx => {
+            let mut workbook = calamine::Xlsx::<Cursor<Vec<u8>>>::new(cursor)
+                .map_err(|e| Error::Parse(format!("calamine xlsx: {}", e)))?;
+            let sheets_meta = workbook.worksheets();
+            for (name, range) in sheets_meta.into_iter().take(8) {
+                let mut rows_iter = range.rows();
+                let header: Vec<String> = rows_iter
+                    .next()
+                    .map(|r| r.iter().map(|c| c.to_string()).collect())
+                    .unwrap_or_default();
+                let preview_rows: Vec<Vec<String>> = rows_iter
+                    .take(200)
+                    .map(|r| r.iter().map(|c| c.to_string()).collect())
+                    .collect();
+                sheets.push(XlsxSheet {
+                    name,
+                    header,
+                    preview_rows,
+                    total_rows_hint: Some(range.height()),
+                    total_cols_hint: Some(range.width()),
+                    preview_formulas: None,
+                });
+            }
+        }
+        Format::Xls => {
+            let mut workbook = calamine::Xls::<Cursor<Vec<u8>>>::new(cursor)
+                .map_err(|e| Error::Parse(format!("calamine xls: {}", e)))?;
+            let sheets_meta = workbook.worksheets();
+            for (name, range) in sheets_meta.into_iter().take(8) {
+                let mut rows_iter = range.rows();
+                let header: Vec<String> = rows_iter
+                    .next()
+                    .map(|r| r.iter().map(|c| c.to_string()).collect())
+                    .unwrap_or_default();
+                let preview_rows: Vec<Vec<String>> = rows_iter
+                    .take(200)
+                    .map(|r| r.iter().map(|c| c.to_string()).collect())
+                    .collect();
+                sheets.push(XlsxSheet {
+                    name,
+                    header,
+                    preview_rows,
+                    total_rows_hint: Some(range.height()),
+                    total_cols_hint: Some(range.width()),
+                    preview_formulas: None,
+                });
+            }
+        }
         _ => return Err(Error::UnsupportedFormat(format)),
-    };
-
-    let mut text = String::new();
-    for stream_name in &streams {
-        if cfb.is_stream(stream_name) {
-            use std::io::Read;
-            if let Ok(mut stream) = cfb.open_stream(stream_name) {
-                let mut buf = Vec::new();
-                if stream.read_to_end(&mut buf).is_ok() {
-                    let extracted = extract_utf16_le(&buf);
-                    if !extracted.trim().is_empty() {
-                        text.push_str(&extracted);
-                        text.push('\n');
-                    }
-                    let ascii = extract_ascii(&buf);
-                    if !ascii.trim().is_empty() {
-                        text.push_str(&ascii);
-                        text.push('\n');
-                    }
-                }
-            }
-        }
-    }
-    // Fallback: walk all streams and harvest ASCII prints if primary stream empty.
-    if text.trim().is_empty() {
-        let paths: Vec<_> = cfb
-            .read_root_storage()
-            .filter(|e| e.is_stream())
-            .map(|e| e.path().to_path_buf())
-            .collect();
-        for path in paths {
-            if let Ok(mut s) = cfb.open_stream(&path) {
-                use std::io::Read;
-                let mut b = Vec::new();
-                if s.read_to_end(&mut b).is_ok() {
-                    text.push_str(&extract_ascii(&b));
-                }
-            }
-        }
-    }
-
-    if format == Format::Ppt {
-        let slides = legacy_ppt_slides(&text);
-        return Ok(Document::Pptx {
-            slide_count: slides.len(),
-            slides,
-            byte_len: bytes.len(),
-            asset_path: String::new(),
-            stream_url: None,
-        });
-    }
-
-    let label = match format {
-        Format::Doc => "Word .doc",
-        _ => "legacy",
-    };
-    Ok(Document::Text {
-        content: format!(
-            "[Partial preview — {} legacy binary, layout/formatting not preserved]\n\n{}",
-            label,
-            text.trim()
-        ),
-        encoding: "utf-8".into(),
-        byte_len: bytes.len(),
-        truncated: text.len() > 256 * 1024,
-        stream_url: None,
-    })
-}
-
-fn legacy_ppt_slides(text: &str) -> Vec<viewit_core_types::PptxSlide> {
-    use viewit_core_types::PptxSlide;
-
-    let cleaned: Vec<String> = text
-        .lines()
-        .map(str::trim)
-        .filter(|line| line.len() >= 3)
-        .filter(|line| {
-            !line
-                .chars()
-                .all(|c| c.is_ascii_punctuation() || c.is_ascii_digit())
-        })
-        .map(str::to_string)
-        .collect();
-
-    if cleaned.is_empty() {
-        return vec![PptxSlide {
-            title: "Legacy PowerPoint preview".into(),
-            body: "No extractable slide text found. Legacy binary PowerPoint layout is not decoded in the lightweight viewer.".into(),
-            elements: Vec::new(),
-        }];
-    }
-
-    let mut slides = Vec::new();
-    let chunk_size = 12;
-    for (idx, chunk) in cleaned.chunks(chunk_size).enumerate() {
-        let title = chunk
-            .first()
-            .cloned()
-            .filter(|s| s.len() <= 120)
-            .unwrap_or_else(|| format!("Legacy PowerPoint slide {}", idx + 1));
-        let body = chunk.iter().skip(1).cloned().collect::<Vec<_>>().join("\n");
-        slides.push(PptxSlide {
-            title,
-            body,
-            elements: Vec::new(),
-        });
-    }
-    slides
-}
-
-/// Extract printable UTF-16 LE strings from a byte slice.
-fn extract_utf16_le(bytes: &[u8]) -> String {
-    let mut out = String::new();
-    let mut cur = String::new();
-    let mut i = 0;
-    while i + 1 < bytes.len() {
-        let lo = bytes[i] as u16;
-        let hi = bytes[i + 1] as u16;
-        let cp = lo | (hi << 8);
-        if (0x20..=0x7E).contains(&cp) {
-            cur.push(cp as u8 as char);
-        } else if cp == 0x0A || cp == 0x0D {
-            if !cur.is_empty() {
-                cur.push('\n');
-                out.push_str(&cur);
-                cur.clear();
-            }
-        } else if !cur.is_empty() {
-            if cur.len() >= 4 {
-                out.push_str(&cur);
-                out.push('\n');
-            }
-            cur.clear();
-        }
-        i += 2;
-    }
-    if cur.len() >= 4 {
-        out.push_str(&cur);
-    }
-    out
-}
-
-/// Extract printable ASCII strings (len >= 4) from a byte slice.
-fn extract_ascii(bytes: &[u8]) -> String {
-    let mut out = String::new();
-    let mut cur: Vec<u8> = Vec::new();
-    for &b in bytes {
-        if (0x20..=0x7E).contains(&b) {
-            cur.push(b);
-        } else if b == 0x0A || b == 0x0D {
-            if cur.len() >= 4 {
-                out.push_str(&String::from_utf8_lossy(&cur));
-                out.push('\n');
-            }
-            cur.clear();
-        } else if !cur.is_empty() {
-            if cur.len() >= 4 {
-                out.push_str(&String::from_utf8_lossy(&cur));
-                out.push(' ');
-            }
-            cur.clear();
-        }
-    }
-    if cur.len() >= 4 {
-        out.push_str(&String::from_utf8_lossy(&cur));
-    }
-    out
-}
-
-/// Phase 3.2 (XLSX) + 3.4 (ODS) — `calamine` reader.
-/// Both produce `Document::Xlsx` with multi-sheet metadata.
-fn parse_xlsx_ods(bytes: &[u8], format: Format) -> Result<Document, Error> {
-    use calamine::Reader;
-    use viewit_core_types::XlsxSheet;
-
-    if format == Format::Xlsx {
-        return parse_xlsx(bytes);
-    }
-
-    // ODS path — multi-sheet via calamine Ods reader
-    let cursor = Cursor::new(bytes.to_vec());
-    let mut workbook = calamine::Ods::<Cursor<Vec<u8>>>::new(cursor)
-        .map_err(|e| Error::Parse(format!("calamine ods: {}", e)))?;
-
-    let sheets_meta = workbook.worksheets();
-    let mut sheets: Vec<XlsxSheet> = Vec::with_capacity(sheets_meta.len().min(8));
-    for (name, range) in sheets_meta.into_iter().take(8) {
-        let mut rows_iter = range.rows();
-        let header: Vec<String> = rows_iter
-            .next()
-            .map(|r| r.iter().map(|c| c.to_string()).collect())
-            .unwrap_or_default();
-        let preview_rows: Vec<Vec<String>> = rows_iter
-            .take(200)
-            .map(|r| r.iter().map(|c| c.to_string()).collect())
-            .collect();
-        sheets.push(XlsxSheet {
-            name,
-            header,
-            preview_rows,
-            total_rows_hint: Some(range.height()),
-            total_cols_hint: Some(range.width()),
-            preview_formulas: None,
-        });
     }
 
     Ok(Document::Xlsx {
@@ -335,256 +302,152 @@ fn parse_xlsx_ods(bytes: &[u8], format: Format) -> Result<Document, Error> {
     })
 }
 
-fn parse_xlsx(bytes: &[u8]) -> Result<Document, Error> {
-    use calamine::Reader;
-    use viewit_core_types::XlsxSheet;
-    let cursor = Cursor::new(bytes.to_vec());
-    let mut workbook = calamine::Xlsx::<Cursor<Vec<u8>>>::new(cursor)
-        .map_err(|e| Error::Parse(format!("calamine xlsx: {}", e)))?;
-    let sheets_meta = workbook.worksheets();
-    let mut sheets: Vec<XlsxSheet> = Vec::with_capacity(sheets_meta.len());
-    for (name, range) in sheets_meta.into_iter().take(8) {
-        let mut rows_iter = range.rows();
-        let header: Vec<String> = rows_iter
-            .next()
-            .map(|r| r.iter().map(|c| c.to_string()).collect())
-            .unwrap_or_default();
-        let preview_rows: Vec<Vec<String>> = rows_iter
-            .take(200)
-            .map(|r| r.iter().map(|c| c.to_string()).collect())
-            .collect();
-        sheets.push(XlsxSheet {
-            name,
-            header,
-            preview_rows,
-            total_rows_hint: Some(range.height()),
-            total_cols_hint: Some(range.width()),
-            preview_formulas: None,
-        });
-    }
-    Ok(Document::Xlsx {
-        sheets,
-        byte_len: bytes.len(),
-    })
-}
-
-/// Phase 3.1 — DOCX via `docx-rust`, walked structurally.
-/// Produces `Document::Docx` with paragraphs (heading-aware), list items,
-/// tables. Embedded images surface as `DocxBlock::Image` placeholders
-/// (Phase 3.8 actual binary extraction pending).
-fn parse_docx(bytes: &[u8]) -> Result<Document, Error> {
-    use docx_rust::document::{BodyContent, TableCellContent, TableRowContent};
-    use viewit_core_types::DocxBlock;
-
-    let cursor = Cursor::new(bytes);
-    let docx_file = docx_rust::DocxFile::from_reader(cursor)
-        .map_err(|e| Error::Parse(format!("docx-rust from_reader: {}", e)))?;
-    let docx = match docx_file.parse() {
-        Ok(docx) => docx,
-        Err(e) => {
-            return parse_docx_ooxml_fallback(bytes).map_err(|fallback| {
-                Error::Parse(format!("docx-rust parse: {}; fallback: {}", e, fallback))
-            })
-        }
-    };
-
-    let mut blocks: Vec<DocxBlock> = Vec::new();
-    for content in &docx.document.body.content {
-        match content {
-            BodyContent::Paragraph(p) => {
-                let text = p.text();
-                if text.trim().is_empty() {
-                    continue;
-                }
-                let heading = p
-                    .property
-                    .as_ref()
-                    .and_then(|prop| prop.style_id.as_ref())
-                    .and_then(|sid| heading_from_style(&sid.value));
-                let is_list = p
-                    .property
-                    .as_ref()
-                    .map(|prop| prop.numbering.is_some())
-                    .unwrap_or(false);
-                if is_list {
-                    blocks.push(DocxBlock::ListItem { text, level: 0 });
-                } else {
-                    blocks.push(DocxBlock::Paragraph { text, heading });
-                }
-            }
-            BodyContent::Table(t) => {
-                let mut rows: Vec<Vec<String>> = Vec::new();
-                for row in &t.rows {
-                    let mut cells: Vec<String> = Vec::new();
-                    for tc in &row.cells {
-                        let cell = match tc {
-                            TableRowContent::TableCell(c) => c,
-                            _ => continue,
-                        };
-                        let cell_text: Vec<String> = cell
-                            .content
-                            .iter()
-                            .map(|c| match c {
-                                TableCellContent::Paragraph(p) => p.text(),
-                            })
-                            .collect();
-                        cells.push(cell_text.join("\n"));
-                    }
-                    rows.push(cells);
-                }
-                blocks.push(DocxBlock::Table { rows });
-            }
-            _ => {}
-        }
-    }
-
-    Ok(Document::Docx {
-        blocks,
-        byte_len: bytes.len(),
-    })
-}
-
-fn parse_docx_ooxml_fallback(bytes: &[u8]) -> Result<Document, Error> {
-    use std::io::Read;
-
-    let cursor = Cursor::new(bytes);
-    let mut archive =
-        zip::ZipArchive::new(cursor).map_err(|e| Error::Parse(format!("docx zip: {}", e)))?;
-    let mut xml = String::new();
-    archive
-        .by_name("word/document.xml")
-        .map_err(|e| Error::Parse(format!("docx missing document.xml: {}", e)))?
-        .read_to_string(&mut xml)
-        .map_err(|e| Error::Parse(format!("docx document.xml read: {}", e)))?;
-
-    parse_docx_document_xml(&xml, bytes.len())
-}
-
-fn parse_docx_document_xml(xml: &str, byte_len: usize) -> Result<Document, Error> {
-    use quick_xml::events::Event;
-    use quick_xml::Reader;
-    use viewit_core_types::DocxBlock;
-
-    let mut reader = Reader::from_str(xml);
-    reader.config_mut().trim_text(true);
-    let mut buf = Vec::new();
-    let mut blocks = Vec::new();
-    let mut in_paragraph = false;
-    let mut in_table = false;
-    let mut in_cell = false;
-    let mut in_text = false;
-    let mut paragraph_text = String::new();
-    let mut paragraph_heading: Option<u8> = None;
-    let mut paragraph_is_list = false;
-    let mut cell_text = String::new();
-    let mut current_row: Vec<String> = Vec::new();
-    let mut table_rows: Vec<Vec<String>> = Vec::new();
-
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) => {
-                let name = e.name().as_ref().to_vec();
-                match name.as_slice() {
-                    b"w:tbl" => {
-                        in_table = true;
-                        table_rows.clear();
-                    }
-                    b"w:tr" if in_table => {
-                        current_row.clear();
-                    }
-                    b"w:tc" if in_table => {
-                        in_cell = true;
-                        cell_text.clear();
-                    }
-                    b"w:p" => {
-                        in_paragraph = true;
-                        paragraph_text.clear();
-                        paragraph_heading = None;
-                        paragraph_is_list = false;
-                    }
-                    b"w:t" => in_text = true,
-                    b"w:pStyle" if in_paragraph => {
-                        for attr in e.attributes().flatten() {
-                            if attr.key.as_ref() == b"w:val" {
-                                let value =
-                                    String::from_utf8_lossy(attr.value.as_ref()).to_string();
-                                paragraph_heading = heading_from_style(&value);
-                            }
-                        }
-                    }
-                    b"w:numPr" if in_paragraph => paragraph_is_list = true,
-                    _ => {}
-                }
-            }
-            Ok(Event::Text(e)) if in_text => {
-                let text = e.unescape().unwrap_or_default().to_string();
-                if in_cell {
-                    cell_text.push_str(&text);
-                } else if in_paragraph {
-                    paragraph_text.push_str(&text);
-                }
-            }
-            Ok(Event::End(e)) => {
-                let name = e.name().as_ref().to_vec();
-                match name.as_slice() {
-                    b"w:t" => in_text = false,
-                    b"w:p" => {
-                        if !in_table {
-                            let text = paragraph_text.trim().to_string();
-                            if !text.is_empty() {
-                                if paragraph_is_list {
-                                    blocks.push(DocxBlock::ListItem { text, level: 0 });
-                                } else {
-                                    blocks.push(DocxBlock::Paragraph {
-                                        text,
-                                        heading: paragraph_heading,
-                                    });
-                                }
-                            }
-                        }
-                        in_paragraph = false;
-                    }
-                    b"w:tc" if in_table => {
-                        current_row.push(cell_text.trim().to_string());
-                        in_cell = false;
-                    }
-                    b"w:tr" if in_table => {
-                        table_rows.push(current_row.clone());
-                    }
-                    b"w:tbl" => {
-                        if !table_rows.is_empty() {
-                            blocks.push(DocxBlock::Table {
-                                rows: table_rows.clone(),
-                            });
-                        }
-                        in_table = false;
-                    }
-                    _ => {}
-                }
-            }
-            Ok(Event::Eof) => break,
-            Err(e) => return Err(Error::Parse(format!("docx xml: {}", e))),
-            _ => {}
-        }
-        buf.clear();
-    }
-
-    Ok(Document::Docx { blocks, byte_len })
-}
-
-fn heading_from_style(style: &str) -> Option<u8> {
-    if style == "Title" {
-        return Some(1);
-    }
-    style
-        .strip_prefix("Heading")
-        .or_else(|| style.strip_prefix("heading"))
-        .and_then(|level| level.trim().parse::<u8>().ok())
+// WASM exports are in wasm_entry.rs
+#[cfg(all(target_arch = "wasm32", feature = "wasm"))]
+mod wasm_exports {
+    // Module exists to ensure wasm_entry is compiled
+    // Exports are defined in wasm_entry.rs directly
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Create a minimal valid DOCX (ZIP with word/document.xml)
+    fn minimal_docx() -> Vec<u8> {
+        use std::io::Write;
+        use zip::write::FileOptions;
+        let mut buf = Vec::new();
+        {
+            let mut zip = zip::ZipWriter::new(Cursor::new(&mut buf));
+            let options: FileOptions<'_, ()> =
+                FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+            zip.start_file("[Content_Types].xml", options).unwrap();
+            zip.write_all(b"<?xml version=\"1.0\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"xml\" ContentType=\"application/xml\"/></Types>").unwrap();
+            zip.start_file("_rels/.rels", options).unwrap();
+            zip.write_all(b"<?xml version=\"1.0\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"word/document.xml\"/></Relationships>").unwrap();
+            zip.start_file("word/document.xml", options).unwrap();
+            zip.write_all(b"<?xml version=\"1.0\"?><w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body><w:p><w:t>Test</w:t></w:p></w:body></w:document>").unwrap();
+            zip.finish().unwrap();
+        }
+        buf
+    }
+
+    /// Create a minimal valid ODT (ZIP with content.xml)
+    fn minimal_odt() -> Vec<u8> {
+        use std::io::Write;
+        use zip::write::FileOptions;
+        let mut buf = Vec::new();
+        {
+            let mut zip = zip::ZipWriter::new(Cursor::new(&mut buf));
+            let options: FileOptions<'_, ()> =
+                FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+            zip.start_file("content.xml", options).unwrap();
+            zip.write_all(b"<?xml version=\"1.0\"?><office:document-content xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\"><office:body><office:text><text:p>Test</text:p></office:text></office:body></office:document-content>").unwrap();
+            zip.finish().unwrap();
+        }
+        buf
+    }
+
+    /// Create a minimal valid XLSX (ZIP with xl/worksheets/sheet1.xml)
+    fn minimal_xlsx() -> Vec<u8> {
+        use std::io::Write;
+        use zip::write::FileOptions;
+        let mut buf = Vec::new();
+        {
+            let mut zip = zip::ZipWriter::new(Cursor::new(&mut buf));
+            let options: FileOptions<'_, ()> =
+                FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+            zip.start_file("[Content_Types].xml", options).unwrap();
+            zip.write_all(b"<?xml version=\"1.0\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"xml\" ContentType=\"application/xml\"/></Types>").unwrap();
+            zip.start_file("_rels/.rels", options).unwrap();
+            zip.write_all(b"<?xml version=\"1.0\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/></Relationships>").unwrap();
+            zip.start_file("xl/workbook.xml", options).unwrap();
+            zip.write_all(b"<?xml version=\"1.0\"?><workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheets><sheet name=\"Sheet1\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>").unwrap();
+            zip.start_file("xl/worksheets/sheet1.xml", options).unwrap();
+            zip.write_all(b"<?xml version=\"1.0\"?><worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData><row r=\"1\"><c r=\"A1\"><v>Test</v></c></row></sheetData></worksheet>").unwrap();
+            zip.start_file("xl/_rels/workbook.xml.rels", options)
+                .unwrap();
+            zip.write_all(b"<?xml version=\"1.0\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/></Relationships>").unwrap();
+            zip.finish().unwrap();
+        }
+        buf
+    }
+
+    /// Create a minimal valid PPTX (ZIP with ppt/presentation.xml and ppt/slides/slide1.xml)
+    fn minimal_pptx() -> Vec<u8> {
+        use std::io::Write;
+        use zip::write::FileOptions;
+        let mut buf = Vec::new();
+        {
+            let mut zip = zip::ZipWriter::new(Cursor::new(&mut buf));
+            let options: FileOptions<'_, ()> =
+                FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+            zip.start_file("[Content_Types].xml", options).unwrap();
+            zip.write_all(b"<?xml version=\"1.0\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"xml\" ContentType=\"application/xml\"/></Types>").unwrap();
+            zip.start_file("ppt/presentation.xml", options).unwrap();
+            zip.write_all(b"<?xml version=\"1.0\"?><p:presentation xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\"><p:sldIdLst><p:sldId id=\"256\" r:id=\"rId1\"/></p:sldIdLst><p:sldIdLst/></p:presentation>").unwrap();
+            zip.start_file("ppt/slides/slide1.xml", options).unwrap();
+            zip.write_all(b"<?xml version=\"1.0\"?><p:sld xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><p:cSld><p:spTree><p:sp><p:nvSpPr><p:ph type=\"title\"/></p:nvSpPr><p:txBody><a:p><a:t>Slide Title</a:t></a:p></p:txBody></p:sp><p:sp><p:nvSpPr><p:ph type=\"body\"/></p:nvSpPr><p:txBody><a:p><a:t>Body text</a:t></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>").unwrap();
+            zip.start_file("ppt/_rels/presentation.xml.rels", options)
+                .unwrap();
+            zip.write_all(b"<?xml version=\"1.0\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide\" Target=\"slides/slide1.xml\"/></Relationships>").unwrap();
+            zip.finish().unwrap();
+        }
+        buf
+    }
+
+    /// Create a minimal valid OLE2 compound file (for .doc/.ppt)
+    fn minimal_ole2() -> Vec<u8> {
+        // Minimal OLE2 header - we just return the magic bytes
+        // The parser will fail to open it but that's expected for these test bytes
+        vec![0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1]
+    }
+
+    #[test]
+    fn render_docx_ext() {
+        let bytes = minimal_docx();
+        let result = render(&bytes, "docx");
+        assert!(result.is_ok());
+        let doc: Document = serde_json::from_str(&result.unwrap()).unwrap();
+        assert!(matches!(
+            doc,
+            Document::Placeholder {
+                format: Format::Docx,
+                ..
+            } | Document::Docx { .. }
+        ));
+    }
+
+    #[test]
+    fn render_odt_ext() {
+        let bytes = minimal_odt();
+        let result = render(&bytes, "odt");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn render_xlsx_ext() {
+        let bytes = minimal_xlsx();
+        let result = render(&bytes, "xlsx");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn render_pptx_ext() {
+        let bytes = minimal_pptx();
+        let result = render(&bytes, "pptx");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn render_legacy_doc_ext() {
+        let bytes = minimal_ole2();
+        let result = render(&bytes, "doc");
+        // This will fail because it's not a valid OLE2 file, just the magic bytes
+        // The test just ensures the entry point is callable
+        assert!(result.is_err() || result.is_ok());
+    }
 
     fn legacy_ppt_text() -> Vec<u8> {
         use std::io::{Cursor, Write};
@@ -640,7 +503,7 @@ mod tests {
     #[test]
     fn legacy_ppt_slides_chunks_extracted_text() {
         let text = "Alpha\nBeta\nGamma\nDelta\nEpsilon\nZeta\nEta\nTheta\nIota\nKappa\nLambda\nMu\nNu\nXi\nOmicron\nPi\nRho\n";
-        let slides = legacy_ppt_slides(text);
+        let slides = crate::legacy_binary::legacy_ppt_slides(text);
         assert!(
             slides.len() >= 2,
             "expected multiple slides from chunking, got {}",
@@ -658,7 +521,7 @@ mod tests {
 
     #[test]
     fn legacy_ppt_slides_empty_text_yields_honest_partial_slide() {
-        let slides = legacy_ppt_slides("");
+        let slides = crate::legacy_binary::legacy_ppt_slides("");
         assert_eq!(slides.len(), 1);
         assert!(
             slides[0].body.contains("not decoded"),

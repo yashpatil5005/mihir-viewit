@@ -85,7 +85,7 @@ pub fn parse_legacy_binary(bytes: &[u8], format: Format) -> Result<Document, Err
     })
 }
 
-fn legacy_ppt_slides(text: &str) -> Vec<PptxSlide> {
+pub(crate) fn legacy_ppt_slides(text: &str) -> Vec<PptxSlide> {
     let cleaned: Vec<String> = text
         .lines()
         .map(str::trim)

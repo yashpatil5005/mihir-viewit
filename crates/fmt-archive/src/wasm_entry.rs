@@ -10,7 +10,7 @@ pub fn init() {
     #[cfg(feature = "log")]
     {
         console_log::init_with_level(log::Level::Debug).ok();
-        log::info!("viewit-fmt-archive-universal WASM initialized");
+        log::info!("viewit-fmt-archive WASM initialized");
     }
 }
 

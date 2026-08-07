@@ -43,9 +43,9 @@ default = "deny"
 [licenses.private]
 # Private crates (no published license declaration needed):
 ignore = ["viewit-core-types", "viewit-core", "viewit-fmt-text",
-          "viewit-fmt-office", "viewit-fmt-office-universal", "viewit-fmt-iwork",
+          "viewit-fmt-office", "viewit-fmt-iwork",
           "viewit-fmt-pdf", "viewit-fmt-image", "viewit-fmt-archive",
-          "viewit-fmt-archive-universal", "viewit-fmt-opendoc", "viewit-fmt-ebook",
+          "viewit-fmt-opendoc", "viewit-fmt-ebook",
           "viewit-fmt-font", "viewit-mobile", "viewit-desktop",
           "viewit-plugin-office-ooxml", "viewit-compression-universal-plugin",
           "viewit-plugin-office-universal", "viewit-plugin-font-universal"]

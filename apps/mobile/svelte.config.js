@@ -1,14 +1,4 @@
 import adapter from "@sveltejs/adapter-static";
-import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";
+import { viewitKitConfig } from "@viewit/config/svelte";
 
-export default {
-  preprocess: vitePreprocess(),
-  kit: {
-    appDir: "app",
-    adapter: adapter({ strict: true }),
-    alias: {
-      "$viewit-ui": "@viewit/ui/src",
-      "$viewit-platform": "@viewit/platform/src",
-    },
-  },
-};
+export default viewitKitConfig({ adapter, appDir: "app" });

@@ -18,6 +18,7 @@ export default defineConfig({
   ],
   webServer: {
     command: "npm run preview --workspace apps/web",
+    cwd: new URL("../..", import.meta.url).pathname,
     url: "http://localhost:4173",
     reuseExistingServer: !process.env.CI,
   },

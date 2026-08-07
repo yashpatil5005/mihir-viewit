@@ -1,8 +1,8 @@
-//! ODP reader (OpenDocument Presentation).
+//! ODP / OTP parser (OpenDocument Presentation).
 //!
 //! ODP is a zip containing `content.xml` with presentation namespace.
 //! We extract each `<draw:page>` and harvest text from `<text:p>` elements.
-//! Produces `Document::Pptx` with structured slide data (title + body).
+//! Produces Document::Pptx with structured slide data (title + body).
 
 use std::io::{Cursor, Read};
 use viewit_core_types::{Document, Error, Format, PptxSlide};
@@ -42,6 +42,7 @@ fn extract_odp_slides(xml: &str) -> Vec<PptxSlide> {
     use quick_xml::Reader;
 
     let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(true);
     let mut buf = Vec::new();
     let mut slides: Vec<PptxSlide> = Vec::new();
     let mut in_page = false;
@@ -105,4 +106,37 @@ fn extract_odp_slides(xml: &str) -> Vec<PptxSlide> {
     }
 
     slides
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extracts_odp_slides() {
+        let xml = r#"
+        <office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+          <office:body>
+            <office:presentation>
+              <draw:page draw:name="slide1">
+                <text:p>Slide Title</text:p>
+                <text:p>Body text line 1</text:p>
+                <text:p>Body text line 2</text:p>
+              </draw:page>
+              <draw:page draw:name="slide2">
+                <text:p>Another Slide</text:p>
+                <text:p>More content</text:p>
+              </draw:page>
+            </office:presentation>
+          </office:body>
+        </office:document-content>
+        "#;
+
+        let slides = extract_odp_slides(xml);
+        assert_eq!(slides.len(), 2);
+        assert_eq!(slides[0].title, "Slide Title");
+        assert_eq!(slides[0].body, "Body text line 1\nBody text line 2");
+        assert_eq!(slides[1].title, "Another Slide");
+        assert_eq!(slides[1].body, "More content");
+    }
 }

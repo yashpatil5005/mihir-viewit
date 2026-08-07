@@ -49,8 +49,7 @@ let wasmModule: {
 async function loadWasm(): Promise<void> {
   if (wasmModule) return;
   try {
-    const mod =
-      await import("../../../../crates/fmt-archive-universal/pkg/viewit_fmt_archive_universal.js");
+    const mod = await import("../../../../crates/fmt-archive/pkg/viewit_fmt_archive.js");
     await mod.default();
     wasmModule = mod as any;
   } catch (e) {
