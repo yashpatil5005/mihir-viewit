@@ -50,7 +50,17 @@
     'gz', 'tgz', 'bz2', 'tbz2', 'xz', 'txz', 'zst', 'tzst',
     'lz4', 'lzma', 'tlz',
   ]);
+  // Fonts ship as the built-in font-universal native plugin on Android (kept
+  // out of the base Rust lib to save APK budget). Desktop/web parse fonts
+  // natively, so this only triggers when the AndroidBridge is present.
+  const FONT_EXTS = new Set([
+    'ttf', 'otf', 'woff', 'woff2', 'ttc', 'pfb', 'cff', 'dfont', 'sfd', 'ps',
+  ]);
   const OFFICE_KINDS = new Set(['docx', 'xlsx', 'pptx']);
+  // Container formats that must NOT fall back to the generic archive listing
+  // when the built-in can't decode them (they render a dedicated/partial view
+  // instead of leaking their zip internals): Apple iWork bundles.
+  const NON_ARCHIVE_BUNDLE_EXTS = new Set(['pages', 'numbers', 'key', 'pages-template', 'numbers-template', 'key-template']);
 
   // Phase 3.8 — per-format lazy code-split. Heavy viewers load on demand via
   // dynamic import() so opening a .txt never pulls in the PDF/Office chunks.
@@ -560,6 +570,31 @@
         }
       }
     }
+    // Fonts — built-in font-universal native plugin (Android only). The mobile
+    // base Rust lib intentionally excludes fmt-font to save APK budget, so the
+    // native open() would otherwise return a placeholder. Defer to the plugin
+    // whenever it is installed.
+    if (hasAndroidBridge() && FONT_EXTS.has(ext)) {
+      const fontPlugins = await listInstalledPlugins();
+      const fontPlugin = fontPlugins.find(
+        (candidate) => candidate.id === 'font-universal' && !isJsPlugin(candidate) && pluginSupports(candidate, ext)
+      );
+      if (fontPlugin) {
+        try {
+          await dbg(`font[${ext}] via ${fontPlugin.id}`);
+          const rendered = await renderDocumentWithPlugin(fontPlugin, readableUri, ext) as Document;
+          if (rendered && rendered.kind !== 'unsupported') {
+            await dbg(`font[${ext}] plugin returned kind=${(rendered as any)?.kind} family=${(rendered as any)?.family_name}`);
+            return rendered;
+          }
+          await dbg(`font[${ext}] plugin could not parse: ${(rendered as any)?.reason ?? 'unknown'}`);
+        } catch (e) {
+          await dbg(`font[${ext}] plugin failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      } else {
+        await dbg(`font[${ext}] font-universal not installed; falling back to built-in`);
+      }
+    }
     // Archive — native compression-universal plugin. It lists every supported
     // container precisely (zip, 7z, rar, tar, gz/bz2/xz/zst/lz4/lzma, and
     // tar.* chains) without extracting first, where the browser wasm covers
@@ -597,6 +632,44 @@
       }
     }
     const builtIn = await openFile(readableUri, nameHint);
+    // Misnamed or unrecognized archives (e.g. "archive.7z.enc") — only if the
+    // built-in runtime produced a placeholder/unsupported result, let the native
+    // plugin sniff the container by magic before giving up. Never preempts an
+    // extension the built-in can already render (images, office, media, …).
+    if ((builtIn.kind === 'placeholder' || builtIn.kind === 'unsupported') && hasAndroidBridge() && !pluginArchiveError && !NON_ARCHIVE_BUNDLE_EXTS.has(ext)) {
+      try {
+        const archivePlugins = await listInstalledPlugins();
+        const archivePlugin = archivePlugins.find(
+          (candidate) => candidate.id === 'compression-universal' && !isJsPlugin(candidate)
+        );
+        if (archivePlugin) {
+          const displayName = (nameHint ?? uri.split('/').pop()?.split('?')[0] ?? uri) || 'archive';
+          const api = archiveBridgeFor(archivePlugin, uri, displayName);
+          if (api) {
+            const detected = await api.detectFormat();
+            if (detected && detected !== 'unknown') {
+              await dbg(`archive[${ext}] sniffed ${detected} after built-in placeholder`);
+              const listing = await api.listArchive();
+              if (listing.ok && listing.entries) {
+                return {
+                  kind: 'archive',
+                  entries: listing.entries,
+                  format: toArchiveFormat(listing.format ?? detected),
+                  byte_len: 0,
+                  name: displayName,
+                  renderer: { id: archivePlugin.id, label: archivePlugin.name },
+                } as Document;
+              }
+              pluginArchiveError = listing.error ?? `Archive could not be listed (${detected})`;
+              await dbg(`archive[${ext}] sniffed listing failed: ${pluginArchiveError}`);
+            }
+          }
+        }
+      } catch (e) {
+        pluginArchiveError = e instanceof Error ? e.message : String(e);
+        await dbg(`archive[${ext}] sniff fallback error: ${pluginArchiveError}`);
+      }
+    }
     // The built-in runtime emits kind 'placeholder' (not 'unsupported') for
     // archives it can't read — e.g. encrypted 7z headers. Surface the plugin's
     // reason (encrypted/password-protected/corrupted) instead of the generic

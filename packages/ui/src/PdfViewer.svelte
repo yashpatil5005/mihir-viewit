@@ -79,14 +79,14 @@
     pdfjsPages = [];
     debugLog(`[pdf] renderNativePdfJsFromStream url=${url.slice(0, 80)}`);
     try {
-      // Fetch PDF directly from stream server
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      const blob = await response.blob();
+      // Bytes over Tauri IPC — cross-origin JS fetch to the localhost stream
+      // server is blocked in the Android WebView (secure context). Prefer the
+      // app-private cache file (permission-independent) when materialized.
+      const { readUriBytes, readMaterializedBytes } = await import('@viewit/platform');
+      const uint8 = cachePath ? await readMaterializedBytes(cachePath) : await readUriBytes(source_uri);
+      const blob = new Blob([uint8], { type: 'application/pdf' });
       pdfBlobUrl = URL.createObjectURL(blob);
-      debugLog(`[pdf] blob url created from stream, size=${blob.size}`);
+      debugLog(`[pdf] blob url created from bytes, size=${uint8.length}`);
 
       await loadPdfJsAndRender();
     } catch (e) {

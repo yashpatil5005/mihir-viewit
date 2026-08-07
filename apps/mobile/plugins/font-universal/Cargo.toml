@@ -1,0 +1,32 @@
+[package]
+name = "viewit-plugin-font-universal"
+version = "0.1.0"
+edition = "2021"
+description = "ViewIt Android native plugin for font metadata (TTF/OTF/WOFF/WOFF2/TTC)"
+license = "MIT OR Apache-2.0"
+
+[lib]
+name = "viewit_plugin_font_universal"
+path = "src/main/rust/lib.rs"
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+viewit-fmt-font = { path = "../../../../crates/fmt-font" }
+viewit-core-types = { path = "../../../../crates/core-types" }
+jni = "0.21"
+serde_json = "1"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[target.aarch64-linux-android]
+linker = "aarch64-linux-android21-clang"
+
+[target.x86_64-linux-android]
+linker = "x86_64-linux-android21-clang"
+
+[workspace]

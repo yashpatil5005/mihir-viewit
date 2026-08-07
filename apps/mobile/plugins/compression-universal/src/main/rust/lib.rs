@@ -7,7 +7,7 @@
 //! folder, which is what the format itself requires).
 
 use jni::objects::{JClass, JString};
-use jni::sys::{jboolean, jstring, jobject};
+use jni::sys::{jboolean, jobject, jstring};
 use jni::JNIEnv;
 
 use serde_json::{json, Value};
@@ -53,7 +53,11 @@ impl Ac {
 }
 
 fn sniff_head(head: &[u8]) -> Ac {
-    if head.len() >= 4 && (head.starts_with(b"PK\x03\x04") || head.starts_with(b"PK\x05\x06") || head.starts_with(b"PK\x07\x08")) {
+    if head.len() >= 4
+        && (head.starts_with(b"PK\x03\x04")
+            || head.starts_with(b"PK\x05\x06")
+            || head.starts_with(b"PK\x07\x08"))
+    {
         return Ac::Zip;
     }
     if head.len() >= 6 && head[..6] == [0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c] {
@@ -146,10 +150,27 @@ fn resolve_format(path: &Path, hint: &str) -> Result<(Ac, bool), String> {
 }
 
 const NESTED_SUFFIXES: &[&str] = &[
-    ".tar.gz", ".tar.bz2", ".tar.xz", ".tar.zst", ".tar.lz4", ".tar.lzma",
-    ".tgz", ".tbz2", ".txz", ".tzst", ".tlz",
-    ".zip", ".7z", ".rar", ".tar",
-    ".gz", ".bz2", ".xz", ".zst", ".lz4", ".lzma",
+    ".tar.gz",
+    ".tar.bz2",
+    ".tar.xz",
+    ".tar.zst",
+    ".tar.lz4",
+    ".tar.lzma",
+    ".tgz",
+    ".tbz2",
+    ".txz",
+    ".tzst",
+    ".tlz",
+    ".zip",
+    ".7z",
+    ".rar",
+    ".tar",
+    ".gz",
+    ".bz2",
+    ".xz",
+    ".zst",
+    ".lz4",
+    ".lzma",
 ];
 
 fn is_nested_name(name: &str) -> bool {
@@ -178,7 +199,10 @@ fn strip_compress_suffix(stem: &str) -> String {
 /// coder across chunk boundaries, so input is fed one chunk at a time.
 struct LzmaRead<R: Read> {
     inner: Option<BufReader<R>>,
-    decoder: Option<(lzma_rs::decompress::raw::LzmaDecoder, lzma_rs::decompress::Options)>,
+    decoder: Option<(
+        lzma_rs::decompress::raw::LzmaDecoder,
+        lzma_rs::decompress::Options,
+    )>,
     out_buf: Vec<u8>,
     out_pos: usize,
     done: bool,
@@ -257,7 +281,9 @@ fn stream_from_ac(ac: Ac, path: &Path) -> Result<Box<dyn Read>, String> {
         Ac::Gzip => Box::new(flate2::read::MultiGzDecoder::new(f)),
         Ac::Bzip2 => Box::new(bzip2::read::MultiBzDecoder::new(f)),
         Ac::Xz => Box::new(xz2::read::XzDecoder::new_multi_decoder(f)),
-        Ac::Zstd => Box::new(zstd::stream::read::Decoder::new(f).map_err(|e| format!("zstd: {e}"))?),
+        Ac::Zstd => {
+            Box::new(zstd::stream::read::Decoder::new(f).map_err(|e| format!("zstd: {e}"))?)
+        }
         Ac::Lz4 => Box::new(lz4_flex::frame::FrameDecoder::new(f)),
         Ac::Lzma => Box::new(LzmaRead::new(f).map_err(|e| e.to_string())?),
         _ => return Err("not a compressed stream".to_string()),
@@ -306,18 +332,37 @@ fn list_zip(path: &Path) -> Result<Value, String> {
     Ok(json!({ "ok": true, "format": "zip", "entries": entries, "notes": [] }))
 }
 
-fn list_7z(path: &Path) -> Result<Value, String> {
+fn open_sevenz(path: &Path) -> Result<sevenz_rust::SevenZReader<std::fs::File>, String> {
     let f = File::open(path).map_err(|e| format!("open: {e}"))?;
     let len = f.metadata().map(|m| m.len()).unwrap_or(0);
-    let rz = sevenz_rust::SevenZReader::new(f, len, sevenz_rust::Password::empty())
-        .map_err(|e| format!("7z: {e}"))?;
+    sevenz_rust::SevenZReader::new(f, len, sevenz_rust::Password::empty())
+        .map_err(|e| if encrypted_error(&e.to_string()) {
+            "This 7z archive is encrypted (password-protected). ViewIt does not support password-protected archives.".to_string()
+        } else {
+            format!("7z: {e}")
+        })
+}
+
+fn encrypted_error(msg: &str) -> bool {
+    let lower = msg.to_lowercase();
+    ["aes", "encrypt", "password", "authentication", "cipherdata"]
+        .iter()
+        .any(|k| lower.contains(k))
+}
+
+fn list_7z(path: &Path) -> Result<Value, String> {
+    let rz = open_sevenz(path)?;
     let files = rz.archive().files.clone();
     let mut entries = Vec::with_capacity(files.len());
     for fl in files {
         let name = fl.name().to_string();
         let is_dir = fl.is_directory();
         let size = fl.size();
-        let csize = if fl.compressed_size > 0 { fl.compressed_size } else { size };
+        let csize = if fl.compressed_size > 0 {
+            fl.compressed_size
+        } else {
+            size
+        };
         let method = "7z".to_string();
         let crc = fl.crc;
         entries.push(json!({
@@ -366,8 +411,11 @@ fn list_tar_from_reader(r: Box<dyn Read>, format: &str) -> Result<Value, String>
     let mut entries = Vec::new();
     for en in iter {
         let en = en.map_err(|e| format!("tar entry: {e}"))?;
-        let p = en.path().map_err(|e| format!("tar path: {e}"))?.into_owned();
-        let name = p.iter().map(|c| c.to_string_lossy()).collect::<Vec<_>>().join("/");
+        let p = en
+            .path()
+            .map_err(|e| format!("tar path: {e}"))?
+            .into_owned();
+        let name = normalize_tar_name(&p);
         let is_dir = en.header().entry_type().is_dir();
         let size = en.size();
         entries.push(make_entry(name, size, 0, is_dir, "tar".to_string()));
@@ -420,9 +468,15 @@ fn list_archive(path: &Path, hint: &str) -> Result<Value, String> {
         Ac::SevenZ => list_7z(path),
         Ac::Rar => list_rar(path),
         Ac::Tar => list_tar(path, "tar"),
-        Ac::Gzip | Ac::Bzip2 | Ac::Xz | Ac::Zstd | Ac::Lz4 | Ac::Lzma => list_single(ac, path, hint),
+        Ac::Gzip | Ac::Bzip2 | Ac::Xz | Ac::Zstd | Ac::Lz4 | Ac::Lzma => {
+            list_single(ac, path, hint)
+        }
         Ac::Unknown => {
-            let suffix = if hint.is_empty() { String::new() } else { format!(" (.{hint})") };
+            let suffix = if hint.is_empty() {
+                String::new()
+            } else {
+                format!(" (.{hint})")
+            };
             Err(format!("unrecognized compression format{suffix}"))
         }
     }
@@ -439,7 +493,9 @@ fn safe_join(root: &Path, name: &str) -> Result<PathBuf, String> {
             Component::Normal(c) => out.push(c),
             Component::CurDir => {}
             Component::ParentDir => return Err(format!("unsafe path component '..' in '{name}'")),
-            Component::RootDir | Component::Prefix(_) => return Err(format!("absolute path rejected in '{name}'")),
+            Component::RootDir | Component::Prefix(_) => {
+                return Err(format!("absolute path rejected in '{name}'"))
+            }
         }
     }
     Ok(out)
@@ -472,6 +528,31 @@ fn read_capped(mut r: impl Read, cap: u64) -> Result<Option<Vec<u8>>, String> {
 
 const PREVIEW_CAP: u64 = 64 * 1024 * 1024;
 
+/// Consume a reader to EOF, discarding bytes. Needed to keep sevenz-rust's
+/// streaming folder decoder positioned when skipping a solid-archive entry.
+fn drain(r: &mut dyn Read) -> std::io::Result<u64> {
+    io::copy(r, &mut std::io::sink())
+}
+
+/// Normalize a tar member path so listing, single-entry extraction and full
+/// extraction all agree on names: GNU `tar .` writes "./x", the UI must not
+/// show or require the "./" prefix.
+fn normalize_tar_name(p: &std::path::Path) -> String {
+    let joined = p
+        .iter()
+        .map(|c| c.to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/");
+    if joined == "./" || joined == "." {
+        ".".to_string()
+    } else {
+        joined
+            .trim_start_matches("./")
+            .trim_start_matches('/')
+            .to_string()
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Entry extraction (single)
 // ---------------------------------------------------------------------------
@@ -488,8 +569,15 @@ fn extract_zip_entry(path: &Path, entry_name: &str) -> Result<Option<Vec<u8>>, S
         match first {
             Ok(_) => name.to_string(),
             Err(_) => {
-                let alt = name.trim_start_matches("./").trim_start_matches('/').to_string();
-                if alt != name { alt } else { name.to_string() }
+                let alt = name
+                    .trim_start_matches("./")
+                    .trim_start_matches('/')
+                    .to_string();
+                if alt != name {
+                    alt
+                } else {
+                    name.to_string()
+                }
             }
         }
     };
@@ -504,10 +592,7 @@ fn extract_zip_entry(path: &Path, entry_name: &str) -> Result<Option<Vec<u8>>, S
 }
 
 fn extract_7z_entry(path: &Path, entry_name: &str) -> Result<Option<Vec<u8>>, String> {
-    let f = File::open(path).map_err(|e| format!("open: {e}"))?;
-    let len = f.metadata().map(|m| m.len()).unwrap_or(0);
-    let mut rz = sevenz_rust::SevenZReader::new(f, len, sevenz_rust::Password::empty())
-        .map_err(|e| format!("7z: {e}"))?;
+    let mut rz = open_sevenz(path)?;
     let mut found: Option<Vec<u8>> = None;
     let mut over_cap = false;
     rz.for_each_entries(|entry, reader| {
@@ -515,20 +600,27 @@ fn extract_7z_entry(path: &Path, entry_name: &str) -> Result<Option<Vec<u8>>, St
             return Ok(true);
         }
         if entry.name() == entry_name {
-            let data = read_capped(reader, PREVIEW_CAP).map_err(|e| sevenz_rust::Error::other(format!("lzma read: {e}")))?;
+            let data = read_capped(reader, PREVIEW_CAP)
+                .map_err(|e| sevenz_rust::Error::other(format!("lzma read: {e}")))?;
             match data {
                 Some(b) => found = Some(b),
                 None => over_cap = true,
             }
             return Ok(false);
         }
+        // Solid archives share one decompression stream per folder, so an
+        // entry we skip must still be drained or the next entry reads from
+        // the wrong offset (ChecksumVerificationFailed / corrupted bytes).
+        drain(reader).map_err(|e| sevenz_rust::Error::other(format!("skip: {e}")))?;
         Ok(true)
     })
     .map_err(|e| format!("7z: {e}"))?;
     if over_cap {
         return Ok(None);
     }
-    Ok(Some(found.ok_or_else(|| format!("entry '{entry_name}' not found"))?))
+    Ok(Some(found.ok_or_else(|| {
+        format!("entry '{entry_name}' not found")
+    })?))
 }
 
 fn extract_rar_entry(path: &Path, entry_name: &str) -> Result<Option<Vec<u8>>, String> {
@@ -546,20 +638,22 @@ fn extract_rar_entry(path: &Path, entry_name: &str) -> Result<Option<Vec<u8>>, S
         if meta.len() > PREVIEW_CAP {
             return Ok(None);
         }
-        read_capped(f, PREVIEW_CAP)
-            .map_err(|e| format!("read: {e}"))
+        read_capped(f, PREVIEW_CAP).map_err(|e| format!("read: {e}"))
     })();
     let _ = std::fs::remove_dir_all(&dest);
     result
 }
 
-fn extract_tar_entry_from_reader(r: Box<dyn Read>, entry_name: &str) -> Result<Option<Vec<u8>>, String> {
+fn extract_tar_entry_from_reader(
+    r: Box<dyn Read>,
+    entry_name: &str,
+) -> Result<Option<Vec<u8>>, String> {
     let mut archive = tar::Archive::new(r);
     let iter = archive.entries().map_err(|e| format!("tar: {e}"))?;
     for en in iter {
         let mut en = en.map_err(|e| format!("tar: {e}"))?;
         let p = en.path().map_err(|e| format!("tar: {e}"))?.into_owned();
-        if p.iter().map(|c| c.to_string_lossy()).collect::<Vec<_>>().join("/") == entry_name {
+        if normalize_tar_name(&p) == entry_name {
             if en.header().entry_type().is_dir() {
                 return Err(format!("'{entry_name}' is a directory"));
             }
@@ -575,7 +669,10 @@ fn extract_entry(path: &Path, hint: &str, entry_name: &str) -> Result<Option<Vec
         Ac::Zip => extract_zip_entry(path, entry_name),
         Ac::SevenZ => extract_7z_entry(path, entry_name),
         Ac::Rar => extract_rar_entry(path, entry_name),
-        Ac::Tar => extract_tar_entry_from_reader(Box::new(File::open(path).map_err(|e| format!("open: {e}"))?), entry_name),
+        Ac::Tar => extract_tar_entry_from_reader(
+            Box::new(File::open(path).map_err(|e| format!("open: {e}"))?),
+            entry_name,
+        ),
         Ac::Gzip | Ac::Bzip2 | Ac::Xz | Ac::Zstd | Ac::Lz4 | Ac::Lzma => {
             if stream_is_tar(ac, path)? {
                 let r = stream_from_ac(ac, path)?;
@@ -593,7 +690,12 @@ fn extract_entry(path: &Path, hint: &str, entry_name: &str) -> Result<Option<Vec
     }
 }
 
-fn extract_entry_to_file(path: &Path, hint: &str, entry_name: &str, out_path: &Path) -> Result<u64, String> {
+fn extract_entry_to_file(
+    path: &Path,
+    hint: &str,
+    entry_name: &str,
+    out_path: &Path,
+) -> Result<u64, String> {
     let (ac, _) = resolve_format(path, hint)?;
     ensure_parent(out_path).map_err(|e| format!("mkdir: {e}"))?;
     let write_stream = |r: &mut dyn Read| -> Result<u64, String> {
@@ -609,8 +711,15 @@ fn extract_entry_to_file(path: &Path, hint: &str, entry_name: &str, out_path: &P
                 match first {
                     Ok(_) => entry_name.to_string(),
                     Err(_) => {
-                        let alt = entry_name.trim_start_matches("./").trim_start_matches('/').to_string();
-                        if alt != entry_name { alt } else { entry_name.to_string() }
+                        let alt = entry_name
+                            .trim_start_matches("./")
+                            .trim_start_matches('/')
+                            .to_string();
+                        if alt != entry_name {
+                            alt
+                        } else {
+                            entry_name.to_string()
+                        }
                     }
                 }
             };
@@ -624,10 +733,7 @@ fn extract_entry_to_file(path: &Path, hint: &str, entry_name: &str, out_path: &P
             write_stream(&mut file)
         }
         Ac::SevenZ => {
-            let f = File::open(path).map_err(|e| format!("open: {e}"))?;
-            let len = f.metadata().map(|m| m.len()).unwrap_or(0);
-            let mut rz = sevenz_rust::SevenZReader::new(f, len, sevenz_rust::Password::empty())
-                .map_err(|e| format!("7z: {e}"))?;
+            let mut rz = open_sevenz(path)?;
             let mut bytes_written = 0u64;
             let mut found = false;
             let mut first_err: Option<String> = None;
@@ -643,6 +749,10 @@ fn extract_entry_to_file(path: &Path, hint: &str, entry_name: &str, out_path: &P
                     }
                     return Ok(false);
                 }
+                // Solid archives share one decompression stream per folder, so an
+                // entry we skip must still be drained or the next entry reads from
+                // the wrong offset (ChecksumVerificationFailed / corrupted bytes).
+                drain(reader).map_err(|e| sevenz_rust::Error::other(format!("skip: {e}")))?;
                 Ok(true)
             })
             .map_err(|e| format!("7z: {e}"))?;
@@ -654,15 +764,13 @@ fn extract_entry_to_file(path: &Path, hint: &str, entry_name: &str, out_path: &P
             }
             Ok(bytes_written)
         }
-        Ac::Rar => {
-            match extract_rar_entry(path, entry_name)? {
-                Some(b) => {
-                    std::fs::write(out_path, &b).map_err(|e| format!("write: {e}"))?;
-                    Ok(b.len() as u64)
-                }
-                None => Err(format!("'{entry_name}' is too large to save directly")),
+        Ac::Rar => match extract_rar_entry(path, entry_name)? {
+            Some(b) => {
+                std::fs::write(out_path, &b).map_err(|e| format!("write: {e}"))?;
+                Ok(b.len() as u64)
             }
-        }
+            None => Err(format!("'{entry_name}' is too large to save directly")),
+        },
         Ac::Tar => {
             let f = File::open(path).map_err(|e| format!("open: {e}"))?;
             let mut archive = tar::Archive::new(f);
@@ -670,7 +778,7 @@ fn extract_entry_to_file(path: &Path, hint: &str, entry_name: &str, out_path: &P
             for en in iter {
                 let mut en = en.map_err(|e| format!("tar: {e}"))?;
                 let p = en.path().map_err(|e| format!("tar: {e}"))?.into_owned();
-                if p.iter().map(|c| c.to_string_lossy()).collect::<Vec<_>>().join("/") == entry_name {
+                if normalize_tar_name(&p) == entry_name {
                     if en.header().entry_type().is_dir() {
                         return Err(format!("'{entry_name}' is a directory"));
                     }
@@ -687,7 +795,7 @@ fn extract_entry_to_file(path: &Path, hint: &str, entry_name: &str, out_path: &P
                 for en in iter {
                     let mut en = en.map_err(|e| format!("tar: {e}"))?;
                     let p = en.path().map_err(|e| format!("tar: {e}"))?.into_owned();
-                    if p.iter().map(|c| c.to_string_lossy()).collect::<Vec<_>>().join("/") == entry_name {
+                    if normalize_tar_name(&p) == entry_name {
                         if en.header().entry_type().is_dir() {
                             return Err(format!("'{entry_name}' is a directory"));
                         }
@@ -751,10 +859,7 @@ fn extract_zip_all(path: &Path, dest: &Path) -> Result<Option<(u64, u64, Vec<Str
 }
 
 fn extract_7z_all(path: &Path, dest: &Path) -> Result<Option<(u64, u64, Vec<String>)>, String> {
-    let f = File::open(path).map_err(|e| format!("open: {e}"))?;
-    let len = f.metadata().map(|m| m.len()).unwrap_or(0);
-    let mut rz = sevenz_rust::SevenZReader::new(f, len, sevenz_rust::Password::empty())
-        .map_err(|e| format!("7z: {e}"))?;
+    let mut rz = open_sevenz(path)?;
     let mut extracted = 0u64;
     let mut bytes = 0u64;
     let mut notes = vec![];
@@ -825,7 +930,10 @@ fn extract_rar_all(path: &Path, dest: &Path) -> Result<Option<(u64, u64, Vec<Str
     Ok(Some((extracted, bytes, vec![])))
 }
 
-fn extract_tar_all_from_reader(r: Box<dyn Read>, dest: &Path) -> Result<Option<(u64, u64, Vec<String>)>, String> {
+fn extract_tar_all_from_reader(
+    r: Box<dyn Read>,
+    dest: &Path,
+) -> Result<Option<(u64, u64, Vec<String>)>, String> {
     let mut archive = tar::Archive::new(r);
     let iter = archive.entries().map_err(|e| format!("tar: {e}"))?;
     let mut extracted = 0u64;
@@ -834,7 +942,7 @@ fn extract_tar_all_from_reader(r: Box<dyn Read>, dest: &Path) -> Result<Option<(
     for en in iter {
         let mut en = en.map_err(|e| format!("tar: {e}"))?;
         let p = en.path().map_err(|e| format!("tar: {e}"))?.into_owned();
-        let name = p.iter().map(|c| c.to_string_lossy()).collect::<Vec<_>>().join("/");
+        let name = normalize_tar_name(&p);
         if en.header().entry_type().is_dir() {
             let out = match safe_join(dest, &name) {
                 Ok(ready) => ready,
@@ -874,7 +982,10 @@ fn extract_all(path: &Path, hint: &str, dest: &Path) -> Result<Value, String> {
         Ac::Zip => extract_zip_all(path, dest)?,
         Ac::SevenZ => extract_7z_all(path, dest)?,
         Ac::Rar => extract_rar_all(path, dest)?,
-        Ac::Tar => extract_tar_all_from_reader(Box::new(File::open(path).map_err(|e| format!("open: {e}"))?), dest)?,
+        Ac::Tar => extract_tar_all_from_reader(
+            Box::new(File::open(path).map_err(|e| format!("open: {e}"))?),
+            dest,
+        )?,
         Ac::Gzip | Ac::Bzip2 | Ac::Xz | Ac::Zstd | Ac::Lz4 | Ac::Lzma => {
             if stream_is_tar(ac, path)? {
                 let r = stream_from_ac(ac, path)?;
@@ -889,7 +1000,8 @@ fn extract_all(path: &Path, hint: &str, dest: &Path) -> Result<Value, String> {
                 };
                 let r = stream_from_ac(ac, path)?;
                 let mut f = File::create(&out).map_err(|e| format!("create: {e}"))?;
-                let n = io::copy(&mut BufReader::new(r), &mut f).map_err(|e| format!("copy: {e}"))?;
+                let n =
+                    io::copy(&mut BufReader::new(r), &mut f).map_err(|e| format!("copy: {e}"))?;
                 Some((1, n, vec![]))
             }
         }
@@ -911,9 +1023,7 @@ fn extract_all(path: &Path, hint: &str, dest: &Path) -> Result<Value, String> {
 // ---------------------------------------------------------------------------
 
 fn js_str(env: &mut JNIEnv, s: &JString) -> String {
-    env.get_string(s)
-        .expect("Couldn't get java string!")
-        .into()
+    env.get_string(s).expect("Couldn't get java string!").into()
 }
 
 fn native_list_archive(path: &str, hint: &str) -> String {
@@ -965,9 +1075,27 @@ pub extern "system" fn Java_ai_viewit_plugins_compressionuniversal_CompressionUn
     let ext = ext.trim_start_matches('.').to_string();
     let ok = matches!(
         ext.as_str(),
-        "zip" | "7z" | "rar" | "tar" | "gz" | "tgz" | "bz2" | "tbz2" | "xz" | "txz"
-            | "zst" | "tzst" | "lz4" | "lzma" | "tlz" | "tar.gz" | "tar.bz2" | "tar.xz"
-            | "tar.zst" | "tar.lz4" | "tar.lzma"
+        "zip"
+            | "7z"
+            | "rar"
+            | "tar"
+            | "gz"
+            | "tgz"
+            | "bz2"
+            | "tbz2"
+            | "xz"
+            | "txz"
+            | "zst"
+            | "tzst"
+            | "lz4"
+            | "lzma"
+            | "tlz"
+            | "tar.gz"
+            | "tar.bz2"
+            | "tar.xz"
+            | "tar.zst"
+            | "tar.lz4"
+            | "tar.lzma"
     );
     ok as jboolean
 }
@@ -983,7 +1111,9 @@ pub extern "system" fn Java_ai_viewit_plugins_compressionuniversal_CompressionUn
     let path = js_str(&mut env, &path);
     let hint = js_str(&mut env, &hint);
     let json = native_list_archive(&path, &hint);
-    env.new_string(json).expect("Couldn't create java string!").into_raw()
+    env.new_string(json)
+        .expect("Couldn't create java string!")
+        .into_raw()
 }
 
 /// Detected container id ("zip", "7z", …) or "unknown".
@@ -995,7 +1125,9 @@ pub extern "system" fn Java_ai_viewit_plugins_compressionuniversal_CompressionUn
 ) -> jstring {
     let path = js_str(&mut env, &path);
     let json = native_detect_format(&path);
-    env.new_string(json).expect("Couldn't create java string!").into_raw()
+    env.new_string(json)
+        .expect("Couldn't create java string!")
+        .into_raw()
 }
 
 /// Preview one entry as raw bytes. Returns null when the entry is missing,
@@ -1039,12 +1171,15 @@ pub extern "system" fn Java_ai_viewit_plugins_compressionuniversal_CompressionUn
     let hint = js_str(&mut env, &hint);
     let entry = js_str(&mut env, &entry);
     let out = js_str(&mut env, &out);
-    let result = extract_entry_to_file(Path::new(&path), &hint, &entry, Path::new(&out)).map(|n| json!({ "ok": true, "bytes": n }));
+    let result = extract_entry_to_file(Path::new(&path), &hint, &entry, Path::new(&out))
+        .map(|n| json!({ "ok": true, "bytes": n }));
     let json = match result {
         Ok(v) => v.to_string(),
         Err(e) => json!({ "ok": false, "error": e }).to_string(),
     };
-    env.new_string(json).expect("Couldn't create java string!").into_raw()
+    env.new_string(json)
+        .expect("Couldn't create java string!")
+        .into_raw()
 }
 
 /// Full extraction to a directory.
@@ -1063,5 +1198,186 @@ pub extern "system" fn Java_ai_viewit_plugins_compressionuniversal_CompressionUn
         Ok(v) => v.to_string(),
         Err(e) => json!({ "ok": false, "error": e }).to_string(),
     };
-    env.new_string(json).expect("Couldn't create java string!").into_raw()
+    env.new_string(json)
+        .expect("Couldn't create java string!")
+        .into_raw()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn gt_7z(fixture: &str, entry: &str) -> Vec<u8> {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "viewit_gt_7z_{}_{}_{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::Relaxed),
+            entry.replace(['/', '.'], "_")
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let st = std::process::Command::new("7z")
+            .arg("e")
+            .arg("-y")
+            .arg(format!("-o{}", dir.display()))
+            .arg(fixture)
+            .arg(entry)
+            .output()
+            .unwrap();
+        assert!(
+            st.status.success(),
+            "7z failed: {}",
+            String::from_utf8_lossy(&st.stderr)
+        );
+        let base = entry.rsplit('/').next().unwrap();
+        std::fs::read(dir.join(base)).unwrap()
+    }
+
+    fn gt_tar(fixture: &str, entry: &str) -> Vec<u8> {
+        let out = std::process::Command::new("tar")
+            .args(["-xOf", fixture])
+            .arg(&format!("./{}", entry.trim_start_matches("./")))
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "tar failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        out.stdout
+    }
+
+    #[test]
+    fn entry_to_file_matches_ground_truth() {
+        let fixtures = std::env::var("VIEWIT_FIXTURES").unwrap_or_default();
+        if fixtures.is_empty() {
+            eprintln!("set VIEWIT_FIXTURES=/tmp/opencode to run");
+            return;
+        }
+        let base = std::path::Path::new(&fixtures);
+        let cases: &[(&str, &str, &str)] = &[
+            ("sample.7z", "files/hello.txt", "7z"),
+            ("sample.7z", "files/numbers.txt", "7z"),
+            ("sample.7z", "files/data.json", "7z"),
+            ("big.7z", "rand1m.bin", "7z"),
+            ("big.7z", "rand5m.bin", "7z"),
+            ("big.tar.gz", "rand1m.bin", "tar.gz"),
+            ("big.tar.gz", "nested/deep/note.txt", "tar.gz"),
+            ("big.zip", "rand1m.bin", "zip"),
+        ];
+        for (fx, entry, hint) in cases {
+            let fixture = base.join(fx);
+            let gt = if *hint == "tar.gz" {
+                gt_tar(fixture.to_str().unwrap(), entry)
+            } else {
+                gt_7z(fixture.to_str().unwrap(), entry)
+            };
+            let out = std::env::temp_dir().join(format!(
+                "out_{}_{}",
+                fx.replace(['.', '/'], "_"),
+                entry.replace('/', "_")
+            ));
+            let _ = std::fs::remove_file(&out);
+            let n = extract_entry_to_file(&fixture, hint, entry, &out).unwrap();
+            let got = std::fs::read(&out).unwrap();
+            assert_eq!(
+                gt,
+                got,
+                "MISMATCH {fx} {entry} (len {} vs {})",
+                gt.len(),
+                got.len()
+            );
+            assert_eq!(gt.len() as u64, n);
+            eprintln!("OK {fx} {entry} -> {} bytes", got.len());
+        }
+    }
+
+    #[test]
+    fn preview_entry_matches_ground_truth() {
+        let fixtures = std::env::var("VIEWIT_FIXTURES").unwrap_or_default();
+        if fixtures.is_empty() {
+            eprintln!("set VIEWIT_FIXTURES=/tmp/opencode to run");
+            return;
+        }
+        let base = std::path::Path::new(&fixtures);
+        let cases: &[(&str, &str, &str)] = &[
+            ("big.7z", "rand1m.bin", "7z"),
+            ("big.7z", "rand5m.bin", "7z"),
+            ("big.7z", "nested/deep/note.txt", "7z"),
+            ("big.zip", "rand1m.bin", "zip"),
+            ("big.zip", "rand5m.bin", "zip"),
+            ("big.zip", "nested/deep/note.txt", "zip"),
+            ("big.tar.gz", "rand1m.bin", "tar.gz"),
+            ("big.tar.gz", "nested/deep/note.txt", "tar.gz"),
+        ];
+        for (fx, entry, hint) in cases {
+            let fixture = base.join(fx);
+            let got = extract_entry(&fixture, hint, entry)
+                .map_err(|e| format!("{fx} {entry}: {e}"))
+                .unwrap();
+            let got = got.expect(&format!("{fx} {entry}: preview returned None (too large?)"));
+            let gt = if *hint == "tar.gz" {
+                gt_tar(fixture.to_str().unwrap(), entry)
+            } else {
+                let dir = std::env::temp_dir().join(format!("viewit_pv_{}", std::process::id()));
+                let _ = std::fs::remove_dir_all(&dir);
+                std::fs::create_dir_all(&dir).unwrap();
+                let st = std::process::Command::new("7z")
+                    .arg("e")
+                    .arg("-y")
+                    .arg(format!("-o{}", dir.display()))
+                    .arg(&fixture)
+                    .arg(entry)
+                    .output()
+                    .unwrap();
+                assert!(
+                    st.status.success(),
+                    "{fx}: 7z failed {entry}: {}",
+                    String::from_utf8_lossy(&st.stderr)
+                );
+                std::fs::read(dir.join(entry.rsplit('/').next().unwrap())).unwrap()
+            };
+            assert_eq!(
+                gt,
+                got,
+                "MISMATCH preview {fx} {entry} (len {} vs {})",
+                gt.len(),
+                got.len()
+            );
+            eprintln!("OK preview {fx} {entry} -> {} bytes", got.len());
+        }
+    }
+
+    #[test]
+    fn extract_all_matches_ground_truth() {
+        let fixtures = std::env::var("VIEWIT_FIXTURES").unwrap_or_default();
+        if fixtures.is_empty() {
+            return;
+        }
+        let base = std::path::Path::new(&fixtures);
+        let dest = std::env::temp_dir().join(format!("viewit_all_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dest);
+        let v = extract_all(&base.join("sample.7z"), "7z", &dest).unwrap();
+        assert_eq!(v["ok"], true);
+        eprintln!("extract_all: {}", v);
+        for (entry, gt) in [
+            (
+                "files/hello.txt",
+                gt_7z(base.join("sample.7z").to_str().unwrap(), "files/hello.txt"),
+            ),
+            (
+                "files/numbers.txt",
+                gt_7z(
+                    base.join("sample.7z").to_str().unwrap(),
+                    "files/numbers.txt",
+                ),
+            ),
+        ] {
+            let got = std::fs::read(dest.join(entry)).unwrap();
+            assert_eq!(gt, got, "MISMATCH all {entry}");
+            eprintln!("OK all {entry} -> {} bytes", got.len());
+        }
+    }
 }

@@ -181,6 +181,20 @@ fn build_headers(mime: &str, len: usize, extra: Option<(&str, &str)>) -> Vec<tin
     headers
 }
 
+/// Build an error response that still carries CORS headers. Without
+/// `Access-Control-Allow-Origin`, cross-origin JS `fetch(stream_url)` in the
+/// WebView rejects with an opaque `TypeError: Failed to fetch` on any failure
+/// (e.g. scoped-storage EACCES), hiding the real HTTP status.
+fn error_response(status: u16, msg: &str) -> tiny_http::Response<std::io::Cursor<Vec<u8>>> {
+    tiny_http::Response::new(
+        status.into(),
+        build_headers("text/plain", msg.len(), None),
+        std::io::Cursor::new(msg.as_bytes().to_vec()),
+        Some(msg.len()),
+        None,
+    )
+}
+
 /// Handle an HTTP request for a stream.
 fn handle_request(
     app: &AppHandle,
@@ -193,8 +207,7 @@ fn handle_request(
         match map.get(&stream_id) {
             Some(e) => e.clone(),
             None => {
-                return tiny_http::Response::from_string("stream slot expired")
-                    .with_status_code(404);
+                return error_response(404, "stream slot expired");
             }
         }
     };
@@ -236,8 +249,7 @@ fn handle_request(
                             );
                         }
                         Err(e) => {
-                            return tiny_http::Response::from_string(format!("range error: {}", e))
-                                .with_status_code(500);
+                            return error_response(500, &format!("range error: {}", e));
                         }
                     }
                 }
@@ -256,8 +268,7 @@ fn handle_request(
                     );
                 }
                 Err(e) => {
-                    return tiny_http::Response::from_string(format!("read error: {}", e))
-                        .with_status_code(500);
+                    return error_response(500, &format!("read error: {}", e));
                 }
             }
         }
@@ -304,7 +315,7 @@ fn handle_request(
             );
         }
         Err(e) => {
-            tiny_http::Response::from_string(format!("stream error: {}", e)).with_status_code(500)
+            error_response(500, &format!("stream error: {}", e))
         }
     }
 }
@@ -335,7 +346,7 @@ pub fn start(app: AppHandle) -> Result<u16, String> {
                 Ok(id) => id,
                 Err(_) => {
                     let _ = request.respond(
-                        tiny_http::Response::from_string("bad stream id").with_status_code(400),
+                        error_response(400, "bad stream id"),
                     );
                     continue;
                 }

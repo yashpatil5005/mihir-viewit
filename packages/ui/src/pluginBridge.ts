@@ -350,9 +350,11 @@ export interface ArchiveBridgeApi {
   name: string;
   /** List the archive's contents (native plugin, non-destructive preview). */
   listArchive(): Promise<ArchiveBridgeResult>;
+  /** Sniff the container format by magic bytes (works for misnamed archives, e.g. "archive.7z.enc"). */
+  detectFormat(): Promise<string>;
   /** Read a single entry as bytes for in-place preview. Falls back to save-if-too-large. */
   readEntry(entryName: string): Promise<ArchiveBridgeResult>;
-  /** Extract the entire archive to the app's external-files directory. */
+  /** Extract the entire archive to a user-chosen SAF folder (folder picker). */
   extractAll(): Promise<ArchiveBridgeResult>;
   /** Send one entry to the system storage-saver (ACTION_CREATE_DOCUMENT). */
   saveEntry(entryName: string, displayName?: string, mime?: string): Promise<ArchiveBridgeResult>;
@@ -366,6 +368,10 @@ export function archiveBridgeFor(plugin: PluginInfo, uri: string, name: string):
     name,
     async listArchive() {
       return callPluginArchive('list', plugin, uri, name);
+    },
+    async detectFormat() {
+      const res = await callPluginArchive('detect', plugin, uri, name);
+      return res.format ?? 'unknown';
     },
     async readEntry(entryName) {
       const res = await callPluginArchive('entry', plugin, uri, name, { entryName });
@@ -409,6 +415,9 @@ function callPluginArchive(op: string, plugin: PluginInfo, uri: string, name: st
         dir: data.dir,
         result: data.result,
       };
+      if (op === 'detect') {
+        result.format = data.format;
+      }
       if (op === 'list' && data.manifest) {
         result.entries = data.manifest.entries;
         result.format = data.manifest.format;
@@ -420,11 +429,14 @@ function callPluginArchive(op: string, plugin: PluginInfo, uri: string, name: st
       case 'list':
         bridge.listPluginArchiveAsync(plugin.id, uri, name, id);
         break;
+      case 'detect':
+        bridge.detectPluginArchiveFormatAsync(plugin.id, uri, name, id);
+        break;
       case 'entry':
         bridge.extractPluginArchiveEntryAsync(plugin.id, uri, name, extra.entryName, id);
         break;
       case 'extract-all':
-        bridge.extractPluginArchiveAllAsync(plugin.id, uri, name, id);
+        bridge.extractPluginArchiveAllToFolderAsync(plugin.id, uri, name, id);
         break;
       case 'save':
         bridge.savePluginArchiveEntryAsync(plugin.id, uri, name, extra.entryName, extra.displayName, extra.mime, id);

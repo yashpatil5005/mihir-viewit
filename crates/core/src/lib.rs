@@ -370,6 +370,7 @@ pub fn open_stream(ext: &str, name: &str) -> Result<Document, Error> {
             byte_len: 0,
             native: true,
             name: name.to_string(),
+            asset_path: String::new(),
             stream_url: None,
         });
     }
@@ -436,7 +437,7 @@ fn sniff_ext(ext: &str) -> Format {
         "fb2" => Format::FictionBook,
         "lrf" | "pdb" | "snb" => Format::PalmDoc,
         // Fonts
-        "ttf" | "otf" | "woff" | "woff2" | "pfb" | "cff" | "dfont" | "sfd" | "ps" => Format::Font,
+        "ttf" | "otf" | "woff" | "woff2" | "pfb" | "cff" | "dfont" | "sfd" | "ps" | "ttc" => Format::Font,
         "zip" => Format::ArchiveZip,
         "tar" => Format::ArchiveTar,
         "tgz" | "gz" => Format::ArchiveTarGz,
@@ -514,6 +515,7 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
                 byte_len: bytes.len(),
                 native: true,
                 name: name.to_string(),
+                asset_path: String::new(),
                 stream_url: None,
             });
         }

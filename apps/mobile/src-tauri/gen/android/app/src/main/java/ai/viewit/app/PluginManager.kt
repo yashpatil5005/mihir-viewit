@@ -21,7 +21,7 @@ class PluginManager(private val context: Context) {
     companion object {
         private const val TAG = "PluginManager"
         private const val CATALOG_URL_DEBUG = "http://127.0.0.1:8888/catalog.json"
-        private const val CATALOG_URL_RELEASE = "https://viewit-plugin-catalog-temp.pages.dev/catalog.signed.json"
+        private const val CATALOG_URL_RELEASE = "https://omnia.mihirpatil.co/catalog.signed.json"
 
         private const val SUPPORTED_ABI_VERSION = 1
 
@@ -198,6 +198,45 @@ class PluginManager(private val context: Context) {
             Log.i(TAG, "Registered built-in plugin: compression-universal")
         } catch (e: Throwable) {
             Log.w(TAG, "Failed to register built-in compression-universal plugin", e)
+        }
+
+        // Font Universal — TTF/OTF/WOFF/WOFF2/TTC metadata viewer.
+        try {
+            System.loadLibrary("viewit_plugin_font_universal")
+            val clazz = Class.forName("ai.viewit.plugins.fontuniversal.FontUniversalPlugin")
+            val instance = clazz.getDeclaredConstructor().newInstance() as ViewItDocumentPlugin
+            instance.initialize(context)
+
+            val manifest = PluginManifest(
+                id = "font-universal",
+                name = "Font Universal",
+                version = "0.1.0",
+                description = "Font metadata viewer for TTF, OTF, WOFF, WOFF2, TTC, and other font formats",
+                minAppVersion = 1,
+                entryClass = "ai.viewit.plugins.fontuniversal.FontUniversalPlugin",
+                supportedFormats = listOf(
+                    "ttf", "otf", "woff", "woff2", "ttc", "pfb", "cff", "dfont", "sfd", "ps"
+                ),
+                downloadUrl = "",
+                sizeBytes = 0,
+                installedSizeBytes = 0,
+                checksum = "",
+                abi = runtimeAbi(),
+                abiVersion = 1,
+                capabilities = listOf("document"),
+                runtime = "native"
+            )
+
+            installed["font-universal"] = InstalledPlugin(
+                manifest = manifest,
+                instance = instance,
+                mediaPlugin = null,
+                documentPlugin = instance,
+                installDir = File(context.filesDir, "plugins/font-universal")
+            )
+            Log.i(TAG, "Registered built-in plugin: font-universal")
+        } catch (e: Throwable) {
+            Log.w(TAG, "Failed to register built-in font-universal plugin", e)
         }
     }
 

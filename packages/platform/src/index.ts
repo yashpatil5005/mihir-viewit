@@ -201,7 +201,7 @@ export async function resolveDisplayName(uri: string): Promise<string | null> {
 
 export { OPEN_BYTES_CAP, checkFileBeforeRead, unsupportedDocument, fileExtension };
 export { assetUrlForPath } from './mediaUrl';
-export { readMaterializedBytes } from './readMaterialized';
+export { readMaterializedBytes, readUriBytes } from './readMaterialized';
 export { resolvePptxAssetPath } from './pptxAsset';
 export { displayNameFromUri } from './displayNameFromUri';
 export { pickSingleFile } from './pickFile';

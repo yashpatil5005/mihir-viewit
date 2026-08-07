@@ -138,6 +138,32 @@ fn read_materialized_bytes_b64(
     Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
 }
 
+/// Read raw bytes for a `content://` / `file://` uri and return base64.
+///
+/// The Tauri Android WebView serves pages from the secure context
+/// `http://tauri.localhost`, which blocks cross-origin JS `fetch()`/XHR to the
+/// `http://127.0.0.1:<port>` stream server. Formats that need raw bytes in JS
+/// (aiff->wav transcode, pdf.js) therefore fetch over Tauri IPC instead of the
+/// HTTP stream server. Media elements (`<audio>/<video>/<img>`) still load the
+/// stream across origins fine, so those keep using `stream_url`.
+#[tauri::command]
+async fn read_uri_bytes_b64(app: tauri::AppHandle, uri: String) -> Result<String, String> {
+    use base64::Engine;
+    let bytes = uri_util::read_uri_bytes_open(&app, &uri)?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
+}
+
+/// Desktop: raw bytes over Tauri IPC (zero-copy `ArrayBuffer`).
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+async fn read_uri_bytes(
+    app: tauri::AppHandle,
+    uri: String,
+) -> Result<tauri::ipc::Response, String> {
+    let bytes = uri_util::read_uri_bytes_open(&app, &uri)?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
 /// PPTX viewer: materialize if needed, return cache file URL (offline).
 #[tauri::command]
 fn ensure_pptx_asset(
@@ -590,6 +616,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             opened_urls,
             read_materialized_bytes_b64,
+            read_uri_bytes_b64,
+            #[cfg(not(target_os = "android"))]
+            read_uri_bytes,
             #[cfg(not(target_os = "android"))]
             read_materialized_bytes,
             ensure_pptx_asset,

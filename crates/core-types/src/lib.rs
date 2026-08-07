@@ -170,6 +170,10 @@ pub enum Document {
         #[serde(default)]
         native: bool,
         name: String,
+        /// Materialized cache `file://` (Android scoped-storage workaround).
+        /// Frontend reads bytes over Tauri IPC from app-private cache.
+        #[serde(default)]
+        asset_path: String,
         /// Streaming URL for direct WebView/pdf.js access.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         stream_url: Option<String>,

@@ -3,7 +3,7 @@
   // Tap on a file entry → open it in-place (native plugin: single-member
   // preview without extracting the whole archive; Tauri/web: wasm extract).
   // When the compression-universal plugin is installed the toolbar offers
-  // per-entry Save and full "Extract all" to app-scoped storage.
+  // per-entry Save and full "Extract all" into a user-chosen folder.
   // Storage scope note: plugin writes go to the app-specific external
   // storage directory — no runtime permission is required on any API level.
   let {
@@ -63,6 +63,7 @@
       if (resolved) {
         plugin = resolved;
         bridge = archiveBridgeFor(resolved, uri, name);
+        (window as any).__viewitArchiveBridge = { pluginId: resolved.id, uri, name };
       }
     } catch (e) {
       console.error('resolve compression plugin failed:', e);
@@ -137,7 +138,7 @@
 
   async function extractAll() {
     if (!bridge) return;
-    busy = 'Extracting archive…';
+    busy = 'Choose a destination folder…';
     error = '';
     notice = '';
     try {
@@ -146,8 +147,8 @@
         error = res.error;
       } else {
         extractDir = res.dir ?? null;
-        const count = res.result?.files_count ?? res.result?.count ?? 0;
-        notice = `Extracted ${count} file${count === 1 ? '' : 's'} to ${res.dir ?? res.result?.dir ?? 'app storage'}`;
+        const count = res.count ?? res.result?.files_count ?? res.result?.count ?? 0;
+        notice = `Extracted ${count} file${count === 1 ? '' : 's'} to ${res.dir ?? 'the chosen folder'}`;
       }
     } finally {
       busy = '';
@@ -167,7 +168,7 @@
   {#if plugin}
     <div class="toolbar">
       <button class="act" onclick={extractAll} disabled={Boolean(busy)}>Export all</button>
-      <span class="scope">Extraction saves to app-scoped storage — no storage permission needed.</span>
+      <span class="scope">Choose a folder to extract into — no storage permission needed.</span>
     </div>
   {/if}
 
@@ -176,9 +177,8 @@
   {#if error}<p class="error">{error}</p>{/if}
   {#if extractDir}
     <p class="scope">
-      Exported to <code>{extractDir}</code>. This folder is app-private
-      (Android/data/…/files/Extracted), so only ViewIt and file managers that
-      opt into app data can see it.
+      Exported to <code>{extractDir}</code>. ViewIt extracted directly into the
+      folder you picked using the system document picker.
     </p>
   {/if}
 

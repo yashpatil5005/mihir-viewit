@@ -14,7 +14,7 @@ val tauriProperties = Properties().apply {
 }
 val pluginCatalogUrl: String = providers.gradleProperty("viewitPluginCatalogUrl")
     .orElse(providers.environmentVariable("VIEWIT_PLUGIN_CATALOG_URL"))
-    .orElse("https://viewit-plugin-catalog-temp.pages.dev/catalog.signed.json")
+    .orElse("https://omnia.mihirpatil.co/catalog.signed.json")
     .get()
 
 android {

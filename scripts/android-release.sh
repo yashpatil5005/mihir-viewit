@@ -127,6 +127,7 @@ done
 PLUGIN_LIBS=(
   "$ROOT/apps/mobile/plugins/office-universal/build/output/arm64-v8a/libviewit_plugin_office_universal.so"
   "$ROOT/apps/mobile/plugins/compression-universal/build/output/arm64-v8a/libviewit_plugin_compression_universal.so"
+  "$ROOT/apps/mobile/plugins/font-universal/build/output/arm64-v8a/libviewit_plugin_font_universal.so"
 )
 for PLIB in "${PLUGIN_LIBS[@]}"; do
   [[ -f "$PLIB" ]] || continue
@@ -190,11 +191,19 @@ if [[ -f "$COMPRESSION_LIB" ]]; then
   cp "$COMPRESSION_LIB" "$TMP_LIB_DIR/lib/arm64-v8a/libviewit_plugin_compression_universal.so"
   echo "[android] adding compression-universal plugin to APK ($COMPRESSION_LIB)"
 fi
+# font-universal plugin .so — staged into jniLibs before gradle above; carried
+# into the staging dir here for the final zip step like the other plugins.
+FONT_LIB="$ROOT/apps/mobile/plugins/font-universal/build/output/arm64-v8a/libviewit_plugin_font_universal.so"
+[[ -f "$FONT_LIB" ]] || FONT_LIB="$GEN/app/src/main/jniLibs/arm64-v8a/libviewit_plugin_font_universal.so"
+if [[ -f "$FONT_LIB" ]]; then
+  cp "$FONT_LIB" "$TMP_LIB_DIR/lib/arm64-v8a/libviewit_plugin_font_universal.so"
+  echo "[android] adding font-universal plugin to APK ($FONT_LIB)"
+fi
 # The main Rust lib must stay stored + 16 KB-aligned (verify-android-16kb.sh).
 # Plugin .so files load via System.loadLibrary from the extracted native-lib
 # dir (useLegacyPackaging=true), so they can be deflated to save APK budget.
 (cd "$TMP_LIB_DIR" && zip -0 -q "$APK_WITH_LIB" lib/arm64-v8a/libviewit_mobile_lib.so \
-  && zip -9 -q "$APK_WITH_LIB" lib/arm64-v8a/libviewit_plugin_office_universal.so lib/arm64-v8a/libviewit_plugin_compression_universal.so 2>/dev/null \
+  && zip -9 -q "$APK_WITH_LIB" lib/arm64-v8a/libviewit_plugin_office_universal.so lib/arm64-v8a/libviewit_plugin_compression_universal.so lib/arm64-v8a/libviewit_plugin_font_universal.so 2>/dev/null \
   || zip -0 -q "$APK_WITH_LIB" lib/arm64-v8a/libviewit_mobile_lib.so)
 "$BUILD_TOOLS/zipalign" -P 16 -f 4 "$APK_WITH_LIB" "$APK_ALIGNED"
 "$BUILD_TOOLS/apksigner" sign --ks "$KEYSTORE" --ks-pass pass:android --key-pass pass:android \

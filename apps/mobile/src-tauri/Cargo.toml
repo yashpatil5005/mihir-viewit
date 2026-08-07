@@ -54,10 +54,12 @@ log = "0.4"
 default = ["fmt-text-only"]
 fmt-text-only = ["viewit-core/fmt-text"]
 # Minimal native build — only essential formats built-in.
-# Office, Archive, Ebook, iWork, Font are delivered via WASM plugins (smaller APK).
+# Office, Archive, iWork, Font are delivered via WASM plugins (smaller APK).
+# Ebook (epub/mobi) is included natively for better UX.
 fmt-mobile = [
   "fmt-text-only",
   "fmt-image",
+  "fmt-ebook",
 ]
 # Full feature set (for desktop/comparison) - not used on mobile
 fmt-everything-lite = [

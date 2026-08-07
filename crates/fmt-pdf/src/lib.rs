@@ -71,6 +71,7 @@ pub fn parse(bytes: &[u8], _format: Format, _name: &str) -> Result<Document, Err
         byte_len: bytes.len(),
         native: false,
         name: _name.to_string(),
+        asset_path: String::new(),
         stream_url: None,
     })
 }

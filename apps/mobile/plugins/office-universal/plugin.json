@@ -15,7 +15,7 @@
     "doc", "ppt"
   ],
   "capabilities": ["document-render", "text-extraction", "structured-output"],
-  "downloadUrl": "https://viewit-plugin-catalog-temp.pages.dev/plugins/office-universal-0.1.0-arm64-v8a.zip",
+  "downloadUrl": "https://omnia.mihirpatil.co/plugins/office-universal-0.1.0-arm64-v8a.zip",
   "sizeBytes": 944067,
   "installedSizeBytes": 1669857,
   "checksum": "",

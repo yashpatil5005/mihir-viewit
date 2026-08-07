@@ -106,7 +106,7 @@ async function packagePlugin() {
   manifest.cssEntry = 'styles.css';
   manifest.runtime = 'js';
   manifest.version = PLUGIN_VERSION;
-  manifest.downloadUrl = `https://viewit-plugin-catalog-temp.pages.dev/plugins/${PLUGIN_ID}-${PLUGIN_VERSION}.zip`;
+  manifest.downloadUrl = `https://omnia.mihirpatil.co/plugins/${PLUGIN_ID}-${PLUGIN_VERSION}.zip`;
 
   // sizeBytes/checksum are filled after the zip exists (zip is written from web/ +
   // current manifest; checksum covers the zip, which includes plugin.json — so set

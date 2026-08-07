@@ -99,12 +99,10 @@
     if (ext !== 'aif' && ext !== 'aiff') return false;
     const { debugLog: log } = await import('@viewit/platform');
     try {
-      const bytes = stream_url
-        ? new Uint8Array(await (await fetch(stream_url)).arrayBuffer())
-        : await (async () => {
-            const { readMaterializedBytes } = await import('@viewit/platform');
-            return readMaterializedBytes(asset_path);
-          })();
+      // Bytes over Tauri IPC — cross-origin JS fetch to the localhost stream
+      // server is blocked in the Android WebView (secure context).
+      const { readUriBytes, readMaterializedBytes } = await import('@viewit/platform');
+      const bytes = await (asset_path ? readMaterializedBytes(asset_path) : readUriBytes(uri));
       const wav = aiffToWav(bytes);
       blobUrl = URL.createObjectURL(new Blob([wav], { type: 'audio/wav' }));
       src = blobUrl;
@@ -250,8 +248,10 @@
 
     loadStart = Date.now();
 
-    // On Android/Tauri: let the user choose built-in/native/plugin/external for video and audio.
-    if (isAndroidTauri && (media_kind === 'video' || media_kind === 'audio')) {
+    // On Android/Tauri: video and non-web-playable audio (e.g. WMA) go through the
+    // runtime chooser. Formats the WebView <audio> can decode render in-app.
+    const webPlayableAudio = new Set(['mp3', 'wav', 'flac', 'ogg', 'opus', 'm4a', 'aac', 'aif', 'aiff']);
+    if (isAndroidTauri && (media_kind === 'video' || (media_kind === 'audio' && !webPlayableAudio.has(ext.toLowerCase())))) {
       runtimeChooserOpen = true;
       return;
     }
@@ -318,7 +318,7 @@
   <aside class="meta">
     <strong>{name}</strong>
     <span class="tag">{format}</span>
-
+    {#if currentStrategy}<span class="hint">strategy: {currentStrategy}</span>{/if}
   </aside>
   <div class="frame">
     {#if nativePlayerLaunched}

@@ -40,7 +40,7 @@
         "sizeBytes": 944054,
         "installedSizeBytes": 1669839,
         "checksum": "4a7e0c991a1d966e2ff45832e2766f2136aec01bcf26defc4e20c7dacc9e89ae",
-        "downloadUrl": "https://viewit-plugin-catalog-temp.pages.dev/plugins/office-universal-0.1.0-arm64-v8a.zip"
+        "downloadUrl": "https://omnia.mihirpatil.co/plugins/office-universal-0.1.0-arm64-v8a.zip"
       },
       {
         "id": "office-universal",
@@ -81,7 +81,7 @@
         "sizeBytes": 975573,
         "installedSizeBytes": 2138663,
         "checksum": "05dd74381da630988feb0152469abd21ecb82529cd201131546dcffc77411b77",
-        "downloadUrl": "https://viewit-plugin-catalog-temp.pages.dev/plugins/office-universal-0.1.0-x86_64.zip"
+        "downloadUrl": "https://omnia.mihirpatil.co/plugins/office-universal-0.1.0-x86_64.zip"
       },
       {
         "id": "compression-universal",
@@ -122,10 +122,10 @@
         "runtime": "native",
         "version": "0.1.0",
         "abi": "arm64-v8a",
-        "sizeBytes": 577283,
-        "installedSizeBytes": 1103852,
-        "checksum": "fcf98cc9978cc73b4314bc4337ed01d67905d1ee53c592bea44bf2d5d4c96b79",
-        "downloadUrl": "https://viewit-plugin-catalog-temp.pages.dev/plugins/compression-universal-0.1.0-arm64-v8a.zip"
+        "sizeBytes": 628531,
+        "installedSizeBytes": 1279172,
+        "checksum": "4846b1798dca464c4cfa84c908af419a3ac9eb792a71196a3b2b2ffb42e264d6",
+        "downloadUrl": "https://omnia.mihirpatil.co/plugins/compression-universal-0.1.0-arm64-v8a.zip"
       },
       {
         "id": "compression-universal",
@@ -166,10 +166,10 @@
         "runtime": "native",
         "version": "0.1.0",
         "abi": "x86_64",
-        "sizeBytes": 614613,
-        "installedSizeBytes": 1186348,
-        "checksum": "de4922462ad5f7f2c9b7415779b17781c7d1163c3ba56904f7c2572f872244c6",
-        "downloadUrl": "https://viewit-plugin-catalog-temp.pages.dev/plugins/compression-universal-0.1.0-x86_64.zip"
+        "sizeBytes": 666387,
+        "installedSizeBytes": 1438284,
+        "checksum": "e5dfe3c92724a0962293317befc49e9931bfeeb03853a483164a5b6405046c4a",
+        "downloadUrl": "https://omnia.mihirpatil.co/plugins/compression-universal-0.1.0-x86_64.zip"
       },
       {
         "id": "ffmpeg-transcoder",
@@ -204,7 +204,7 @@
           "m2ts",
           "mts"
         ],
-        "downloadUrl": "https://viewit-plugin-catalog-temp.pages.dev/ffmpeg-transcoder/build/ffmpeg-transcoder-1.0.0.zip",
+        "downloadUrl": "https://omnia.mihirpatil.co/ffmpeg-transcoder/build/ffmpeg-transcoder-1.0.0.zip",
         "checksum": "4ad102c37775aa7311cb70e900d9bc67f940d0546fdf4c574934dc3f41e2c5c5",
         "minAppVersion": 1
       },
@@ -228,11 +228,11 @@
         "sizeBytes": 1838649,
         "installedSizeBytes": 7127378,
         "checksum": "646b8b3bee9c6430c130f06449d5986942b3d7675ee12b8631753b1cbb908dc9",
-        "downloadUrl": "https://viewit-plugin-catalog-temp.pages.dev/plugins/pptx-vanilla-1.0.1.zip",
+        "downloadUrl": "https://omnia.mihirpatil.co/plugins/pptx-vanilla-1.0.1.zip",
         "jsEntry": "index.js",
         "cssEntry": "styles.css"
       }
     ]
   },
-  "signature": "8NwkNSfGdf1hZrR9Jwy5B5eOmI5+TushEBHF8GWaTAupYucBZtDF7KtevCc1YjmLVqT6oNJ8svL3bwFGfaO5CA=="
+  "signature": "NNwOaPNYNzMQG1R/vJGM2ZIRibU+yC6ddV4FK6yisI+wxATeGNmrHJmfhYtuRlLPRl02234nj5xt/uEAWR7DBg=="
 }

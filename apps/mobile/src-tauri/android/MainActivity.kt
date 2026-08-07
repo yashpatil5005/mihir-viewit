@@ -5,6 +5,7 @@ import android.database.Cursor
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
@@ -31,6 +32,18 @@ class MainActivity : TauriActivity() {
   private val pendingSaves = java.util.concurrent.ConcurrentHashMap<Int, PendingSave>()
   private var saveRequestCode = 9001
 
+  /** Archive "Extract all to folder" flow: SAF ACTION_OPEN_DOCUMENT_TREE. The
+   *  archive is unpacked to a cache staging dir, then mirrored into the
+   *  user-chosen tree via DocumentsContract on onActivityResult. */
+  private data class PendingExtract(
+    val plugin: ArchivePlugin,
+    val uri: String,
+    val name: String,
+    val callbackId: String,
+  )
+  private val pendingExtracts = java.util.concurrent.ConcurrentHashMap<Int, PendingExtract>()
+  private var extractRequestCode = 9101
+
   companion object {
     const val ACTION_DEBUG_OPEN = "ai.viewit.app.action.DEBUG_OPEN"
     const val ACTION_DEBUG_INSTALL_PLUGIN = "ai.viewit.app.action.DEBUG_INSTALL_PLUGIN"
@@ -38,8 +51,45 @@ class MainActivity : TauriActivity() {
 
   override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
     super.onActivityResult(requestCode, resultCode, data)
-    val pending = pendingSaves.remove(requestCode) ?: return
     val webView = bridgeWebView ?: return
+    pendingExtracts.remove(requestCode)?.let { pending ->
+      val payload = JSONObject().apply {
+        put("id", pending.callbackId)
+        put("op", "extract-all")
+      }
+      if (resultCode != RESULT_OK || data?.data == null) {
+        payload.put("ok", false)
+        payload.put("error", "Extract cancelled")
+        webView.post { webView.evaluateJavascript("window._pluginArchiveCallback && window._pluginArchiveCallback($payload)", null) }
+        return
+      }
+      val treeUri = data.data!!
+      Thread {
+        try {
+          val stage = File(applicationContext.cacheDir, "extract_stage_$requestCode")
+          val resultJson = withClassLoader(pending.plugin) {
+            pending.plugin.extractAll(Uri.parse(pending.uri), pending.name, stage)
+          }
+          val result = JSONObject(resultJson)
+          if (!result.optBoolean("ok", false)) {
+            payload.put("ok", false)
+            payload.put("error", result.optString("error", "Extraction failed"))
+          } else {
+            val count = mirrorToTree(treeUri, stage)
+            payload.put("ok", true)
+            payload.put("count", count)
+            payload.put("dir", treePath(treeUri))
+          }
+          stage.deleteRecursively()
+        } catch (e: Throwable) {
+          payload.put("ok", false)
+          payload.put("error", e.message ?: e.javaClass.simpleName)
+        }
+        webView.post { webView.evaluateJavascript("window._pluginArchiveCallback && window._pluginArchiveCallback($payload)", null) }
+      }.start()
+      return
+    }
+    val pending = pendingSaves.remove(requestCode) ?: return
     val payload = JSONObject().apply {
       put("id", pending.callbackId)
       put("op", "save")
@@ -54,13 +104,8 @@ class MainActivity : TauriActivity() {
     Thread {
       try {
         val tmp = File(applicationContext.cacheDir, "save_stage_$requestCode")
-        val thread = Thread.currentThread()
-        val prev = thread.contextClassLoader
-        val resultJson = try {
-          thread.contextClassLoader = pending.plugin.javaClass.classLoader
+        val resultJson = withClassLoader(pending.plugin) {
           pending.plugin.extractEntryToFile(Uri.parse(pending.uri), pending.name, pending.entryName, tmp)
-        } finally {
-          thread.contextClassLoader = prev
         }
         val result = JSONObject(resultJson)
         if (!result.optBoolean("ok", false)) {
@@ -79,6 +124,61 @@ class MainActivity : TauriActivity() {
       webView.post { webView.evaluateJavascript("window._pluginArchiveCallback && window._pluginArchiveCallback($payload)", null) }
     }.start()
   }
+
+  /** Run a plugin call with its own classloader on the thread's context. */
+  private fun <T> withClassLoader(plugin: ArchivePlugin, block: () -> T): T {
+    val thread = Thread.currentThread()
+    val prev = thread.contextClassLoader
+    return try {
+      thread.contextClassLoader = plugin.javaClass.classLoader
+      block()
+    } finally {
+      thread.contextClassLoader = prev
+    }
+  }
+
+  /** Copy a stage directory tree into an SAF tree URI (no storage permission). */
+  private fun mirrorToTree(treeUri: Uri, stage: File): Int {
+    var copied = 0
+    val rootId = DocumentsContract.getTreeDocumentId(treeUri)
+    val rootUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, rootId)
+    fun copyInto(parentUri: Uri, dir: File) {
+      val children = dir.listFiles() ?: return
+      for (child in children) {
+        val doc = DocumentsContract.createDocument(
+          contentResolver,
+          parentUri,
+          if (child.isDirectory) DocumentsContract.Document.MIME_TYPE_DIR else mimeOf(child.name),
+          child.name
+        ) ?: continue
+        if (child.isDirectory) {
+          copyInto(doc, child)
+        } else {
+          contentResolver.openOutputStream(doc)?.use { out ->
+            child.inputStream().use { it.copyTo(out) }
+            copied += 1
+          }
+        }
+      }
+    }
+    copyInto(rootUri, stage)
+    return copied
+  }
+
+  private fun mimeOf(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {
+    "json" -> "application/json"
+    "html", "htm" -> "text/html"
+    "txt", "md", "csv", "log", "xml" -> "text/plain"
+    "png" -> "image/png"
+    "jpg", "jpeg" -> "image/jpeg"
+    "gif" -> "image/gif"
+    "pdf" -> "application/pdf"
+    else -> "application/octet-stream"
+  }
+
+  /** Human-readable path like "Download/MyFolder" for the chosen SAF tree. */
+  private fun treePath(treeUri: Uri): String =
+    DocumentsContract.getTreeDocumentId(treeUri).substringAfter(":").replace("%2F", "/")
 
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
@@ -645,6 +745,25 @@ class MainActivity : TauriActivity() {
     }
 
     @JavascriptInterface
+    fun detectPluginArchiveFormatAsync(pluginId: String, uri: String, name: String, callbackId: String) {
+      Thread {
+        val payload = JSONObject().apply {
+          put("id", callbackId)
+          put("op", "detect")
+        }
+        try {
+          val plugin = archivePlugin(pluginId)
+          val format = withArchivePluginLoader(plugin) { plugin.detectFormat(Uri.parse(uri), name) }
+          payload.put("format", format.ifBlank { "unknown" })
+        } catch (e: Throwable) {
+          android.util.Log.e("ViewIt", "Archive format detect failed", e)
+          payload.put("format", "unknown")
+        }
+        emitArchiveCallback(payload)
+      }.start()
+    }
+
+    @JavascriptInterface
     fun extractPluginArchiveEntryAsync(pluginId: String, uri: String, name: String, entryName: String, callbackId: String) {
       Thread {
         val payload = JSONObject().apply {
@@ -670,36 +789,33 @@ class MainActivity : TauriActivity() {
     }
 
     @JavascriptInterface
-    fun extractPluginArchiveAllAsync(pluginId: String, uri: String, name: String, callbackId: String) {
-      Thread {
-        val payload = JSONObject().apply {
+    fun extractPluginArchiveAllToFolderAsync(pluginId: String, uri: String, name: String, callbackId: String) {
+      try {
+        val plugin = archivePlugin(pluginId)
+        val code = extractRequestCode++
+        pendingExtracts[code] = PendingExtract(plugin, uri, name, callbackId)
+        runOnUiThread {
+          try {
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+              addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+            }
+            startActivityForResult(intent, code)
+          } catch (e: Throwable) {
+            pendingExtracts.remove(code)
+            emitArchiveCallback(JSONObject().apply {
+              put("id", callbackId)
+              put("op", "extract-all")
+              put("error", e.message ?: e.javaClass.simpleName)
+            })
+          }
+        }
+      } catch (e: Throwable) {
+        emitArchiveCallback(JSONObject().apply {
           put("id", callbackId)
           put("op", "extract-all")
-        }
-        try {
-          val plugin = archivePlugin(pluginId)
-          val root = getExternalFilesDir(null)?.takeIf { it.exists() || it.mkdirs() }
-            ?: File(applicationContext.filesDir, "Extracted").also { it.mkdirs() }
-            ?: throw IllegalStateException("No writable storage")
-          val folder = File(root, "Extracted")
-          folder.mkdirs()
-          val sub = safeFolderName(name)
-          val dest = File(folder, sub)
-          dest.mkdirs()
-          val json = withArchivePluginLoader(plugin) { plugin.extractAll(Uri.parse(uri), name, dest) }
-          val obj = JSONObject(json)
-          if (obj.optBoolean("ok", false)) {
-            payload.put("result", obj)
-            payload.put("dir", dest.absolutePath)
-          } else {
-            payload.put("error", obj.optString("error", "Extraction failed"))
-          }
-        } catch (e: Throwable) {
-          android.util.Log.e("ViewIt", "Archive extract-all failed", e)
-          payload.put("error", e.message ?: e.javaClass.simpleName)
-        }
-        emitArchiveCallback(payload)
-      }.start()
+          put("error", e.message ?: e.javaClass.simpleName)
+        })
+      }
     }
 
     @JavascriptInterface
@@ -733,12 +849,6 @@ class MainActivity : TauriActivity() {
           put("error", e.message ?: e.javaClass.simpleName)
         })
       }
-    }
-
-    private fun safeFolderName(name: String): String {
-      var base = name.substringBeforeLast('.', name)
-      if (base.isBlank()) base = "archive"
-      return base.replace(Regex("[^A-Za-z0-9._-]"), "_").take(48).ifBlank { "archive" }
     }
   }
 }

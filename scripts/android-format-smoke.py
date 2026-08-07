@@ -229,7 +229,8 @@ DOM_QUERY = """(() => {
     pptxRoot: !!document.querySelector('.pptx-root'),
     pptxVanilla: body.includes('PPTX Vanilla Viewer') || !!document.querySelector('.pptx-vanilla-viewer'),
     slideText: !!document.querySelector('.slide-text'),
-    epubViewer: !!document.querySelector('.epub-viewer'),
+    epubViewer: !!document.querySelector('.epub-viewer, .epub-fullscreen'),
+    epubFullscreen: !!document.querySelector('.epub-fullscreen'),
     mediaViewer: !!document.querySelector('.media-viewer'),
     imageViewer: !!document.querySelector('.image-viewer'),
     fontViewer: !!document.querySelector('.font-viewer'),
@@ -319,12 +320,76 @@ DOM_QUERY = """(() => {
         return hasText || hasImg || hasSvgImage || hasSvg || srcdocLen > 100;
       } catch { return false; }
     })(),
-    strategy: (document.querySelector('.media-viewer .hint')?.textContent || document.querySelector('.hint')?.textContent || '').trim(),
+    strategy: (document.querySelector('.media-viewer .hint')?.textContent || document.querySelector('.hint')?.textContent || '').trim().replace(/^strategy:\s*/i, ''),
     title: document.title,
     url: location.href,
     viewport: { width: innerWidth, height: innerHeight, devicePixelRatio },
   };
 })()"""
+
+
+# Drives the native compression plugin's per-entry extract (the exact path that
+# used to corrupt solid-7z saves) straight from the page: reads the first file
+# entry's name from the archive viewer DOM, then calls the plugin bridge and
+# returns the sha256 of the extracted bytes for byte-exact comparison.
+PREVIEW_SHA_JS = """(async () => {
+  const info = (window).__viewitArchiveBridge;
+  const drill = document.querySelector('.archive-viewer .drill[aria-label]');
+  if (!info || !window.AndroidBridge) return { ok: false, reason: 'no archive bridge info' };
+  if (!drill) return { ok: false, reason: 'no file entries to preview' };
+  const entryName = drill.getAttribute('aria-label').replace(/^Open\\s+/, '');
+  const id = 'smoke_preview_' + Date.now();
+  return await new Promise((resolve) => {
+    const prev = window._pluginArchiveCallback;
+    let settled = false;
+    const done = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      window._pluginArchiveCallback = prev;
+      resolve(result);
+    };
+    const timer = setTimeout(() => done({ ok: false, reason: 'preview timed out', entry: entryName }), 15000);
+    window._pluginArchiveCallback = (payload) => {
+      if (!payload || payload.id !== id) {
+        if (prev) prev(payload);
+        return;
+      }
+      if (!payload.base64) {
+        done({ ok: false, reason: payload.error || 'no base64 payload', tooLarge: !!payload.tooLarge, entry: entryName });
+        return;
+      }
+      try {
+        const raw = atob(payload.base64);
+        const bytes = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+        crypto.subtle.digest('SHA-256', bytes).then((digest) => {
+          const hex = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+          done({ ok: true, entry: entryName, size: bytes.length, sha256: hex });
+        }).catch((e) => done({ ok: false, reason: String(e), entry: entryName }));
+      } catch (e) {
+        done({ ok: false, reason: String(e), entry: entryName });
+      }
+    };
+    window.AndroidBridge.extractPluginArchiveEntryAsync(info.pluginId, info.uri, info.name, entryName, id);
+  });
+})()"""
+
+# Ground-truth sha256 of the first file entry inside each archive fixture,
+# computed once with `7z e` / `tar -xzf` from the committed sample set.
+PREVIEW_SHA_GROUND_TRUTH = {
+    "sample.7z": "145d5d54aed64d7605e1bfab468e8233f973b160d18ecbdfec5a28c5ab3e7794",  # files/data.json (30 B)
+    "sample.zip": "f0d6779ce9dbe8cfb1129e116c931c2a6bddb46b97ad09f48c357f46a65874fd",  # archive-content.txt (23 B)
+    "sample.tar.gz": "f0d6779ce9dbe8cfb1129e116c931c2a6bddb46b97ad09f48c357f46a65874fd",  # archive-content.txt (23 B)
+}
+
+
+def verify_preview_sha(ws_url: str) -> dict[str, Any]:
+    try:
+        result = ws_eval(ws_url, PREVIEW_SHA_JS, timeout=20)
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "reason": f"preview sha eval failed: {e}"}
+    return result if isinstance(result, dict) else {"ok": False, "reason": f"unexpected preview sha result: {result!r}"}
 
 
 @dataclass
@@ -499,16 +564,18 @@ ASSERTIONS: dict[str, list[tuple[str, callable]]] = {
     "sample.epub": [
         ("no error", _no_error),
         ("epub viewer", lambda m: assert_truthy(m.get("epubViewer"), what="epubViewer")),
-        ("has body", lambda m: _has_body(m, 50)),
+        ("epub chrome text", lambda m: assert_truthy(m.get("epubFullscreen"), what="epubFullscreen")),
         ("no raw html in body", lambda m: assert_falsey(m.get("hasRawHtml"), what="hasRawHtml")),
         ("iframe has content", lambda m: assert_truthy(m.get("iframeHasContent"), what="iframeHasContent")),
+        ("no raw html in iframe", lambda m: assert_falsey(m.get("iframeHasRawHtml"), what="iframeHasRawHtml")),
         ("iframe has image", lambda m: assert_truthy(m.get("iframeHasImage"), what="iframeHasImage")),
     ],
     "sample.mobi": [
         ("no error", _no_error),
         ("epub viewer", lambda m: assert_truthy(m.get("epubViewer"), what="epubViewer")),
-        ("has body", lambda m: _has_body(m, 50)),
+        ("epub chrome text", lambda m: assert_truthy(m.get("epubFullscreen"), what="epubFullscreen")),
         ("no raw html in body", lambda m: assert_falsey(m.get("hasRawHtml"), what="hasRawHtml")),
+        ("iframe has content", lambda m: assert_truthy(m.get("iframeHasContent"), what="iframeHasContent")),
         ("no raw html in iframe", lambda m: assert_falsey(m.get("iframeHasRawHtml"), what="iframeHasRawHtml")),
     ],
     # --- Audio ---
@@ -680,6 +747,7 @@ ASSERTIONS: dict[str, list[tuple[str, callable]]] = {
         ("archive viewer", lambda m: assert_truthy(m.get("archiveViewer"), what="archiveViewer")),
         ("has entries", lambda m: assert_min(m.get("archiveEntryCount"), what="archiveEntryCount", n=1)),
         ("has drill buttons", lambda m: assert_min(m.get("archiveDrillButtons"), what="archiveDrillButtons", n=1)),
+        ("preview bytes match ground truth", lambda m: assert_eq(m.get("previewSha256"), what="previewSha256", expected=PREVIEW_SHA_GROUND_TRUTH["sample.zip"])),
     ],
     "sample.tar": [
         ("no error", _no_error),
@@ -696,6 +764,7 @@ ASSERTIONS: dict[str, list[tuple[str, callable]]] = {
         ("archive viewer", lambda m: assert_truthy(m.get("archiveViewer"), what="archiveViewer")),
         ("has entries", lambda m: assert_min(m.get("archiveEntryCount"), what="archiveEntryCount", n=1)),
         ("has drill buttons", lambda m: assert_min(m.get("archiveDrillButtons"), what="archiveDrillButtons", n=1)),
+        ("preview bytes match ground truth", lambda m: assert_eq(m.get("previewSha256"), what="previewSha256", expected=PREVIEW_SHA_GROUND_TRUTH["sample.tar.gz"])),
     ],
     # --- Compression Universal plugin (precise listings) ---
     "sample.7z": [
@@ -705,6 +774,7 @@ ASSERTIONS: dict[str, list[tuple[str, callable]]] = {
         ("has entries", lambda m: assert_min(m.get("archiveEntryCount"), what="archiveEntryCount", n=1)),
         ("has drill buttons", lambda m: assert_min(m.get("archiveDrillButtons"), what="archiveDrillButtons", n=1)),
         ("has save buttons", lambda m: assert_min(m.get("archivePluginSaveButtons"), what="archivePluginSaveButtons", n=1)),
+        ("preview bytes match ground truth", lambda m: assert_eq(m.get("previewSha256"), what="previewSha256", expected=PREVIEW_SHA_GROUND_TRUTH["sample.7z"])),
     ],
     "sample.rar": [
         ("no error", _no_error),
@@ -970,6 +1040,12 @@ def main() -> int:
             print(f"[smoke] FAIL {name}: {e}")
             overall_failures += 1
             continue
+
+        if name in PREVIEW_SHA_GROUND_TRUTH:
+            pv = verify_preview_sha(ws_url)
+            metrics["previewSha256"] = pv.get("sha256")
+            metrics["previewShaEntry"] = pv.get("entry")
+            metrics["previewShaReason"] = pv.get("reason")
 
         failures = check_metrics(metrics, assertions)
         ok = not failures

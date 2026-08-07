@@ -300,6 +300,26 @@ pub fn read_uri_bytes(app: &AppHandle, uri: &str) -> Result<Vec<u8>, String> {
         .map_err(|e| e.to_string())
 }
 
+/// Read full URI bytes via an open stream (not `.read()`).
+/// On Android, `tauri-plugin-fs` `.read()` fails with EACCES on raw `file://`
+/// paths that fall under scoped storage, while `.open()` (used by the stream
+/// server) succeeds for the same paths. Use this for IPC byte reads.
+pub fn read_uri_bytes_open(app: &AppHandle, uri: &str) -> Result<Vec<u8>, String> {
+    use std::io::Read;
+    let fp = FilePath::from_str(uri).map_err(|e| e.to_string())?;
+    let mut opts = tauri_plugin_fs::OpenOptions::new();
+    opts.read(true);
+    let mut reader = app
+        .fs()
+        .open(fp, opts)
+        .map_err(|e| format!("failed to open {}: {}", uri, e))?;
+    let mut buf = Vec::new();
+    reader
+        .read_to_end(&mut buf)
+        .map_err(|e| format!("read error: {}", e))?;
+    Ok(buf)
+}
+
 fn sniff_prefix(app: &AppHandle, uri: &str, ext: &str) -> Result<(String, Format), String> {
     let mut ext_hint = sanitize_ext(ext);
 
@@ -394,6 +414,30 @@ fn build_stream_url(app: &AppHandle, uri: &str) -> Option<String> {
     }
 }
 
+/// Materialize a shared (content:// / file://) file into app-private cache and
+/// register it for streaming from cache via `std::fs` (Range-supported).
+///
+/// This is the scoped-storage workaround: raw `file:///sdcard/...` reads through
+/// the plugin-fs/stream path return EACCES once MANAGE_EXTERNAL_STORAGE is not
+/// granted (Android auto-revokes it), which made every media/pdf/image format
+/// break with `TypeError: Failed to fetch` / `code=4`. Copying into app cache at
+/// open time makes streaming + IPC byte reads permission-independent.
+fn materialize_cached_stream(
+    app: &AppHandle,
+    uri: &str,
+    ext: &str,
+) -> Result<(Option<String>, String), String> {
+    let (path, _size) = materialize::materialize_uri_to_cache(app, uri, ext)?;
+    let asset_path = materialize::path_to_file_url(&path)?;
+    let stream_url = crate::stream_server::register_cached_path(app, path, ext.to_string());
+    let stream_url = if stream_url.is_empty() {
+        None
+    } else {
+        Some(stream_url)
+    };
+    Ok((stream_url, asset_path))
+}
+
 pub fn open_from_uri(
     app: &AppHandle,
     uri: String,
@@ -413,15 +457,23 @@ pub fn open_from_uri(
 
     let (ext, format) = sniff_prefix(app, &uri, &ext)?;
 
-    // PDF: register stream, return native Document with stream_url
-    if format == Format::Pdf {
-        let stream_url = build_stream_url(app, &uri);
+    // PDF: materialize to app cache, register cached stream; read bytes over IPC
+    if format == Format::Pdf && (uri.starts_with("content://") || uri.starts_with("file://")) {
+        let (stream_url, asset_path) = match materialize_cached_stream(app, &uri, "pdf") {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("[viewit] pdf materialize failed, falling back to raw stream: {}", e);
+                let stream_url = build_stream_url(app, &uri);
+                (stream_url, String::new())
+            }
+        };
         return Ok(Document::Pdf {
             page_count: 0,
             pages: vec![],
             byte_len: 0,
             native: true,
             name: display_name,
+            asset_path,
             stream_url,
         });
     }
@@ -438,13 +490,38 @@ pub fn open_from_uri(
         } else {
             MediaKind::Video
         };
-        let stream_url = build_stream_url(app, &uri);
+        let media_ext = if ext.is_empty() {
+            if kind == MediaKind::Audio {
+                "mp3".to_string()
+            } else {
+                "mp4".to_string()
+            }
+        } else {
+            ext.clone()
+        };
+        let do_cache = uri.starts_with("content://") || uri.starts_with("file://");
+        let (stream_url, asset_path) = if do_cache {
+            match materialize_cached_stream(app, &uri, &media_ext) {
+                Ok(v) => v,
+                Err(e) => {
+                    eprintln!(
+                        "[viewit] media materialize failed, falling back to raw stream: {}",
+                        e
+                    );
+                    let stream_url = build_stream_url(app, &uri);
+                    (stream_url, String::new())
+                }
+            }
+        } else {
+            let stream_url = build_stream_url(app, &uri);
+            (stream_url, String::new())
+        };
         return Ok(Document::Media {
             format,
             media_kind: kind,
             name: display_name,
             byte_len: 0,
-            asset_path: String::new(),
+            asset_path,
             ext: ext.clone(),
             stream_url,
         });
