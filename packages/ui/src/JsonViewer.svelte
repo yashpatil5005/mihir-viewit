@@ -5,7 +5,7 @@
 
   let {
     pretty,
-    byte_len = 0
+    byte_len = 0,
   }: {
     pretty: string;
     byte_len?: number;
@@ -20,9 +20,20 @@
 </article>
 
 <style>
-  .json-viewer { padding: 0.5rem 1rem; }
-  .meta { color: var(--text-secondary); margin-bottom: 0.5rem; font-size: 0.75rem; }
-  .pretty { background: var(--bg-secondary); padding: 0.75rem 1rem; border-radius: 0.4rem;
-            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-            font-size: 0.85rem; overflow: auto; }
+  .json-viewer {
+    padding: 0.5rem 1rem;
+  }
+  .meta {
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+    font-size: 0.75rem;
+  }
+  .pretty {
+    background: var(--bg-secondary);
+    padding: 0.75rem 1rem;
+    border-radius: 0.4rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.85rem;
+    overflow: auto;
+  }
 </style>

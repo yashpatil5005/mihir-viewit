@@ -18,8 +18,12 @@
     "build:android": "npm run tauri android build --workspace apps/mobile",
     "build:android-release": "./scripts/android-release.sh",
     "build:web": "npm run build --workspace apps/web",
-    "lint": "echo TODO_lint",
+    "lint": "prettier --check 'apps/**/*.{ts,svelte,js}' 'packages/**/*.{ts,svelte,js}'",
     "format": "prettier --write 'apps/**/*.{ts,svelte,js}' 'packages/**/*.{ts,svelte,js}'",
+    "check": "tsc --noEmit -p packages/platform",
+    "test:ts": "vitest run -c packages/platform/vitest.config.ts",
+    "test:rust": "cargo test --workspace --exclude viewit-mobile --exclude viewit-desktop --lib",
+    "test": "npm run test:rust && npm run test:ts",
     "size-check": "node scripts/size-budget.ts"
   },
   "devDependencies": {

@@ -55,8 +55,8 @@ pub fn parse_docx(bytes: &[u8]) -> Result<Document, Error> {
                         let cell_text: Vec<String> = cell
                             .content
                             .iter()
-                            .filter_map(|c| match c {
-                                docx_rust::document::TableCellContent::Paragraph(p) => Some(p.text()),
+                            .map(|c| match c {
+                                docx_rust::document::TableCellContent::Paragraph(p) => p.text(),
                             })
                             .collect();
                         cells.push(cell_text.join("\n"));
@@ -96,7 +96,7 @@ fn parse_docx_document_xml(xml: &str, byte_len: usize) -> Result<Document, Error
     use quick_xml::Reader;
     use viewit_core_types::DocxBlock;
 
-    let mut reader = Reader::from_str(&xml);
+    let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(true);
     let mut buf = Vec::new();
     let mut blocks = Vec::new();

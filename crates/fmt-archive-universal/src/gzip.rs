@@ -1,7 +1,7 @@
-use std::io::{Read, Seek};
-use flate2::read::GzDecoder as Flate2GzDecoder;
-use crate::{InternalArchiveEntry, Error};
 use crate::tar::list_tar as list_tar_inner;
+use crate::{Error, InternalArchiveEntry};
+use flate2::read::GzDecoder as Flate2GzDecoder;
+use std::io::{Read, Seek};
 
 pub fn list_gz<R: Read + Seek + Send>(mut reader: R) -> Result<Vec<InternalArchiveEntry>, Error> {
     // First check if it's a tar.gz or plain gz
@@ -22,7 +22,8 @@ pub fn list_gz<R: Read + Seek + Send>(mut reader: R) -> Result<Vec<InternalArchi
     // Plain gz - single compressed file
     let mut decoder = Flate2GzDecoder::new(reader);
     let mut data = Vec::new();
-    decoder.read_to_end(&mut data)
+    decoder
+        .read_to_end(&mut data)
         .map_err(|e| Error::Parse(format!("gz decompress: {}", e)))?;
 
     // We can't easily get the original filename from gz, so use a default

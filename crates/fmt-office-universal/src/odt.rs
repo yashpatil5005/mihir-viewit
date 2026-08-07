@@ -179,10 +179,8 @@ fn extract_odt_blocks(xml: &str) -> Vec<DocxBlock> {
                     current_row.push(cell_text.trim().to_string());
                     in_table_cell = false;
                 }
-                if tag_ref == b"table:table-row" && in_table {
-                    if !current_row.is_empty() {
-                        table_rows.push(current_row.clone());
-                    }
+                if tag_ref == b"table:table-row" && in_table && !current_row.is_empty() {
+                    table_rows.push(current_row.clone());
                 }
                 if tag_ref == b"table:table" && in_table {
                     if !table_rows.is_empty() {

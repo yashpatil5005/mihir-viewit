@@ -28,7 +28,7 @@ fn list_zip(bytes: &[u8]) -> Result<Vec<ArchiveEntry>, Error> {
     let cursor = std::io::Cursor::new(bytes);
     let mut archive =
         zip::ZipArchive::new(cursor).map_err(|e| Error::Parse(format!("zip: {}", e)))?;
-    let mut out: Vec<ArchiveEntry> = Vec::with_capacity(archive.len() as usize);
+    let mut out: Vec<ArchiveEntry> = Vec::with_capacity(archive.len());
     for i in 0..archive.len() {
         if let Ok(file) = archive.by_index(i) {
             out.push(ArchiveEntry {
@@ -75,19 +75,18 @@ fn list_tar(bytes: &[u8], gzipped: bool) -> Result<Vec<ArchiveEntry>, Error> {
     } else {
         tar::Archive::new(Box::new(cursor))
     };
-    for e in archive
+    for entry in archive
         .entries()
         .map_err(|e| Error::Parse(format!("tar: {}", e)))?
+        .flatten()
     {
-        if let Ok(entry) = e {
-            let header = entry.header();
-            entries.push(ArchiveEntry {
-                name: header.path()?.to_string_lossy().into_owned(),
-                size: header.size()?,
-                is_dir: header.entry_type().is_dir(),
-                compressed_size: header.size()?,
-            });
-        }
+        let header = entry.header();
+        entries.push(ArchiveEntry {
+            name: header.path()?.to_string_lossy().into_owned(),
+            size: header.size()?,
+            is_dir: header.entry_type().is_dir(),
+            compressed_size: header.size()?,
+        });
     }
     Ok(entries)
 }

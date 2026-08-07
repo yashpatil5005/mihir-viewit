@@ -1,9 +1,9 @@
-use std::io::{Read, Seek};
-#[cfg(feature = "sevenz")]
-use sevenz_rust::{SevenZReader, Password};
-use crate::{ArchiveManifest, Error};
 #[cfg(feature = "sevenz")]
 use crate::InternalArchiveEntry;
+use crate::{ArchiveManifest, Error};
+#[cfg(feature = "sevenz")]
+use sevenz_rust::{Password, SevenZReader};
+use std::io::{Read, Seek};
 
 #[cfg(feature = "sevenz")]
 pub fn list_7z<R: Read + Seek>(mut reader: R) -> Result<ArchiveManifest, Error> {
@@ -12,8 +12,8 @@ pub fn list_7z<R: Read + Seek>(mut reader: R) -> Result<ArchiveManifest, Error> 
     reader.seek(std::io::SeekFrom::Start(pos))?;
 
     let password = Password::empty();
-    let sevenz_reader = SevenZReader::new(reader, len, password)
-        .map_err(|e| Error::Parse(format!("7z: {}", e)))?;
+    let sevenz_reader =
+        SevenZReader::new(reader, len, password).map_err(|e| Error::Parse(format!("7z: {}", e)))?;
 
     let files = sevenz_reader.archive().files.clone();
     let mut entries = Vec::with_capacity(files.len());
@@ -27,8 +27,13 @@ pub fn list_7z<R: Read + Seek>(mut reader: R) -> Result<ArchiveManifest, Error> 
         let crc32 = f.crc32();
 
         let mut entry = InternalArchiveEntry::with_metadata(
-            name, size, compressed_size, is_dir,
-            None, crc32, method
+            name,
+            size,
+            compressed_size,
+            is_dir,
+            None,
+            crc32,
+            method,
         );
 
         if !is_dir {
@@ -49,38 +54,48 @@ pub fn list_7z<R: Read + Seek>(_reader: R) -> Result<ArchiveManifest, Error> {
 
 #[allow(dead_code)]
 fn is_nested_archive(name: &str) -> bool {
-    name.ends_with(".tar.gz") || name.ends_with(".tgz") ||
-    name.ends_with(".tar.bz2") || name.ends_with(".tbz2") ||
-    name.ends_with(".tar.xz") || name.ends_with(".txz") ||
-    name.ends_with(".tar.zst") || name.ends_with(".tzst") ||
-    name.ends_with(".tar.lz4") ||
-    name.ends_with(".tar.lzma") || name.ends_with(".tlz") ||
-    name.ends_with(".zip") || name.ends_with(".7z") ||
-    name.ends_with(".rar") || name.ends_with(".gz") ||
-    name.ends_with(".bz2") || name.ends_with(".xz") ||
-    name.ends_with(".zst") || name.ends_with(".lz4") ||
-    name.ends_with(".lzma")
+    name.ends_with(".tar.gz")
+        || name.ends_with(".tgz")
+        || name.ends_with(".tar.bz2")
+        || name.ends_with(".tbz2")
+        || name.ends_with(".tar.xz")
+        || name.ends_with(".txz")
+        || name.ends_with(".tar.zst")
+        || name.ends_with(".tzst")
+        || name.ends_with(".tar.lz4")
+        || name.ends_with(".tar.lzma")
+        || name.ends_with(".tlz")
+        || name.ends_with(".zip")
+        || name.ends_with(".7z")
+        || name.ends_with(".rar")
+        || name.ends_with(".gz")
+        || name.ends_with(".bz2")
+        || name.ends_with(".xz")
+        || name.ends_with(".zst")
+        || name.ends_with(".lz4")
+        || name.ends_with(".lzma")
 }
 
 #[cfg(feature = "sevenz")]
-pub fn extract_entry<R: Read + Seek>(
-    mut reader: R,
-    entry_name: &str,
-) -> Result<Vec<u8>, Error> {
+pub fn extract_entry<R: Read + Seek>(mut reader: R, entry_name: &str) -> Result<Vec<u8>, Error> {
     let pos = reader.stream_position()?;
     let len = reader.seek(std::io::SeekFrom::End(0))?;
     reader.seek(std::io::SeekFrom::Start(pos))?;
 
     let password = Password::empty();
-    let mut sevenz_reader = SevenZReader::new(reader, len, password)
-        .map_err(|e| Error::Parse(format!("7z: {}", e)))?;
+    let mut sevenz_reader =
+        SevenZReader::new(reader, len, password).map_err(|e| Error::Parse(format!("7z: {}", e)))?;
 
     let archive = sevenz_reader.archive();
-    let file_idx = archive.files.iter().position(|f| f.name() == entry_name)
+    let file_idx = archive
+        .files
+        .iter()
+        .position(|f| f.name() == entry_name)
         .ok_or_else(|| Error::Parse(format!("entry '{}' not found", entry_name)))?;
 
     let mut data = Vec::new();
-    sevenz_reader.extract_file(file_idx, &mut data)
+    sevenz_reader
+        .extract_file(file_idx, &mut data)
         .map_err(|e| Error::Parse(format!("extract '{}': {}", entry_name, e)))?;
 
     Ok(data)
@@ -92,16 +107,14 @@ pub fn extract_entry<R: Read + Seek>(_reader: R, _entry_name: &str) -> Result<Ve
 }
 
 #[cfg(feature = "sevenz")]
-pub fn extract_all<R: Read + Seek>(
-    mut reader: R,
-) -> Result<Vec<(String, Vec<u8>)>, Error> {
+pub fn extract_all<R: Read + Seek>(mut reader: R) -> Result<Vec<(String, Vec<u8>)>, Error> {
     let pos = reader.stream_position()?;
     let len = reader.seek(std::io::SeekFrom::End(0))?;
     reader.seek(std::io::SeekFrom::Start(pos))?;
 
     let password = Password::empty();
-    let mut sevenz_reader = SevenZReader::new(reader, len, password)
-        .map_err(|e| Error::Parse(format!("7z: {}", e)))?;
+    let mut sevenz_reader =
+        SevenZReader::new(reader, len, password).map_err(|e| Error::Parse(format!("7z: {}", e)))?;
 
     let archive = sevenz_reader.archive();
     let mut results = Vec::new();
@@ -113,7 +126,8 @@ pub fn extract_all<R: Read + Seek>(
 
         let name = file.name().to_string();
         let mut data = Vec::new();
-        sevenz_reader.extract_file(idx, &mut data)
+        sevenz_reader
+            .extract_file(idx, &mut data)
             .map_err(|e| Error::Parse(format!("extract '{}': {}", name, e)))?;
 
         results.push((name, data));

@@ -1,12 +1,11 @@
-export const IS_TAURI =
-  typeof window !== 'undefined' && '__TAURI_INTERNALS__' in (window ?? {});
+export const IS_TAURI = typeof window !== "undefined" && "__TAURI_INTERNALS__" in (window ?? {});
 
 function pathForConvert(uriOrPath: string): string {
-  if (uriOrPath.startsWith('file://')) {
+  if (uriOrPath.startsWith("file://")) {
     try {
-      return decodeURIComponent(uriOrPath.replace(/^file:\/\//, ''));
+      return decodeURIComponent(uriOrPath.replace(/^file:\/\//, ""));
     } catch {
-      return uriOrPath.replace(/^file:\/\//, '');
+      return uriOrPath.replace(/^file:\/\//, "");
     }
   }
   return uriOrPath;
@@ -23,15 +22,15 @@ export async function assetUrlForPath(uri: string, assetPath?: string): Promise<
     if (assetPath) return assetPath;
     return uri;
   }
-  const { convertFileSrc } = await import('@tauri-apps/api/core');
+  const { convertFileSrc } = await import("@tauri-apps/api/core");
   if (assetPath) {
     return convertFileSrc(pathForConvert(assetPath));
   }
   if (!uri) return uri;
-  if (uri.startsWith('blob:') || uri.startsWith('http://') || uri.startsWith('https://')) {
+  if (uri.startsWith("blob:") || uri.startsWith("http://") || uri.startsWith("https://")) {
     return uri;
   }
-  if (uri.startsWith('content://') || uri.startsWith('file://')) {
+  if (uri.startsWith("content://") || uri.startsWith("file://")) {
     return convertFileSrc(uri);
   }
   return convertFileSrc(uri);

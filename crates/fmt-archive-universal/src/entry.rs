@@ -14,12 +14,7 @@ pub struct ArchiveEntry {
 }
 
 impl ArchiveEntry {
-    pub fn new(
-        name: String,
-        size: u64,
-        compressed_size: u64,
-        is_dir: bool,
-    ) -> Self {
+    pub fn new(name: String, size: u64, compressed_size: u64, is_dir: bool) -> Self {
         Self {
             name,
             size,

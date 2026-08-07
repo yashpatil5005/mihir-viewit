@@ -170,7 +170,7 @@ fn extract_ascii(bytes: &[u8]) -> String {
         } else if !cur.is_empty() {
             if cur.len() >= 4 {
                 out.push_str(&String::from_utf8_lossy(&cur));
-                out.push_str(" ");
+                out.push(' ');
             }
             cur.clear();
         }

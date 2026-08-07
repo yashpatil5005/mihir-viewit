@@ -279,19 +279,11 @@ fn rtf_to_html(rtf: &str) -> String {
                         }
                         "b" | "b0" => {
                             let new_val = word == "b";
-                            bold = if new_val {
-                                param.map_or(true, |p| p != 0)
-                            } else {
-                                false
-                            };
+                            bold = if new_val { param != Some(0) } else { false };
                         }
                         "i" | "i0" => {
                             let new_val = word == "i";
-                            italic = if new_val {
-                                param.map_or(true, |p| p != 0)
-                            } else {
-                                false
-                            };
+                            italic = if new_val { param != Some(0) } else { false };
                         }
                         "ul" | "ul0" | "ulnone" => {
                             underline = word == "ul";
@@ -404,7 +396,7 @@ fn push_char_html(
             out.push_str("em");
         }
         if underline {
-            out.push_str("u");
+            out.push('u');
         }
         out.push('>');
     }
@@ -419,7 +411,7 @@ fn push_char_html(
     if needs_open {
         out.push_str("</");
         if underline {
-            out.push_str("u");
+            out.push('u');
         }
         if italic {
             out.push_str("em");
@@ -512,8 +504,7 @@ fn markdown_to_html(text: &str) -> String {
 fn pretty_json(text: &str) -> Result<String, Error> {
     let value: serde_json::Value =
         serde_json::from_str(text).map_err(|e| Error::Parse(format!("JSON parse: {}", e)))?;
-    Ok(serde_json::to_string_pretty(&value)
-        .map_err(|e| Error::Parse(format!("JSON encode: {}", e)))?)
+    serde_json::to_string_pretty(&value).map_err(|e| Error::Parse(format!("JSON encode: {}", e)))
 }
 
 // --- Phase 2.6 — CSV preview rows -------------------------------------------
@@ -538,7 +529,7 @@ fn parse_csv(text: &str) -> (Vec<String>, Vec<Vec<String>>, Option<usize>) {
                 Ok(r) => preview.push(r.iter().map(|c| c.to_string()).collect()),
                 Err(_) => break,
             }
-        } else if total % 1024 == 0 {
+        } else if total.is_multiple_of(1024) {
             // We're past preview; keep counting for the row hint, but cheap.
         }
     }

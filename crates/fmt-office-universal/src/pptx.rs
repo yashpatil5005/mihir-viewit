@@ -60,7 +60,9 @@ fn count_slides_in_presentation(xml: &str) -> usize {
                                     count += 1;
                                 }
                             }
-                            Ok(Event::End(e)) if e.name().local_name().as_ref() == b"sldIdLst" => break,
+                            Ok(Event::End(e)) if e.name().local_name().as_ref() == b"sldIdLst" => {
+                                break
+                            }
                             Ok(Event::Eof) => break,
                             _ => {}
                         }
@@ -124,7 +126,9 @@ fn extract_slide_text(xml: &str) -> (String, String) {
                     }
                     current_text.clear();
                 }
-                if e.name().local_name().as_ref() == b"sp" || e.name().local_name().as_ref() == b"txBody" {
+                if e.name().local_name().as_ref() == b"sp"
+                    || e.name().local_name().as_ref() == b"txBody"
+                {
                     in_title = false;
                     in_body = false;
                 }

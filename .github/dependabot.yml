@@ -1,0 +1,25 @@
+# Keeps npm + cargo dependencies up-to-date.
+# Weekly PRs for patch/minor; no auto-merge (must pass ci.yml + size gates).
+
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels: ["dependencies", "npm"]
+    # Semver-critical, large-churn deps get grouped to reduce noise.
+    groups:
+      svelte-vite:
+        patterns: ["@sveltejs/*", "vite", "svelte"]
+
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels: ["dependencies", "cargo"]
+    # `zip` is pinned exactly in [workspace.dependencies]; dependabot will
+    # still open PRs and CI's cargo-deny + tests catch regressions.
+    versioning-strategy: increase-if-necessary

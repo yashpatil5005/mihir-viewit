@@ -3,8 +3,8 @@
 //! Uses calamine for all three formats.
 //! Produces Document::Xlsx with multi-sheet metadata.
 
-use std::io::Cursor;
 use calamine::Reader;
+use std::io::Cursor;
 use viewit_core_types::{Document, Error, XlsxSheet};
 
 pub fn parse_xlsx(bytes: &[u8]) -> Result<Document, Error> {

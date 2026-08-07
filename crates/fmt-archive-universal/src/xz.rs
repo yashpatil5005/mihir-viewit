@@ -1,10 +1,10 @@
 #[cfg(feature = "xz")]
+use crate::tar::list_tar as list_tar_inner;
+use crate::{Error, InternalArchiveEntry};
+#[cfg(feature = "xz")]
 use std::io::{Read, Seek};
 #[cfg(feature = "xz")]
 use xz2::read::XzDecoder;
-use crate::{InternalArchiveEntry, Error};
-#[cfg(feature = "xz")]
-use crate::tar::list_tar as list_tar_inner;
 
 #[cfg(feature = "xz")]
 pub fn list_xz<R: Read + Seek + Send>(mut reader: R) -> Result<Vec<InternalArchiveEntry>, Error> {
@@ -25,15 +25,12 @@ pub fn list_xz<R: Read + Seek + Send>(mut reader: R) -> Result<Vec<InternalArchi
     // Plain xz
     let mut decoder = XzDecoder::new(reader);
     let mut data = Vec::new();
-    decoder.read_to_end(&mut data)
+    decoder
+        .read_to_end(&mut data)
         .map_err(|e| Error::Parse(format!("xz decompress: {}", e)))?;
 
-    let entry = InternalArchiveEntry::new(
-        "archive-content".to_string(),
-        data.len() as u64,
-        0,
-        false,
-    );
+    let entry =
+        InternalArchiveEntry::new("archive-content".to_string(), data.len() as u64, 0, false);
 
     Ok(vec![entry])
 }

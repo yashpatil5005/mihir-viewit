@@ -3,8 +3,8 @@ import {
   checkFileBeforeRead,
   unsupportedDocument,
   fileExtension,
-} from './filePolicy';
-import { displayNameFromUri } from './displayNameFromUri';
+} from "./filePolicy";
+import { displayNameFromUri } from "./displayNameFromUri";
 
 // @viewit/platform — single seam between the Svelte frontend and the
 // backing implementation (Tauri Rust commands OR direct WASM calls).
@@ -17,26 +17,86 @@ import { displayNameFromUri } from './displayNameFromUri';
 // a JS-only text reader so the loop is exercisable immediately.
 
 export type DocumentKind =
-  | 'text' | 'image' | 'markdown' | 'json' | 'csv' | 'pdf' | 'epub' | 'mobi' | 'azw3'
-  | 'fictionbook' | 'palmdoc' | 'archive' | 'pptx' | 'docx' | 'xlsx' | 'odt' | 'ods' | 'odp'
-  | 'media' | 'stream-file' | 'unsupported' | 'placeholder' | 'font';
+  | "text"
+  | "image"
+  | "markdown"
+  | "json"
+  | "csv"
+  | "pdf"
+  | "epub"
+  | "mobi"
+  | "azw3"
+  | "fictionbook"
+  | "palmdoc"
+  | "archive"
+  | "pptx"
+  | "docx"
+  | "xlsx"
+  | "odt"
+  | "ods"
+  | "odp"
+  | "media"
+  | "stream-file"
+  | "unsupported"
+  | "placeholder"
+  | "font";
 export type Format =
-  | 'plain-text' | 'markdown' | 'json' | 'csv' | 'code'
-  | 'pdf' | 'image-png' | 'image-jpg' | 'image-webp' | 'image-gif'
-  | 'image-bmp' | 'image-tiff' | 'image-svg' | 'image-raw' | 'image-heic' | 'image-psd'
-  | 'epub' | 'mobi' | 'azw3' | 'fictionbook' | 'palmdoc'
-  | 'archive-zip' | 'archive-tar' | 'archive-tar-gz' | 'archive-7z' | 'archive-rar'
-  | 'docx' | 'docm' | 'dotx' | 'dotm'
-  | 'xlsx' | 'xlsm' | 'xlsb' | 'xls'
-  | 'pptx' | 'pptm' | 'potx'
-  | 'odt' | 'ott' | 'ods' | 'odp' | 'doc' | 'ppt' | 'rtf'
-  | 'plist' | 'ics' | 'vcf'
-  | 'video' | 'audio'
-  | 'iwork-pages' | 'iwork-numbers' | 'iwork-key'
-  | 'font'
-  | 'unsupported';
+  | "plain-text"
+  | "markdown"
+  | "json"
+  | "csv"
+  | "code"
+  | "pdf"
+  | "image-png"
+  | "image-jpg"
+  | "image-webp"
+  | "image-gif"
+  | "image-bmp"
+  | "image-tiff"
+  | "image-svg"
+  | "image-raw"
+  | "image-heic"
+  | "image-psd"
+  | "epub"
+  | "mobi"
+  | "azw3"
+  | "fictionbook"
+  | "palmdoc"
+  | "archive-zip"
+  | "archive-tar"
+  | "archive-tar-gz"
+  | "archive-7z"
+  | "archive-rar"
+  | "docx"
+  | "docm"
+  | "dotx"
+  | "dotm"
+  | "xlsx"
+  | "xlsm"
+  | "xlsb"
+  | "xls"
+  | "pptx"
+  | "pptm"
+  | "potx"
+  | "odt"
+  | "ott"
+  | "ods"
+  | "odp"
+  | "doc"
+  | "ppt"
+  | "rtf"
+  | "plist"
+  | "ics"
+  | "vcf"
+  | "video"
+  | "audio"
+  | "iwork-pages"
+  | "iwork-numbers"
+  | "iwork-key"
+  | "font"
+  | "unsupported";
 
-export type Suggestion = 'open-with-external' | 'none';
+export type Suggestion = "open-with-external" | "none";
 
 export interface Document {
   kind: DocumentKind;
@@ -45,21 +105,21 @@ export interface Document {
 }
 
 export interface TextDocument extends Document {
-  kind: 'text';
+  kind: "text";
   content: string;
   encoding: string;
   byte_len: number;
 }
 
 export interface UnsupportedDocument extends Document {
-  kind: 'unsupported';
+  kind: "unsupported";
   format: Format;
   reason: string;
   suggestion: Suggestion;
 }
 
 export interface PlaceholderDocument extends Document {
-  kind: 'placeholder';
+  kind: "placeholder";
   format: Format;
   name: string;
   byte_len: number;
@@ -67,7 +127,7 @@ export interface PlaceholderDocument extends Document {
 }
 
 export interface OdtDocument extends Document {
-  kind: 'odt';
+  kind: "odt";
   content: string;
   meta?: Record<string, unknown>;
   name: string;
@@ -76,7 +136,7 @@ export interface OdtDocument extends Document {
 }
 
 export interface OdsDocument extends Document {
-  kind: 'ods';
+  kind: "ods";
   sheets: string[];
   name: string;
   byte_len: number;
@@ -84,7 +144,7 @@ export interface OdsDocument extends Document {
 }
 
 export interface OdpDocument extends Document {
-  kind: 'odp';
+  kind: "odp";
   slides: string[];
   name: string;
   byte_len: number;
@@ -95,9 +155,9 @@ export interface OdpDocument extends Document {
 // Detect: are we in a Tauri host or a plain browser?
 // ---------------------------------------------------------------------------
 const IS_TAURI =
-  typeof window !== 'undefined' &&
+  typeof window !== "undefined" &&
   // Tauri v2 injects __TAURI_INTERNALS__ into the webview.
-  '__TAURI_INTERNALS__' in (window ?? {});
+  "__TAURI_INTERNALS__" in (window ?? {});
 export { IS_TAURI };
 
 // ---------------------------------------------------------------------------
@@ -107,19 +167,19 @@ export { IS_TAURI };
 /** Returns a list of file URIs opened during cold start (may be empty). */
 export async function openedFiles(): Promise<string[]> {
   if (!IS_TAURI) return [];
-  const { invoke } = await import('@tauri-apps/api/core');
-  return invoking(async () => invoke<string[]>('opened_urls'));
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoking(async () => invoke<string[]>("opened_urls"));
 }
 
 /** Subscribe to file-opened events delivered while the app is running. */
 export async function onOpenedFiles(cb: (urls: string[]) => void): Promise<() => void> {
   if (!IS_TAURI) return () => {};
-  const { listen } = await import('@tauri-apps/api/event');
-    const unlisten = await listen<string[] | string>('opened', (e) => {
-      const p = e.payload;
-      const urls = Array.isArray(p) ? p : [p];
-      cb(urls);
-    });
+  const { listen } = await import("@tauri-apps/api/event");
+  const unlisten = await listen<string[] | string>("opened", (e) => {
+    const p = e.payload;
+    const urls = Array.isArray(p) ? p : [p];
+    cb(urls);
+  });
   return unlisten;
 }
 
@@ -128,13 +188,25 @@ export async function onOpenedFiles(cb: (urls: string[]) => void): Promise<() =>
  * entry-point the Viewer root component calls.
  */
 const OFFICE_EXTS = new Set([
-  'docx', 'docm', 'dotx', 'dotm',
-  'xlsx', 'xlsm', 'xlsb', 'xls',
-  'pptx', 'pptm', 'potx',
-  'odt', 'ott',
-  'ods', 'ots',
-  'odp', 'otp',
-  'doc', 'ppt',
+  "docx",
+  "docm",
+  "dotx",
+  "dotm",
+  "xlsx",
+  "xlsm",
+  "xlsb",
+  "xls",
+  "pptx",
+  "pptm",
+  "potx",
+  "odt",
+  "ott",
+  "ods",
+  "ots",
+  "odp",
+  "otp",
+  "doc",
+  "ppt",
 ]);
 
 function isOfficeExt(ext: string): boolean {
@@ -142,37 +214,52 @@ function isOfficeExt(ext: string): boolean {
 }
 
 export async function openFile(uri: string, nameHint?: string | null): Promise<Document> {
-  if (uri.startsWith('blob:')) {
+  if (uri.startsWith("blob:")) {
     throw new Error(
-      'blob: URLs cannot be read by the host. Use openFileFromPicker(File) after the in-app file picker.',
+      "blob: URLs cannot be read by the host. Use openFileFromPicker(File) after the in-app file picker.",
     );
   }
   if (IS_TAURI) {
-    const { invoke } = await import('@tauri-apps/api/core');
+    const { invoke } = await import("@tauri-apps/api/core");
     const blocked = await invoking(() =>
-      invoke<Document | null>('probe_uri', { uri, name: displayNameFromUri(uri) }),
+      invoke<Document | null>("probe_uri", { uri, name: displayNameFromUri(uri) }),
     );
-    if (blocked && typeof blocked === 'object' && (blocked as Document).kind === 'unsupported') {
+    if (blocked && typeof blocked === "object" && (blocked as Document).kind === "unsupported") {
       return blocked as Document;
     }
-    const { debugLog } = await import('./debugLog');
+    const { debugLog } = await import("./debugLog");
     debugLog(`openFile ${uri.slice(0, 80)}…`);
     try {
       let mimeType: string | null = null;
-      if (typeof window !== 'undefined' && 'AndroidBridge' in window && typeof (window as any).AndroidBridge.getMimeType === 'function') {
-        try { mimeType = (window as any).AndroidBridge.getMimeType(uri) || null; } catch { /* ignore */ }
+      if (
+        typeof window !== "undefined" &&
+        "AndroidBridge" in window &&
+        typeof (window as any).AndroidBridge.getMimeType === "function"
+      ) {
+        try {
+          mimeType = (window as any).AndroidBridge.getMimeType(uri) || null;
+        } catch {
+          /* ignore */
+        }
       }
 
       // Try Android document plugin for office formats
       const ext = (nameHint && fileExtension(nameHint)) || fileExtension(displayNameFromUri(uri));
-      if (isOfficeExt(ext) && typeof window !== 'undefined' && 'AndroidBridge' in window && typeof (window as any).AndroidBridge.renderDocumentWithPlugin === 'function') {
+      if (
+        isOfficeExt(ext) &&
+        typeof window !== "undefined" &&
+        "AndroidBridge" in window &&
+        typeof (window as any).AndroidBridge.renderDocumentWithPlugin === "function"
+      ) {
         debugLog(`Trying Android office plugin for .${ext}`);
         try {
-          const doc = await renderDocumentWithAndroidPlugin('office-universal', uri, ext);
+          const doc = await renderDocumentWithAndroidPlugin("office-universal", uri, ext);
           debugLog(`Android office plugin ok kind=${(doc as Document).kind}`);
           return doc;
         } catch (e) {
-          debugLog(`Android office plugin failed: ${e instanceof Error ? e.message : String(e)}, falling back to Rust`);
+          debugLog(
+            `Android office plugin failed: ${e instanceof Error ? e.message : String(e)}, falling back to Rust`,
+          );
         }
       }
 
@@ -189,43 +276,43 @@ export async function openFile(uri: string, nameHint?: string | null): Promise<D
 
 /** Best-effort display name from an Android URI via the ContentResolver bridge. */
 export async function resolveDisplayName(uri: string): Promise<string | null> {
-  if (typeof window === 'undefined' || !('AndroidBridge' in window)) return null;
+  if (typeof window === "undefined" || !("AndroidBridge" in window)) return null;
   try {
     const bridge = (window as any).AndroidBridge;
-    const name = typeof bridge.getDisplayName === 'function' ? bridge.getDisplayName(uri) : null;
-    return name && typeof name === 'string' ? name : null;
+    const name = typeof bridge.getDisplayName === "function" ? bridge.getDisplayName(uri) : null;
+    return name && typeof name === "string" ? name : null;
   } catch {
     return null;
   }
 }
 
 export { OPEN_BYTES_CAP, checkFileBeforeRead, unsupportedDocument, fileExtension };
-export { assetUrlForPath } from './mediaUrl';
-export { readMaterializedBytes, readUriBytes } from './readMaterialized';
-export { resolvePptxAssetPath } from './pptxAsset';
-export { displayNameFromUri } from './displayNameFromUri';
-export { pickSingleFile } from './pickFile';
-export { debugLog, debugLogLines, debugLogClear } from './debugLog';
+export { assetUrlForPath } from "./mediaUrl";
+export { readMaterializedBytes, readUriBytes } from "./readMaterialized";
+export { resolvePptxAssetPath } from "./pptxAsset";
+export { displayNameFromUri } from "./displayNameFromUri";
+export { pickSingleFile } from "./pickFile";
+export { debugLog, debugLogLines, debugLogClear } from "./debugLog";
 
 /** Register a URI with the stream server and return a stream URL. */
 export async function registerStreamUri(uri: string): Promise<string> {
   if (!IS_TAURI) return uri;
-  const { invoke } = await import('@tauri-apps/api/core');
-  return invoking(() => invoke<string>('register_stream_uri', { uri }));
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoking(() => invoke<string>("register_stream_uri", { uri }));
 }
 
 /** Invoke Android document plugin (office-universal) for office formats on Android. */
 export async function renderDocumentWithAndroidPlugin(
   pluginId: string,
   uri: string,
-  ext: string
+  ext: string,
 ): Promise<Document> {
-  if (!IS_TAURI || typeof window === 'undefined' || !('AndroidBridge' in window)) {
-    throw new Error('Android document plugin not available');
+  if (!IS_TAURI || typeof window === "undefined" || !("AndroidBridge" in window)) {
+    throw new Error("Android document plugin not available");
   }
   const bridge = (window as any).AndroidBridge;
-  if (typeof bridge.renderDocumentWithPlugin !== 'function') {
-    throw new Error('renderDocumentWithPlugin not available on AndroidBridge');
+  if (typeof bridge.renderDocumentWithPlugin !== "function") {
+    throw new Error("renderDocumentWithPlugin not available on AndroidBridge");
   }
   return new Promise((resolve, reject) => {
     const callbackId = `doc_plugin_${Date.now()}_${Math.random().toString(36).slice(2)}`;
@@ -238,7 +325,7 @@ export async function renderDocumentWithAndroidPlugin(
         } else if (data.document) {
           resolve(data.document as Document);
         } else {
-          reject(new Error('Invalid response from document plugin'));
+          reject(new Error("Invalid response from document plugin"));
         }
       }
     };
@@ -246,23 +333,96 @@ export async function renderDocumentWithAndroidPlugin(
     // Timeout after 30 seconds
     setTimeout(() => {
       delete (window as any)._docPluginCallback;
-      reject(new Error('Document plugin timeout'));
+      reject(new Error("Document plugin timeout"));
     }, 30000);
   });
 }
 
 /** After `<input type="file">` — checks size/type first (no read for video/large). */
 const STREAM_PICKER_EXT = new Set([
-  'pdf',
+  "pdf",
   // video
-  'mp4', 'm4v', 'webm', 'mkv', 'mov', 'avi', 'mpg', 'mpeg', '3gp', 'wmv', 'flv', 'ts',
-  'asf', 'f4v', 'hevc', 'm2ts', 'm2v', 'mjpeg', 'mts', 'mxf', 'ogv', 'rm', 'swf', 'vob', 'wtv',
+  "mp4",
+  "m4v",
+  "webm",
+  "mkv",
+  "mov",
+  "avi",
+  "mpg",
+  "mpeg",
+  "3gp",
+  "wmv",
+  "flv",
+  "ts",
+  "asf",
+  "f4v",
+  "hevc",
+  "m2ts",
+  "m2v",
+  "mjpeg",
+  "mts",
+  "mxf",
+  "ogv",
+  "rm",
+  "swf",
+  "vob",
+  "wtv",
   // audio
-  'mp3', 'm4a', 'aac', 'flac', 'ogg', 'wav', 'wma', 'opus',
-  '8svx', 'ac3', 'aif', 'aiff', 'amb', 'au', 'avr', 'caf', 'cdda', 'cvs', 'cvsd', 'cvu', 'dts',
-  'dvms', 'fap', 'fssd', 'gsrt', 'hcom', 'htk', 'ima', 'ircam', 'm4r', 'maud', 'mp2', 'nist',
-  'oga', 'paf', 'prc', 'pvf', 'ra', 'sd2', 'sln', 'smp', 'snd', 'sndr', 'sndt', 'sou', 'sph',
-  'spx', 'tta', 'txw', 'vms', 'voc', 'vox', 'w64', 'wv', 'wve',
+  "mp3",
+  "m4a",
+  "aac",
+  "flac",
+  "ogg",
+  "wav",
+  "wma",
+  "opus",
+  "8svx",
+  "ac3",
+  "aif",
+  "aiff",
+  "amb",
+  "au",
+  "avr",
+  "caf",
+  "cdda",
+  "cvs",
+  "cvsd",
+  "cvu",
+  "dts",
+  "dvms",
+  "fap",
+  "fssd",
+  "gsrt",
+  "hcom",
+  "htk",
+  "ima",
+  "ircam",
+  "m4r",
+  "maud",
+  "mp2",
+  "nist",
+  "oga",
+  "paf",
+  "prc",
+  "pvf",
+  "ra",
+  "sd2",
+  "sln",
+  "smp",
+  "snd",
+  "sndr",
+  "sndt",
+  "sou",
+  "sph",
+  "spx",
+  "tta",
+  "txw",
+  "vms",
+  "voc",
+  "vox",
+  "w64",
+  "wv",
+  "wve",
 ]);
 
 function pickerStreamDocument(file: File): Document | null {
@@ -279,29 +439,152 @@ function pickerStreamDocument(file: File): Document | null {
 
 const VIDEO_AUDIO = new Set([
   // video
-  'mp4', 'm4v', 'webm', 'mkv', 'mov', 'avi', 'mpg', 'mpeg', '3gp', 'wmv', 'flv', 'ts',
-  'asf', 'f4v', 'hevc', 'm2ts', 'm2v', 'mjpeg', 'mts', 'mxf', 'ogv', 'rm', 'swf', 'vob', 'wtv',
+  "mp4",
+  "m4v",
+  "webm",
+  "mkv",
+  "mov",
+  "avi",
+  "mpg",
+  "mpeg",
+  "3gp",
+  "wmv",
+  "flv",
+  "ts",
+  "asf",
+  "f4v",
+  "hevc",
+  "m2ts",
+  "m2v",
+  "mjpeg",
+  "mts",
+  "mxf",
+  "ogv",
+  "rm",
+  "swf",
+  "vob",
+  "wtv",
   // audio
-  'mp3', 'm4a', 'aac', 'flac', 'ogg', 'wav', 'wma', 'opus',
-  '8svx', 'ac3', 'aif', 'aiff', 'amb', 'au', 'avr', 'caf', 'cdda', 'cvs', 'cvsd', 'cvu', 'dts',
-  'dvms', 'fap', 'fssd', 'gsrt', 'hcom', 'htk', 'ima', 'ircam', 'm4r', 'maud', 'mp2', 'nist',
-  'oga', 'paf', 'prc', 'pvf', 'ra', 'sd2', 'sln', 'smp', 'snd', 'sndr', 'sndt', 'sou', 'sph',
-  'spx', 'tta', 'txw', 'vms', 'voc', 'vox', 'w64', 'wv', 'wve',
+  "mp3",
+  "m4a",
+  "aac",
+  "flac",
+  "ogg",
+  "wav",
+  "wma",
+  "opus",
+  "8svx",
+  "ac3",
+  "aif",
+  "aiff",
+  "amb",
+  "au",
+  "avr",
+  "caf",
+  "cdda",
+  "cvs",
+  "cvsd",
+  "cvu",
+  "dts",
+  "dvms",
+  "fap",
+  "fssd",
+  "gsrt",
+  "hcom",
+  "htk",
+  "ima",
+  "ircam",
+  "m4r",
+  "maud",
+  "mp2",
+  "nist",
+  "oga",
+  "paf",
+  "prc",
+  "pvf",
+  "ra",
+  "sd2",
+  "sln",
+  "smp",
+  "snd",
+  "sndr",
+  "sndt",
+  "sou",
+  "sph",
+  "spx",
+  "tta",
+  "txw",
+  "vms",
+  "voc",
+  "vox",
+  "w64",
+  "wv",
+  "wve",
 ]);
 
 const AUDIO_ONLY = new Set([
-  'mp3', 'm4a', 'aac', 'flac', 'ogg', 'wav', 'wma', 'opus',
-  '8svx', 'ac3', 'aif', 'aiff', 'amb', 'au', 'avr', 'caf', 'cdda', 'cvs', 'cvsd', 'cvu', 'dts',
-  'dvms', 'fap', 'fssd', 'gsrt', 'hcom', 'htk', 'ima', 'ircam', 'm4r', 'maud', 'mp2', 'nist',
-  'oga', 'paf', 'prc', 'pvf', 'ra', 'sd2', 'sln', 'smp', 'snd', 'sndr', 'sndt', 'sou', 'sph',
-  'spx', 'tta', 'txw', 'vms', 'voc', 'vox', 'w64', 'wv', 'wve',
+  "mp3",
+  "m4a",
+  "aac",
+  "flac",
+  "ogg",
+  "wav",
+  "wma",
+  "opus",
+  "8svx",
+  "ac3",
+  "aif",
+  "aiff",
+  "amb",
+  "au",
+  "avr",
+  "caf",
+  "cdda",
+  "cvs",
+  "cvsd",
+  "cvu",
+  "dts",
+  "dvms",
+  "fap",
+  "fssd",
+  "gsrt",
+  "hcom",
+  "htk",
+  "ima",
+  "ircam",
+  "m4r",
+  "maud",
+  "mp2",
+  "nist",
+  "oga",
+  "paf",
+  "prc",
+  "pvf",
+  "ra",
+  "sd2",
+  "sln",
+  "smp",
+  "snd",
+  "sndr",
+  "sndt",
+  "sou",
+  "sph",
+  "spx",
+  "tta",
+  "txw",
+  "vms",
+  "voc",
+  "vox",
+  "w64",
+  "wv",
+  "wve",
 ]);
 
 function streamDocFromFile(file: File, ext: string): Document | null {
-  const name = file.name || 'file';
-  if (ext === 'pdf') {
+  const name = file.name || "file";
+  if (ext === "pdf") {
     return {
-      kind: 'pdf',
+      kind: "pdf",
       native: true,
       pages: [],
       page_count: 0,
@@ -310,9 +593,9 @@ function streamDocFromFile(file: File, ext: string): Document | null {
     } as Document;
   }
   return {
-    kind: 'media',
-    media_kind: AUDIO_ONLY.has(ext) ? 'audio' : 'video',
-    format: AUDIO_ONLY.has(ext) ? 'audio' : 'video',
+    kind: "media",
+    media_kind: AUDIO_ONLY.has(ext) ? "audio" : "video",
+    format: AUDIO_ONLY.has(ext) ? "audio" : "video",
     name,
     byte_len: file.size,
   } as Document;
@@ -321,9 +604,10 @@ function streamDocFromFile(file: File, ext: string): Document | null {
 export async function openFileFromPicker(file: File): Promise<Document> {
   const viewitUri = (file as File & { viewitUri?: string }).viewitUri;
   if (viewitUri) {
-    const nameHint = file.name && /^[a-z0-9._%+-]{1,120}\.[a-z0-9]{1,10}$/i.test(file.name)
-      ? file.name
-      : await resolveDisplayName(viewitUri);
+    const nameHint =
+      file.name && /^[a-z0-9._%+-]{1,120}\.[a-z0-9]{1,10}$/i.test(file.name)
+        ? file.name
+        : await resolveDisplayName(viewitUri);
     return openFile(viewitUri, nameHint);
   }
   const gate = checkFileBeforeRead(file);
@@ -332,61 +616,69 @@ export async function openFileFromPicker(file: File): Promise<Document> {
   }
   const streamDoc = pickerStreamDocument(file);
   if (streamDoc) return streamDoc;
-  const name = file.name || 'file';
+  const name = file.name || "file";
   const ext = fileExtension(name);
-  if (IS_TAURI && ext === 'pdf') {
-    const { invoke } = await import('@tauri-apps/api/core');
+  if (IS_TAURI && ext === "pdf") {
+    const { invoke } = await import("@tauri-apps/api/core");
     const buf = new Uint8Array(await file.arrayBuffer());
     if (buf.length <= OPEN_BYTES_CAP) {
-      let binary = '';
+      let binary = "";
       const chunk = 0x8000;
       for (let i = 0; i < buf.length; i += chunk) {
         binary += String.fromCharCode(...buf.subarray(i, i + chunk));
       }
       const b64 = btoa(binary);
-      const doc = await invoking(() => invoke<Document>('open_bytes_b64', { b64, name }));
+      const doc = await invoking(() => invoke<Document>("open_bytes_b64", { b64, name }));
       if ((doc as { native?: boolean }).native) return doc;
     }
   }
   const buf = new Uint8Array(await file.arrayBuffer());
   if (IS_TAURI) {
-    const { invoke } = await import('@tauri-apps/api/core');
-    let binary = '';
+    const { invoke } = await import("@tauri-apps/api/core");
+    let binary = "";
     const chunk = 0x8000;
     for (let i = 0; i < buf.length; i += chunk) {
       binary += String.fromCharCode(...buf.subarray(i, i + chunk));
     }
     const b64 = btoa(binary);
-    return invoking(() => invoke<Document>('open_bytes_b64', { b64, name }));
+    return invoking(() => invoke<Document>("open_bytes_b64", { b64, name }));
   }
   return webOpenBytes(buf, name);
 }
 
 /** Lazy PDF page (share / open_uri path — re-reads file in Rust). */
 export async function pdfPage(uri: string, index: number): Promise<string> {
-  if (!IS_TAURI) throw new Error('pdfPage only on Tauri');
-  const { invoke } = await import('@tauri-apps/api/core');
-  return invoking(() => invoke<string>('pdf_page', { uri, index }));
+  if (!IS_TAURI) throw new Error("pdfPage only on Tauri");
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoking(() => invoke<string>("pdf_page", { uri, index }));
 }
 
 /** Per ADR 0004 — RAR5 / unsupported with OpenWith-External suggestion. */
 export async function openWithExternal(uri: string): Promise<void> {
   if (!IS_TAURI) {
-    window.open(uri, '_blank');
+    window.open(uri, "_blank");
     return;
   }
-  const { invoke } = await import('@tauri-apps/api/core');
+  const { invoke } = await import("@tauri-apps/api/core");
   // The desktop/mobile `tauri-plugin-shell` exposes an open() for OS handlers.
-  await invoke('plugin:shell|open', { uri });
+  await invoke("plugin:shell|open", { uri });
 }
 
 // ---------------------------------------------------------------------------
 // Internal: Tauri invoke adapter
 // ---------------------------------------------------------------------------
-async function invokeOpenUri(uri: string, name?: string | null, mimeType?: string | null): Promise<Document> {
-  const { invoke } = await import('@tauri-apps/api/core');
+async function invokeOpenUri(
+  uri: string,
+  name?: string | null,
+  mimeType?: string | null,
+): Promise<Document> {
+  const { invoke } = await import("@tauri-apps/api/core");
   return invoking(async () => {
-    const doc = await invoke<Document>('open_uri', { uri, name: name ?? null, mimeType: mimeType ?? null });
+    const doc = await invoke<Document>("open_uri", {
+      uri,
+      name: name ?? null,
+      mimeType: mimeType ?? null,
+    });
     return doc;
   });
 }
@@ -396,7 +688,7 @@ async function invoking<T>(fn: () => Promise<T>): Promise<T> {
     return await fn();
   } catch (e: any) {
     // Tauri error responses come as { message } style strings; surface as-is.
-    throw new Error(typeof e === 'string' ? e : (e?.message ?? String(e)));
+    throw new Error(typeof e === "string" ? e : (e?.message ?? String(e)));
   }
 }
 
@@ -404,8 +696,8 @@ async function invoking<T>(fn: () => Promise<T>): Promise<T> {
 // Internal: web-only fallback reader (no Tauri, no WASM yet).
 // ---------------------------------------------------------------------------
 function webOpenBytes(buf: Uint8Array, name: string): Promise<Document> {
-  const ext = name.split('.').pop()?.toLowerCase() ?? '';
-  const uri = URL.createObjectURL(new Blob([buf]));
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  const uri = URL.createObjectURL(new Blob([buf as Uint8Array<ArrayBuffer>]));
   return webOpenFile(uri, { bytes: buf, name, ext }).finally(() => URL.revokeObjectURL(uri));
 }
 
@@ -423,33 +715,33 @@ async function webOpenFile(
     }
     buf = new Uint8Array(await res.arrayBuffer());
   }
-  const name = hint?.name ?? uri.split('/').pop()?.split('?')[0] ?? 'file';
-  const ext = hint?.ext ?? name.split('.').pop()?.toLowerCase() ?? '';
+  const name = hint?.name ?? uri.split("/").pop()?.split("?")[0] ?? "file";
+  const ext = hint?.ext ?? name.split(".").pop()?.toLowerCase() ?? "";
 
   // Office — use WASM plugin (docx, xlsx, pptx, odt, ods, odp, doc, ppt, etc.)
-  const { isOfficeExt, openOffice } = await import('./plugins/officeUniversal');
+  const { isOfficeExt, openOffice } = await import("./plugins/officeUniversal");
   if (isOfficeExt(ext)) {
     try {
       return await openOffice(buf, name, ext);
     } catch (e) {
-      console.error('[office-universal] render failed:', e);
+      console.error("[office-universal] render failed:", e);
       return unsupportedDocument(
         `Office rendering failed: ${e instanceof Error ? e.message : String(e)}`,
-        'open-with-external',
+        true,
       );
     }
   }
 
   // Archive — use WASM plugin (zip, tar, 7z, rar, etc.)
-  const { isArchiveExt, openArchive } = await import('./plugins/archiveUniversal');
+  const { isArchiveExt, openArchive } = await import("./plugins/archiveUniversal");
   if (isArchiveExt(ext)) {
     try {
       return await openArchive(buf, name, ext);
     } catch (e) {
-      console.error('[archive-universal] parse failed:', e);
+      console.error("[archive-universal] parse failed:", e);
       return unsupportedDocument(
         `Archive parsing failed: ${e instanceof Error ? e.message : String(e)}`,
-        'open-with-external',
+        true,
       );
     }
   }
@@ -458,7 +750,7 @@ async function webOpenFile(
   // the frontend ImageViewer's <img> tag.
   if (isImageExt(ext)) {
     return {
-      kind: 'image',
+      kind: "image",
       byte_len: buf.length,
       name,
       format: extToFormat(ext) as any,
@@ -466,34 +758,41 @@ async function webOpenFile(
   }
 
   if (isTextExt(ext)) {
-    const lossy = new TextDecoder('utf-8', { fatal: false }).decode(buf);
+    const lossy = new TextDecoder("utf-8", { fatal: false }).decode(buf);
     // Mirror the Rust routing — markdown/json/csv parsed JS-side as a fallback.
-    if (ext === 'md' || ext === 'markdown') {
+    if (ext === "md" || ext === "markdown") {
       // Minimal CommonMark fallback: just escape and wrap in <pre>. The Rust
       // path through pulldown-cmark is the real one; web fills for Phase 1.
-      return { kind: 'markdown', html: `<pre>${escapeHtml(lossy)}</pre>`, byte_len: buf.length };
+      return { kind: "markdown", html: `<pre>${escapeHtml(lossy)}</pre>`, byte_len: buf.length };
     }
-    if (ext === 'json') {
+    if (ext === "json") {
       try {
         const pretty = JSON.stringify(JSON.parse(lossy), null, 2);
-        return { kind: 'json', pretty, byte_len: buf.length };
+        return { kind: "json", pretty, byte_len: buf.length };
       } catch {
-        return { kind: 'json', pretty: lossy, byte_len: buf.length };
+        return { kind: "json", pretty: lossy, byte_len: buf.length };
       }
     }
-    if (ext === 'csv' || ext === 'tsv') {
+    if (ext === "csv" || ext === "tsv") {
       // Naive CSV: split first ~50 lines.
       const lines = lossy.split(/\r?\n/).slice(0, 200);
-      const sep = ext === 'tsv' ? '\t' : ',';
-      const parseRow = (l: string): string[] => l.split(sep).map(s => s.replace(/^"(.*)"$/, '$1'));
-      const header = parseRow(lines[0] ?? '');
+      const sep = ext === "tsv" ? "\t" : ",";
+      const parseRow = (l: string): string[] =>
+        l.split(sep).map((s) => s.replace(/^"(.*)"$/, "$1"));
+      const header = parseRow(lines[0] ?? "");
       const previewRows = lines.slice(1).map(parseRow);
-      return { kind: 'csv', header, preview_rows: previewRows, total_rows_hint: previewRows.length, byte_len: buf.length };
+      return {
+        kind: "csv",
+        header,
+        preview_rows: previewRows,
+        total_rows_hint: previewRows.length,
+        byte_len: buf.length,
+      };
     }
-    return { kind: 'text', content: lossy, encoding: 'utf-8', byte_len: buf.length };
+    return { kind: "text", content: lossy, encoding: "utf-8", byte_len: buf.length };
   }
   return {
-    kind: 'placeholder',
+    kind: "placeholder",
     format: extToFormat(ext),
     name,
     byte_len: buf.length,
@@ -501,125 +800,230 @@ async function webOpenFile(
 }
 
 function escapeHtml(s: string): string {
-  return s.replace(/[&<>"]/g, (c) => ({ '&': '&', '<': '<', '>': '>', '"': '"' }[c] ?? c));
+  return s.replace(/[&<>"]/g, (c) => ({ "&": "&", "<": "<", ">": ">", '"': '"' })[c] ?? c);
 }
 
-const IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'tif', 'tiff', 'svg', 'heic', 'heif', 'avif', 'psd', 'dng', 'cr2', 'cr3', 'nef', 'arw', 'orf', 'rw2', 'raf', 'srw', 'pef', 'cur', 'dds', 'erf', 'exr', 'fts', 'hdr', 'jp2', 'jpe', 'jps', 'mng', 'nrw', 'pam', 'pbm', 'pcd', 'pcx', 'pes', 'pfm', 'pgm', 'picon', 'pict', 'pnm', 'ppm', 'ras', 'sfw', 'sgi', 'tga', 'wbmp', 'wpg', 'x3f', 'xbm', 'xcf', 'xpm', 'xwd', 'djvu', 'djv']);
+const IMAGE_EXT = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "webp",
+  "gif",
+  "bmp",
+  "tif",
+  "tiff",
+  "svg",
+  "heic",
+  "heif",
+  "avif",
+  "psd",
+  "dng",
+  "cr2",
+  "cr3",
+  "nef",
+  "arw",
+  "orf",
+  "rw2",
+  "raf",
+  "srw",
+  "pef",
+  "cur",
+  "dds",
+  "erf",
+  "exr",
+  "fts",
+  "hdr",
+  "jp2",
+  "jpe",
+  "jps",
+  "mng",
+  "nrw",
+  "pam",
+  "pbm",
+  "pcd",
+  "pcx",
+  "pes",
+  "pfm",
+  "pgm",
+  "picon",
+  "pict",
+  "pnm",
+  "ppm",
+  "ras",
+  "sfw",
+  "sgi",
+  "tga",
+  "wbmp",
+  "wpg",
+  "x3f",
+  "xbm",
+  "xcf",
+  "xpm",
+  "xwd",
+  "djvu",
+  "djv",
+]);
 function isImageExt(ext: string): boolean {
   return IMAGE_EXT.has(ext);
 }
 
-const TEXT_EXT = new Set(['txt', 'text', 'log', 'md', 'markdown', 'json', 'csv', 'tsv', 'jsonl']);
+const TEXT_EXT = new Set(["txt", "text", "log", "md", "markdown", "json", "csv", "tsv", "jsonl"]);
 function isTextExt(ext: string): boolean {
   return TEXT_EXT.has(ext);
 }
 
 function extToFormat(ext: string): Format {
   switch (ext) {
-    case 'png': return 'image-png';
-    case 'jpg':
-    case 'jpeg': return 'image-jpg';
-    case 'webp': return 'image-webp';
-    case 'gif': return 'image-gif';
-    case 'bmp': return 'image-bmp';
-    case 'ico':
-    case 'jfif': return 'image-png';
-    case 'tif':
-    case 'tiff': return 'image-tiff';
-    case 'svg': return 'image-svg';
-    case 'pdf': return 'pdf';
-    case 'epub': return 'epub';
-    case 'zip': return 'archive-zip';
-    case 'tar': return 'archive-tar';
-    case 'tgz':
-    case 'gz': return 'archive-tar-gz';
-    case '7z': return 'archive-7z';
-    case 'rar': return 'archive-rar';
-    case 'docx': return 'docx';
-    case 'docm': return 'docm';
-    case 'dotx': return 'dotx';
-    case 'dotm': return 'dotm';
-    case 'xlsx': return 'xlsx';
-    case 'xlsm': return 'xlsm';
-    case 'xlsb': return 'xlsb';
-    case 'xls': return 'xls';
-    case 'pptx': return 'pptx';
-    case 'pptm': return 'pptm';
-    case 'potx': return 'potx';
-    case 'odt': return 'odt';
-    case 'ott': return 'odt';
-    case 'ods': return 'ods';
-    case 'odp': return 'odp';
-    case 'doc': return 'doc';
-    case 'ppt': return 'ppt';
-    case 'rtf': return 'rtf';
-    case 'psd': return 'image-psd';
-    case 'heic':
-    case 'heif':
-    case 'avif': return 'image-heic';
-    case 'djvu':
-    case 'djv': return 'image-raw';
-    case 'dng':
-    case 'cr2':
-    case 'cr3':
-    case 'nef':
-    case 'arw':
-    case 'orf':
-    case 'rw2':
-    case 'raf':
-    case 'srw':
-    case 'pef':
-    case 'cur':
-    case 'dds':
-    case 'erf':
-    case 'exr':
-    case 'fts':
-    case 'hdr':
-    case 'jp2':
-    case 'jpe':
-    case 'jps':
-    case 'mng':
-    case 'nrw':
-    case 'pam':
-    case 'pbm':
-    case 'pcd':
-    case 'pcx':
-    case 'pes':
-    case 'pfm':
-    case 'pgm':
-    case 'picon':
-    case 'pict':
-    case 'pnm':
-    case 'ppm':
-    case 'ras':
-    case 'sfw':
-    case 'sgi':
-    case 'tga':
-    case 'wbmp':
-    case 'wpg':
-    case 'x3f':
-    case 'xbm':
-    case 'xcf':
-    case 'xpm':
-    case 'xwd': return 'image-raw';
-    case 'mobi': return 'mobi';
-    case 'azw3': return 'azw3';
-    case 'fb2': return 'fictionbook';
-    case 'lrf':
-    case 'pdb':
-    case 'snb': return 'palmdoc';
-    case 'ttf':
-    case 'otf':
-    case 'woff':
-    case 'woff2':
-    case 'pfb':
-    case 'cff':
-    case 'dfont':
-    case 'sfd':
-    case 'ps': return 'font';
-    case 'pages': return 'iwork-pages';
-    case 'numbers': return 'iwork-numbers';
-    case 'key': return 'iwork-key';
-    default: return 'unsupported';
+    case "png":
+      return "image-png";
+    case "jpg":
+    case "jpeg":
+      return "image-jpg";
+    case "webp":
+      return "image-webp";
+    case "gif":
+      return "image-gif";
+    case "bmp":
+      return "image-bmp";
+    case "ico":
+    case "jfif":
+      return "image-png";
+    case "tif":
+    case "tiff":
+      return "image-tiff";
+    case "svg":
+      return "image-svg";
+    case "pdf":
+      return "pdf";
+    case "epub":
+      return "epub";
+    case "zip":
+      return "archive-zip";
+    case "tar":
+      return "archive-tar";
+    case "tgz":
+    case "gz":
+      return "archive-tar-gz";
+    case "7z":
+      return "archive-7z";
+    case "rar":
+      return "archive-rar";
+    case "docx":
+      return "docx";
+    case "docm":
+      return "docm";
+    case "dotx":
+      return "dotx";
+    case "dotm":
+      return "dotm";
+    case "xlsx":
+      return "xlsx";
+    case "xlsm":
+      return "xlsm";
+    case "xlsb":
+      return "xlsb";
+    case "xls":
+      return "xls";
+    case "pptx":
+      return "pptx";
+    case "pptm":
+      return "pptm";
+    case "potx":
+      return "potx";
+    case "odt":
+      return "odt";
+    case "ott":
+      return "odt";
+    case "ods":
+      return "ods";
+    case "odp":
+      return "odp";
+    case "doc":
+      return "doc";
+    case "ppt":
+      return "ppt";
+    case "rtf":
+      return "rtf";
+    case "psd":
+      return "image-psd";
+    case "heic":
+    case "heif":
+    case "avif":
+      return "image-heic";
+    case "djvu":
+    case "djv":
+      return "image-raw";
+    case "dng":
+    case "cr2":
+    case "cr3":
+    case "nef":
+    case "arw":
+    case "orf":
+    case "rw2":
+    case "raf":
+    case "srw":
+    case "pef":
+    case "cur":
+    case "dds":
+    case "erf":
+    case "exr":
+    case "fts":
+    case "hdr":
+    case "jp2":
+    case "jpe":
+    case "jps":
+    case "mng":
+    case "nrw":
+    case "pam":
+    case "pbm":
+    case "pcd":
+    case "pcx":
+    case "pes":
+    case "pfm":
+    case "pgm":
+    case "picon":
+    case "pict":
+    case "pnm":
+    case "ppm":
+    case "ras":
+    case "sfw":
+    case "sgi":
+    case "tga":
+    case "wbmp":
+    case "wpg":
+    case "x3f":
+    case "xbm":
+    case "xcf":
+    case "xpm":
+    case "xwd":
+      return "image-raw";
+    case "mobi":
+      return "mobi";
+    case "azw3":
+      return "azw3";
+    case "fb2":
+      return "fictionbook";
+    case "lrf":
+    case "pdb":
+    case "snb":
+      return "palmdoc";
+    case "ttf":
+    case "otf":
+    case "woff":
+    case "woff2":
+    case "pfb":
+    case "cff":
+    case "dfont":
+    case "sfd":
+    case "ps":
+      return "font";
+    case "pages":
+      return "iwork-pages";
+    case "numbers":
+      return "iwork-numbers";
+    case "key":
+      return "iwork-key";
+    default:
+      return "unsupported";
   }
 }

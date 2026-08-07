@@ -4,11 +4,11 @@
 // → skipped: native plugin wiring; add when Phase 5 native surface gen runs.
 
 export async function checkBiometric(): Promise<boolean> {
-  if (typeof window === 'undefined' || !(window as any).__TAURI_INTERNALS__) {
+  if (typeof window === "undefined" || !(window as any).__TAURI_INTERNALS__) {
     return true; // non-Tauri (web) — fail-open
   }
   // Tauri plugin not yet wired — fail-open with console marker.
-  console.debug('[viewit-biometric] stub gate, fail-open pending native wiring');
+  console.debug("[viewit-biometric] stub gate, fail-open pending native wiring");
   return true;
 }
 

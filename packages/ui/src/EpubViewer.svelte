@@ -1,14 +1,14 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy } from "svelte";
 
   let {
-    title = '',
+    title = "",
     author = null,
-    first_chapter_xhtml = '',
+    first_chapter_xhtml = "",
     spine_len = 0,
     byte_len = 0,
-    uri = '',
-    onclose = null
+    uri = "",
+    onclose = null,
   }: {
     title: string;
     author?: string | null;
@@ -20,7 +20,7 @@
   } = $props();
 
   let currentChapter = $state(0);
-  let currentXhtml = $state('');
+  let currentXhtml = $state("");
   let loading = $state(false);
   let showOverlay = $state(true);
   let scale = $state(1);
@@ -29,7 +29,7 @@
   let touchLayerEl: HTMLDivElement;
 
   function styledXhtml(html: string): string {
-    if (!html) return '';
+    if (!html) return "";
     const style = `<style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       html, body { height: 100%; overflow: hidden; background: #0d1117; color: #e6edf3; font-family: Georgia, 'Times New Roman', serif; -webkit-text-size-adjust: none; }
@@ -41,8 +41,8 @@
       table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
       td, th { border: 1px solid #30363d; padding: 0.4rem 0.6rem; text-align: left; }
     </style>`;
-    if (html.includes('<head>')) return html.replace('<head>', `<head>${style}`);
-    if (html.includes('<html>')) return html.replace('<html>', `<html>${style}`);
+    if (html.includes("<head>")) return html.replace("<head>", `<head>${style}`);
+    if (html.includes("<html>")) return html.replace("<html>", `<html>${style}`);
     return style + html;
   }
 
@@ -53,31 +53,38 @@
       currentXhtml = first_chapter_xhtml;
       return;
     }
-    if (typeof (window as any).__TAURI_INTERNALS__ === 'undefined') return;
+    if (typeof (window as any).__TAURI_INTERNALS__ === "undefined") return;
     try {
-      const invoke = (window as any).__TAURI_INTERNALS__.invoke ?? (await import('@tauri-apps/api/core')).invoke;
+      const invoke =
+        (window as any).__TAURI_INTERNALS__.invoke ?? (await import("@tauri-apps/api/core")).invoke;
       loading = true;
-      const html = await invoke('epub_chapter', { uri, index: idx });
+      const html = await invoke("epub_chapter", { uri, index: idx });
       currentXhtml = html;
       currentChapter = idx;
     } catch (e) {
-      console.error('epub_chapter failed:', e);
+      console.error("epub_chapter failed:", e);
     } finally {
       loading = false;
     }
   }
 
-  function prevChapter() { if (currentChapter > 0) loadChapter(currentChapter - 1); }
-  function nextChapter() { if (currentChapter < spine_len - 1) loadChapter(currentChapter + 1); }
+  function prevChapter() {
+    if (currentChapter > 0) loadChapter(currentChapter - 1);
+  }
+  function nextChapter() {
+    if (currentChapter < spine_len - 1) loadChapter(currentChapter + 1);
+  }
 
   function resetOverlayTimer() {
     if (overlayTimer) clearTimeout(overlayTimer);
-    overlayTimer = setTimeout(() => { showOverlay = false; }, 3500);
+    overlayTimer = setTimeout(() => {
+      showOverlay = false;
+    }, 3500);
   }
 
   function goBack() {
     if (onclose) onclose();
-    else if (typeof (window as any).__TAURI_INTERNALS__ !== 'undefined') {
+    else if (typeof (window as any).__TAURI_INTERNALS__ !== "undefined") {
       history.back();
     }
   }
@@ -109,27 +116,34 @@
       if (Math.abs(dx) < 25 && Math.abs(dy) < 25 && dt < 350) {
         const x = e.clientX;
         const w = window.innerWidth;
-        if (x < w * 0.15) { prevChapter(); return; }
-        if (x > w * 0.85) { nextChapter(); return; }
+        if (x < w * 0.15) {
+          prevChapter();
+          return;
+        }
+        if (x > w * 0.85) {
+          nextChapter();
+          return;
+        }
         showOverlay = !showOverlay;
         if (showOverlay) resetOverlayTimer();
         return;
       }
       if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.2) {
-        if (dx < 0) nextChapter(); else prevChapter();
+        if (dx < 0) nextChapter();
+        else prevChapter();
       }
     }
 
     const el = touchLayerEl;
     if (el) {
-      el.addEventListener('pointerdown', onPtrDown);
-      el.addEventListener('pointerup', onPtrUp);
+      el.addEventListener("pointerdown", onPtrDown);
+      el.addEventListener("pointerup", onPtrUp);
     }
 
     return () => {
       if (el) {
-        el.removeEventListener('pointerdown', onPtrDown);
-        el.removeEventListener('pointerup', onPtrUp);
+        el.removeEventListener("pointerdown", onPtrDown);
+        el.removeEventListener("pointerup", onPtrUp);
       }
     };
   });
@@ -222,7 +236,12 @@
     right: 0;
     z-index: 20;
     pointer-events: none;
-    background: linear-gradient(180deg, rgba(13, 17, 23, 0.97) 0%, rgba(13, 17, 23, 0.8) 70%, transparent 100%);
+    background: linear-gradient(
+      180deg,
+      rgba(13, 17, 23, 0.97) 0%,
+      rgba(13, 17, 23, 0.8) 70%,
+      transparent 100%
+    );
     padding-top: max(env(safe-area-inset-top, 24px), 24px);
     padding-left: 1rem;
     padding-right: 1rem;
@@ -230,8 +249,14 @@
     animation: fadeIn 0.2s ease;
   }
   @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(-10px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
   .overlay-header {
     display: flex;
@@ -250,7 +275,9 @@
     flex-shrink: 0;
     pointer-events: auto;
   }
-  .back-btn:hover { background: rgba(255, 255, 255, 0.2); }
+  .back-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
   .overlay-title {
     font-size: 0.9rem;
     font-weight: 600;
@@ -282,9 +309,17 @@
     transition: background 0.15s;
     pointer-events: auto;
   }
-  .overlay-nav button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.2); }
-  .overlay-nav button:disabled { opacity: 0.3; cursor: not-allowed; }
-  .overlay-chapter { font-size: 0.8rem; color: #8b949e; }
+  .overlay-nav button:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.2);
+  }
+  .overlay-nav button:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+  .overlay-chapter {
+    font-size: 0.8rem;
+    color: #8b949e;
+  }
   .overlay-progress {
     margin-top: 0.75rem;
     height: 2px;

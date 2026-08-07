@@ -314,9 +314,7 @@ fn handle_request(
                 None,
             );
         }
-        Err(e) => {
-            error_response(500, &format!("stream error: {}", e))
-        }
+        Err(e) => error_response(500, &format!("stream error: {}", e)),
     }
 }
 
@@ -345,9 +343,7 @@ pub fn start(app: AppHandle) -> Result<u16, String> {
             let stream_id: u64 = match id_str.parse() {
                 Ok(id) => id,
                 Err(_) => {
-                    let _ = request.respond(
-                        error_response(400, "bad stream id"),
-                    );
+                    let _ = request.respond(error_response(400, "bad stream id"));
                     continue;
                 }
             };

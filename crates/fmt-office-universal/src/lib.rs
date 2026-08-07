@@ -39,7 +39,9 @@ fn sniff_format(bytes: &[u8], ext: &str) -> Format {
             return Format::Pdf;
         }
         // ZIP-based formats (OOXML, ODF, EPUB, iWork)
-        if bytes.starts_with(&[0x50, 0x4B, 0x03, 0x04]) || bytes.starts_with(&[0x50, 0x4B, 0x05, 0x06]) {
+        if bytes.starts_with(&[0x50, 0x4B, 0x03, 0x04])
+            || bytes.starts_with(&[0x50, 0x4B, 0x05, 0x06])
+        {
             return sniff_zip_format(bytes, ext);
         }
         // OLE2 Compound File (legacy .doc, .xls, .ppt)
@@ -66,7 +68,9 @@ fn sniff_zip_format(bytes: &[u8], ext: &str) -> Format {
     let mut has_odf = false;
 
     for i in 0..archive.len() {
-        let Ok(file) = archive.by_index(i) else { continue };
+        let Ok(file) = archive.by_index(i) else {
+            continue;
+        };
         let name = file.name();
         if name == "[Content_Types].xml" {
             has_content_types = true;
@@ -84,7 +88,10 @@ fn sniff_zip_format(bytes: &[u8], ext: &str) -> Format {
             has_epub = true;
         }
         // ODF indicators
-        if name == "content.xml" || name.starts_with("Thumbnails/") || name == "META-INF/manifest.xml" {
+        if name == "content.xml"
+            || name.starts_with("Thumbnails/")
+            || name == "META-INF/manifest.xml"
+        {
             has_odf = true;
         }
     }
@@ -110,7 +117,7 @@ fn sniff_zip_format(bytes: &[u8], ext: &str) -> Format {
     }
 
     // ODF detection
-    if has_odf || has_epub == false {
+    if has_odf || !has_epub {
         match ext {
             "odt" | "ott" => return Format::Odt,
             "ods" | "ots" => return Format::Ods,
@@ -120,17 +127,15 @@ fn sniff_zip_format(bytes: &[u8], ext: &str) -> Format {
         // Fallback: check content.xml for office:document-class
         if let Ok(mut f) = archive.by_name("content.xml") {
             let mut xml = String::new();
-            if f.read_to_string(&mut xml).is_ok() {
-                if xml.contains("office:document-class") {
-                    if xml.contains("text") {
-                        return Format::Odt;
-                    }
-                    if xml.contains("spreadsheet") {
-                        return Format::Ods;
-                    }
-                    if xml.contains("presentation") {
-                        return Format::Odp;
-                    }
+            if f.read_to_string(&mut xml).is_ok() && xml.contains("office:document-class") {
+                if xml.contains("text") {
+                    return Format::Odt;
+                }
+                if xml.contains("spreadsheet") {
+                    return Format::Ods;
+                }
+                if xml.contains("presentation") {
+                    return Format::Odp;
                 }
             }
         }
@@ -309,7 +314,8 @@ mod tests {
         let mut buf = Vec::new();
         {
             let mut zip = zip::ZipWriter::new(Cursor::new(&mut buf));
-            let options: FileOptions<'_, ()> = FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+            let options: FileOptions<'_, ()> =
+                FileOptions::default().compression_method(zip::CompressionMethod::Stored);
             zip.start_file("[Content_Types].xml", options).unwrap();
             zip.write_all(b"<?xml version=\"1.0\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"xml\" ContentType=\"application/xml\"/></Types>").unwrap();
             zip.start_file("_rels/.rels", options).unwrap();
@@ -328,7 +334,8 @@ mod tests {
         let mut buf = Vec::new();
         {
             let mut zip = zip::ZipWriter::new(Cursor::new(&mut buf));
-            let options: FileOptions<'_, ()> = FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+            let options: FileOptions<'_, ()> =
+                FileOptions::default().compression_method(zip::CompressionMethod::Stored);
             zip.start_file("content.xml", options).unwrap();
             zip.write_all(b"<?xml version=\"1.0\"?><office:document-content xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\"><office:body><office:text><text:p>Test</text:p></office:text></office:body></office:document-content>").unwrap();
             zip.finish().unwrap();
@@ -343,7 +350,8 @@ mod tests {
         let mut buf = Vec::new();
         {
             let mut zip = zip::ZipWriter::new(Cursor::new(&mut buf));
-            let options: FileOptions<'_, ()> = FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+            let options: FileOptions<'_, ()> =
+                FileOptions::default().compression_method(zip::CompressionMethod::Stored);
             zip.start_file("[Content_Types].xml", options).unwrap();
             zip.write_all(b"<?xml version=\"1.0\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"xml\" ContentType=\"application/xml\"/></Types>").unwrap();
             zip.start_file("_rels/.rels", options).unwrap();
@@ -352,7 +360,8 @@ mod tests {
             zip.write_all(b"<?xml version=\"1.0\"?><workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheets><sheet name=\"Sheet1\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>").unwrap();
             zip.start_file("xl/worksheets/sheet1.xml", options).unwrap();
             zip.write_all(b"<?xml version=\"1.0\"?><worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData><row r=\"1\"><c r=\"A1\"><v>Test</v></c></row></sheetData></worksheet>").unwrap();
-            zip.start_file("xl/_rels/workbook.xml.rels", options).unwrap();
+            zip.start_file("xl/_rels/workbook.xml.rels", options)
+                .unwrap();
             zip.write_all(b"<?xml version=\"1.0\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/></Relationships>").unwrap();
             zip.finish().unwrap();
         }
@@ -366,14 +375,16 @@ mod tests {
         let mut buf = Vec::new();
         {
             let mut zip = zip::ZipWriter::new(Cursor::new(&mut buf));
-            let options: FileOptions<'_, ()> = FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+            let options: FileOptions<'_, ()> =
+                FileOptions::default().compression_method(zip::CompressionMethod::Stored);
             zip.start_file("[Content_Types].xml", options).unwrap();
             zip.write_all(b"<?xml version=\"1.0\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"xml\" ContentType=\"application/xml\"/></Types>").unwrap();
             zip.start_file("ppt/presentation.xml", options).unwrap();
             zip.write_all(b"<?xml version=\"1.0\"?><p:presentation xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\"><p:sldIdLst><p:sldId id=\"256\" r:id=\"rId1\"/></p:sldIdLst><p:sldIdLst/></p:presentation>").unwrap();
             zip.start_file("ppt/slides/slide1.xml", options).unwrap();
             zip.write_all(b"<?xml version=\"1.0\"?><p:sld xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><p:cSld><p:spTree><p:sp><p:nvSpPr><p:ph type=\"title\"/></p:nvSpPr><p:txBody><a:p><a:t>Slide Title</a:t></a:p></p:txBody></p:sp><p:sp><p:nvSpPr><p:ph type=\"body\"/></p:nvSpPr><p:txBody><a:p><a:t>Body text</a:t></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>").unwrap();
-            zip.start_file("ppt/_rels/presentation.xml.rels", options).unwrap();
+            zip.start_file("ppt/_rels/presentation.xml.rels", options)
+                .unwrap();
             zip.write_all(b"<?xml version=\"1.0\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide\" Target=\"slides/slide1.xml\"/></Relationships>").unwrap();
             zip.finish().unwrap();
         }
@@ -393,7 +404,13 @@ mod tests {
         let result = render(&bytes, "docx");
         assert!(result.is_ok());
         let doc: Document = serde_json::from_str(&result.unwrap()).unwrap();
-        assert!(matches!(doc, Document::Placeholder { format: Format::Docx, .. } | Document::Docx { .. }));
+        assert!(matches!(
+            doc,
+            Document::Placeholder {
+                format: Format::Docx,
+                ..
+            } | Document::Docx { .. }
+        ));
     }
 
     #[test]

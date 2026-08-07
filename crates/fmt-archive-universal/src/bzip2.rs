@@ -1,10 +1,10 @@
 #[cfg(feature = "bzip2")]
-use std::io::{Read, Seek};
+use crate::tar::list_tar as list_tar_inner;
+use crate::{Error, InternalArchiveEntry};
 #[cfg(feature = "bzip2")]
 use bzip2::read::BzDecoder;
-use crate::{InternalArchiveEntry, Error};
 #[cfg(feature = "bzip2")]
-use crate::tar::list_tar as list_tar_inner;
+use std::io::{Read, Seek};
 
 #[cfg(feature = "bzip2")]
 pub fn list_bz2<R: Read + Seek + Send>(mut reader: R) -> Result<Vec<InternalArchiveEntry>, Error> {
@@ -25,15 +25,12 @@ pub fn list_bz2<R: Read + Seek + Send>(mut reader: R) -> Result<Vec<InternalArch
     // Plain bz2
     let mut decoder = BzDecoder::new(reader);
     let mut data = Vec::new();
-    decoder.read_to_end(&mut data)
+    decoder
+        .read_to_end(&mut data)
         .map_err(|e| Error::Parse(format!("bz2 decompress: {}", e)))?;
 
-    let entry = InternalArchiveEntry::new(
-        "archive-content".to_string(),
-        data.len() as u64,
-        0,
-        false,
-    );
+    let entry =
+        InternalArchiveEntry::new("archive-content".to_string(), data.len() as u64, 0, false);
 
     Ok(vec![entry])
 }

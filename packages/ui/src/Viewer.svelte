@@ -1,10 +1,13 @@
 <script lang="ts">
   // Polyfill Promise.withResolvers for older WebView versions (ES2024 feature)
-  if (typeof Promise.withResolvers !== 'function') {
+  if (typeof Promise.withResolvers !== "function") {
     Promise.withResolvers = function <T>() {
       let resolve!: (value: T | PromiseLike<T>) => void;
       let reject!: (reason?: any) => void;
-      const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+      const promise = new Promise<T>((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
       return { promise, resolve, reject };
     };
   }
@@ -15,18 +18,18 @@
   // `uri` is carried alongside the Document so Image (Phase 2.1) and Unsupported
   // (Phase 4 — "Open with…" hand-off per ADR 0004) viewers can act on it.
 
-  import type { Document } from '@viewit/platform';
-  import TextViewer from './TextViewer.svelte';
-  import ImageViewer from './ImageViewer.svelte';
-  import MediaViewer from './MediaViewer.svelte';
-  import UnsupportedViewer from './UnsupportedViewer.svelte';
-  import PlaceholderViewer from './PlaceholderViewer.svelte';
-  import GridView from './GridView.svelte';
-  import Onboarding from './Onboarding.svelte';
-  import DebugPanel from './DebugPanel.svelte';
-  import PluginStore from './PluginStore.svelte';
-  import RuntimeChooser from './RuntimeChooser.svelte';
-  import OfficePluginHtmlViewer from './OfficePluginHtmlViewer.svelte';
+  import type { Document } from "@viewit/platform";
+  import TextViewer from "./TextViewer.svelte";
+  import ImageViewer from "./ImageViewer.svelte";
+  import MediaViewer from "./MediaViewer.svelte";
+  import UnsupportedViewer from "./UnsupportedViewer.svelte";
+  import PlaceholderViewer from "./PlaceholderViewer.svelte";
+  import GridView from "./GridView.svelte";
+  import Onboarding from "./Onboarding.svelte";
+  import DebugPanel from "./DebugPanel.svelte";
+  import PluginStore from "./PluginStore.svelte";
+  import RuntimeChooser from "./RuntimeChooser.svelte";
+  import OfficePluginHtmlViewer from "./OfficePluginHtmlViewer.svelte";
   import {
     archiveBridgeFor,
     hasAndroidBridge,
@@ -36,31 +39,73 @@
     pluginSupports,
     renderDocumentWithPlugin,
     type PluginInfo,
-  } from './pluginBridge';
+  } from "./pluginBridge";
 
   const OFFICE_ALL_EXTS = new Set([
-    'docx', 'docm', 'dotx', 'dotm',
-    'xlsx', 'xlsm', 'xlsb', 'xls',
-    'pptx', 'pptm', 'potx',
-    'odt', 'ott', 'ods', 'ots', 'odp', 'otp',
-    'doc', 'ppt',
+    "docx",
+    "docm",
+    "dotx",
+    "dotm",
+    "xlsx",
+    "xlsm",
+    "xlsb",
+    "xls",
+    "pptx",
+    "pptm",
+    "potx",
+    "odt",
+    "ott",
+    "ods",
+    "ots",
+    "odp",
+    "otp",
+    "doc",
+    "ppt",
   ]);
   const ARCHIVE_EXTS = new Set([
-    'zip', '7z', 'rar', 'tar',
-    'gz', 'tgz', 'bz2', 'tbz2', 'xz', 'txz', 'zst', 'tzst',
-    'lz4', 'lzma', 'tlz',
+    "zip",
+    "7z",
+    "rar",
+    "tar",
+    "gz",
+    "tgz",
+    "bz2",
+    "tbz2",
+    "xz",
+    "txz",
+    "zst",
+    "tzst",
+    "lz4",
+    "lzma",
+    "tlz",
   ]);
   // Fonts ship as the built-in font-universal native plugin on Android (kept
   // out of the base Rust lib to save APK budget). Desktop/web parse fonts
   // natively, so this only triggers when the AndroidBridge is present.
   const FONT_EXTS = new Set([
-    'ttf', 'otf', 'woff', 'woff2', 'ttc', 'pfb', 'cff', 'dfont', 'sfd', 'ps',
+    "ttf",
+    "otf",
+    "woff",
+    "woff2",
+    "ttc",
+    "pfb",
+    "cff",
+    "dfont",
+    "sfd",
+    "ps",
   ]);
-  const OFFICE_KINDS = new Set(['docx', 'xlsx', 'pptx']);
+  const OFFICE_KINDS = new Set(["docx", "xlsx", "pptx"]);
   // Container formats that must NOT fall back to the generic archive listing
   // when the built-in can't decode them (they render a dedicated/partial view
   // instead of leaking their zip internals): Apple iWork bundles.
-  const NON_ARCHIVE_BUNDLE_EXTS = new Set(['pages', 'numbers', 'key', 'pages-template', 'numbers-template', 'key-template']);
+  const NON_ARCHIVE_BUNDLE_EXTS = new Set([
+    "pages",
+    "numbers",
+    "key",
+    "pages-template",
+    "numbers-template",
+    "key-template",
+  ]);
 
   // Phase 3.8 — per-format lazy code-split. Heavy viewers load on demand via
   // dynamic import() so opening a .txt never pulls in the PDF/Office chunks.
@@ -85,79 +130,80 @@
   $effect(() => {
     if (!doc) return;
     const k = (doc as any).kind;
-    const uri = docUri ?? '';
+    const uri = docUri ?? "";
     const isIcs = /\.ics?$/i.test(uri);
     const isVcf = /\.vcf$/i.test(uri);
     const isDesktop = /\.desktop$/i.test(uri);
     const loaders: Record<string, (() => Promise<Comp>) | undefined> = {
-      'markdown': () => import('./MarkdownViewer.svelte'),
-      'json':     () => import('./JsonViewer.svelte'),
-      'csv':      () => import('./CsvViewer.svelte'),
-      'pdf':      () => import('./PdfViewer.svelte'),
-      'stream-file': () => import('./PdfViewer.svelte'),
-      'epub':     () => import('./EpubViewer.svelte'),
-      'mobi':     () => import('./EpubViewer.svelte'),
-      'azw3':     () => import('./EpubViewer.svelte'),
-      'archive':  () => import('./ArchiveViewer.svelte'),
-      'pptx':     () => import('./PptxViewer.svelte'),
-      'pptx-vanilla': () => import('./PptxVanillaViewer.svelte'),
-      'docx':     () => import('./DocxPreview.svelte'),
-      'xlsx':     () => import('./XlsxViewer.svelte'),
-      'font':     () => import('./FontViewer.svelte'),
+      markdown: () => import("./MarkdownViewer.svelte"),
+      json: () => import("./JsonViewer.svelte"),
+      csv: () => import("./CsvViewer.svelte"),
+      pdf: () => import("./PdfViewer.svelte"),
+      "stream-file": () => import("./PdfViewer.svelte"),
+      epub: () => import("./EpubViewer.svelte"),
+      mobi: () => import("./EpubViewer.svelte"),
+      azw3: () => import("./EpubViewer.svelte"),
+      archive: () => import("./ArchiveViewer.svelte"),
+      pptx: () => import("./PptxViewer.svelte"),
+      "pptx-vanilla": () => import("./PptxVanillaViewer.svelte"),
+      docx: () => import("./DocxPreview.svelte"),
+      xlsx: () => import("./XlsxViewer.svelte"),
+      font: () => import("./FontViewer.svelte"),
     };
     let loader = loaders[k] as (() => Promise<Comp>) | undefined;
-    if (k === 'text') {
-      if (isIcs) loader = () => import('./IcsViewer.svelte');
-      else if (isVcf) loader = () => import('./VcfViewer.svelte');
-      else if (isDesktop) loader = () => import('./DesktopEntryViewer.svelte');
+    if (k === "text") {
+      if (isIcs) loader = () => import("./IcsViewer.svelte");
+      else if (isVcf) loader = () => import("./VcfViewer.svelte");
+      else if (isDesktop) loader = () => import("./DesktopEntryViewer.svelte");
       else loader = undefined;
     }
-    const isOdtLike = officeExt() === 'odt' || officeExt() === 'ott';
-    if (k === 'docx' && isOdtLike) {
+    const isOdtLike = officeExt() === "odt" || officeExt() === "ott";
+    if (k === "docx" && isOdtLike) {
       // ODT/OTT: plugin produces Document::Docx with structured blocks —
       // render via the block-based DocxViewer instead of docx-preview.
-      loader = () => import('./DocxViewer.svelte');
+      loader = () => import("./DocxViewer.svelte");
     }
-    if (k === 'pptx') {
+    if (k === "pptx") {
       void resolvePptxVanillaPlugin().then((p) => {
         if (p?.id !== pptxVanillaPlugin?.id) pptxVanillaPlugin = p;
         if (p) {
           selectedOfficePlugin = p;
           if (!PptxVanillaViewer) {
-            import('./PptxVanillaViewer.svelte').then((m) => { PptxVanillaViewer = m.default; });
+            import("./PptxVanillaViewer.svelte").then((m) => {
+              PptxVanillaViewer = m.default;
+            });
           }
         }
       });
     }
     if (!loader) return;
     loader().then((m) => {
-      if (k === 'markdown') MarkdownViewer = m.default;
-      else if (k === 'json') JsonViewer = m.default;
-      else if (k === 'csv') CsvViewer = m.default;
-      else if (k === 'pdf' || k === 'stream-file') PdfViewer = m.default;
-      else if (k === 'epub' || k === 'mobi' || k === 'azw3') EpubViewer = m.default;
-      else if (k === 'archive') ArchiveViewer = m.default;
-      else if (k === 'pptx') PptxViewer = m.default;
-      else if (k === 'pptx-vanilla') PptxVanillaViewer = m.default;
-      else if (k === 'docx') {
+      if (k === "markdown") MarkdownViewer = m.default;
+      else if (k === "json") JsonViewer = m.default;
+      else if (k === "csv") CsvViewer = m.default;
+      else if (k === "pdf" || k === "stream-file") PdfViewer = m.default;
+      else if (k === "epub" || k === "mobi" || k === "azw3") EpubViewer = m.default;
+      else if (k === "archive") ArchiveViewer = m.default;
+      else if (k === "pptx") PptxViewer = m.default;
+      else if (k === "pptx-vanilla") PptxVanillaViewer = m.default;
+      else if (k === "docx") {
         if (isOdtLike) DocxViewer = m.default;
         else DocxPreview = m.default;
-      }
-      else if (k === 'xlsx') XlsxViewer = m.default;
-      else if (k === 'font') FontViewer = m.default;
-      else if (k === 'text' && isIcs) IcsViewer = m.default;
-      else if (k === 'text' && isVcf) VcfViewer = m.default;
-      else if (k === 'text' && isDesktop) DesktopEntryViewer = m.default;
+      } else if (k === "xlsx") XlsxViewer = m.default;
+      else if (k === "font") FontViewer = m.default;
+      else if (k === "text" && isIcs) IcsViewer = m.default;
+      else if (k === "text" && isVcf) VcfViewer = m.default;
+      else if (k === "text" && isDesktop) DesktopEntryViewer = m.default;
     });
   });
 
-  let mode: 'view' | 'browse' = $state('view');
+  let mode: "view" | "browse" = $state("view");
 
   let {
     root,
-    initialFile = undefined
+    initialFile = undefined,
   }: {
-    root: 'desktop' | 'mobile' | 'web';
+    root: "desktop" | "mobile" | "web";
     initialFile?: string;
   } = $props();
 
@@ -168,20 +214,20 @@
   let pendingExt: string | null = $state(null);
   let pendingPlugin: string | null = $state(null);
   let busy = $state(false);
-  let busyHint = $state('');
+  let busyHint = $state("");
   let error: string | null = $state(null);
   let debugOpen = $state(false);
   let pluginStoreOpen = $state(false);
   let officeRuntimeChooserOpen = $state(false);
   let selectedOfficePlugin: PluginInfo | null = $state(null);
   let pptxVanillaPlugin: PluginInfo | null = $state(null);
-  let officePluginNotice = $state('');
+  let officePluginNotice = $state("");
   let officeWarnings: string[] = $state([]);
-  let officeFidelity: string = $state('');
-  let officeRendererLabel: string = $state('');
+  let officeFidelity: string = $state("");
+  let officeRendererLabel: string = $state("");
   let loadSeq = 0;
 
-  import { onMount } from 'svelte';
+  import { onMount } from "svelte";
   import {
     openFile,
     openFileFromPicker,
@@ -189,24 +235,34 @@
     onOpenedFiles,
     checkFileBeforeRead,
     pickSingleFile,
-  } from '@viewit/platform';
+  } from "@viewit/platform";
 
   let imagePreviewUrl: string | null = null;
-  import { theme, toggleTheme, applyTheme } from './theme.svelte';
+  import { theme, toggleTheme, applyTheme } from "./theme.svelte";
   let _debugLog: any = null;
   async function dbg(msg: string) {
     if (!_debugLog) {
-      try { _debugLog = (await import('@viewit/platform')).debugLog; } catch { _debugLog = null; }
+      try {
+        _debugLog = (await import("@viewit/platform")).debugLog;
+      } catch {
+        _debugLog = null;
+      }
     }
-    try { _debugLog?.(msg); } catch { /* ignore */ }
+    try {
+      _debugLog?.(msg);
+    } catch {
+      /* ignore */
+    }
   }
 
   function setOfficeEnhancement(doc: Document | null) {
     const d = doc as any;
     const f = d?.fidelity;
     officeWarnings = Array.isArray(d?.warnings) ? d.warnings.slice() : [];
-    officeFidelity = f?.level ? `${f.level} — supports: ${(f.supports ?? []).join(', ') || 'none'}` : '';
-    officeRendererLabel = d?.renderer?.label ?? '';
+    officeFidelity = f?.level
+      ? `${f.level} — supports: ${(f.supports ?? []).join(", ") || "none"}`
+      : "";
+    officeRendererLabel = d?.renderer?.label ?? "";
   }
 
   function isPluginRendered(): boolean {
@@ -215,7 +271,7 @@
 
   function isOfficePluginHtml(): boolean {
     const d = doc as any;
-    return Boolean(d?.renderer?.id === 'office-ooxml' && d?.html);
+    return Boolean(d?.renderer?.id === "office-ooxml" && d?.html);
   }
 
   $effect(() => {
@@ -225,7 +281,7 @@
     try {
       let cold = await openedFiles();
       const bridge = (window as any).AndroidBridge;
-      if (cold.length === 0 && bridge && typeof bridge.drainPendingOpenUris === 'function') {
+      if (cold.length === 0 && bridge && typeof bridge.drainPendingOpenUris === "function") {
         try {
           const pending = JSON.parse(bridge.drainPendingOpenUris());
           if (Array.isArray(pending)) cold = pending;
@@ -239,7 +295,7 @@
         return true;
       }
     } catch (e) {
-      const { debugLog } = await import('@viewit/platform');
+      const { debugLog } = await import("@viewit/platform");
       debugLog(`openedFiles err: ${e instanceof Error ? e.message : String(e)}`);
     }
     return false;
@@ -252,26 +308,28 @@
     if (/^[a-z0-9._%+-]{1,120}\.[a-z0-9]{1,10}$/i.test(base)) return base;
     try {
       const bridge = (window as any).AndroidBridge;
-      if (bridge && typeof bridge.getDisplayName === 'function') {
+      if (bridge && typeof bridge.getDisplayName === "function") {
         const name = bridge.getDisplayName(viewitUri);
         if (name && /^[a-z0-9._%+-]{1,120}\.[a-z0-9]{1,10}$/i.test(name)) return name;
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     return null;
   }
 
   function setPendingOpen(record: unknown) {
-    if (typeof record === 'string') {
+    if (typeof record === "string") {
       pendingUri = record;
       pendingName = null;
       pendingExt = null;
       pendingPlugin = null;
-    } else if (record && typeof record === 'object') {
+    } else if (record && typeof record === "object") {
       const r = record as any;
-      pendingUri = typeof r.uri === 'string' ? r.uri : null;
-      pendingName = typeof r.name === 'string' && r.name ? r.name : null;
-      pendingExt = typeof r.ext === 'string' && r.ext ? r.ext : null;
-      pendingPlugin = typeof r.plugin === 'string' && r.plugin ? r.plugin : null;
+      pendingUri = typeof r.uri === "string" ? r.uri : null;
+      pendingName = typeof r.name === "string" && r.name ? r.name : null;
+      pendingExt = typeof r.ext === "string" && r.ext ? r.ext : null;
+      pendingPlugin = typeof r.plugin === "string" && r.plugin ? r.plugin : null;
     } else {
       pendingUri = null;
     }
@@ -281,8 +339,8 @@
     applyTheme();
     docUri = initialFile ?? null;
     pendingUri = initialFile ?? null;
-    const { debugLog } = await import('@viewit/platform');
-    debugLog('ViewIt ready');
+    const { debugLog } = await import("@viewit/platform");
+    debugLog("ViewIt ready");
     if (!(await drainOpenedQueue())) {
       for (let i = 0; i < 24; i++) {
         await new Promise((r) => setTimeout(r, 250));
@@ -320,7 +378,7 @@
     error = null;
     doc = null;
     docUri = uri;
-    busyHint = 'Opening…';
+    busyHint = "Opening…";
     try {
       const nextDoc = await openWithDefaultRuntime(uri, nameHint, extHint, pluginHint);
       if (seq !== loadSeq || pendingUri !== uri) return;
@@ -332,7 +390,7 @@
     } finally {
       if (seq === loadSeq && pendingUri === uri) {
         busy = false;
-        busyHint = '';
+        busyHint = "";
       }
     }
   }
@@ -358,9 +416,14 @@
       pendingPlugin = null;
       docUri = viewitUri;
       doc = null;
-      busyHint = 'Opening…';
+      busyHint = "Opening…";
       try {
-        const nextDoc = await openWithDefaultRuntime(viewitUri, pendingName ?? undefined, undefined, undefined);
+        const nextDoc = await openWithDefaultRuntime(
+          viewitUri,
+          pendingName ?? undefined,
+          undefined,
+          undefined,
+        );
         if (seq !== loadSeq || pendingUri !== viewitUri) return;
         doc = nextDoc;
       } catch (e: unknown) {
@@ -370,7 +433,7 @@
       } finally {
         if (seq === loadSeq && pendingUri === viewitUri) {
           busy = false;
-          busyHint = '';
+          busyHint = "";
         }
       }
       return;
@@ -384,10 +447,10 @@
       const gate = checkFileBeforeRead(f);
       if (gate.reject) {
         doc = {
-          kind: 'unsupported',
-          format: 'unsupported',
+          kind: "unsupported",
+          format: "unsupported",
           reason: gate.reason,
-          suggestion: gate.openWithExternal ? 'open-with-external' : 'none',
+          suggestion: gate.openWithExternal ? "open-with-external" : "none",
         };
         return;
       }
@@ -396,8 +459,8 @@
       if (seq !== loadSeq || pendingUri !== f.name) return;
       doc = nextDoc;
       selectedOfficePlugin = null;
-      officePluginNotice = '';
-      if (doc.kind === 'image') {
+      officePluginNotice = "";
+      if (doc.kind === "image") {
         imagePreviewUrl = URL.createObjectURL(f);
         docUri = imagePreviewUrl;
       }
@@ -408,13 +471,13 @@
     } finally {
       if (seq === loadSeq && pendingUri === f.name) {
         busy = false;
-        busyHint = '';
+        busyHint = "";
       }
     }
   }
 
   function officeExt(): string {
-    const uri = docUri ?? pendingUri ?? '';
+    const uri = docUri ?? pendingUri ?? "";
     const derived = extFromUri(uri, pendingName ?? undefined);
     if (derived && OFFICE_ALL_EXTS.has(derived)) return derived;
     const kind = (doc as any)?.kind;
@@ -423,19 +486,21 @@
   }
 
   function extFromUri(uri: string, nameHint?: string): string {
-    const fromName = nameHint ? nameHint.split('.').pop()?.toLowerCase() ?? '' : '';
+    const fromName = nameHint ? (nameHint.split(".").pop()?.toLowerCase() ?? "") : "";
     if (fromName && fromName.length <= 8 && /^[a-z0-9]+$/.test(fromName)) return fromName;
-    const fromPath = uri.split(/[?#]/, 1)[0].split('.').pop()?.toLowerCase() ?? '';
+    const fromPath = uri.split(/[?#]/, 1)[0].split(".").pop()?.toLowerCase() ?? "";
     if (fromPath && fromPath.length <= 8 && /^[a-z0-9]+$/.test(fromPath)) return fromPath;
     if (hasAndroidBridge()) {
       try {
         const bridge = (window as any).AndroidBridge;
-        const mime = typeof bridge.getMimeType === 'function' ? bridge.getMimeType(uri) : '';
+        const mime = typeof bridge.getMimeType === "function" ? bridge.getMimeType(uri) : "";
         const fromMime = extFromMime(mime);
         if (fromMime) return fromMime;
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
-    return '';
+    return "";
   }
 
   /** Normalize a plugin-returned format id ("zip", "tar.gz", …) into the
@@ -443,64 +508,83 @@
    *  through for display only. */
   function toArchiveFormat(value: string): string {
     const v = value.toLowerCase();
-    if (v === 'zip') return 'archive-zip';
-    if (v === 'tar') return 'archive-tar';
-    if (v === 'rar') return 'archive-rar';
-    if (v === '7z') return 'archive-7z';
-    if (v === 'gz' || v === 'tgz' || v === 'tar.gz' || v === 'tbz2' || v === 'tzst' || v === 'txz' || v === 'tlz' || v.includes('.tar')) return 'archive-tar-gz';
+    if (v === "zip") return "archive-zip";
+    if (v === "tar") return "archive-tar";
+    if (v === "rar") return "archive-rar";
+    if (v === "7z") return "archive-7z";
+    if (
+      v === "gz" ||
+      v === "tgz" ||
+      v === "tar.gz" ||
+      v === "tbz2" ||
+      v === "tzst" ||
+      v === "txz" ||
+      v === "tlz" ||
+      v.includes(".tar")
+    )
+      return "archive-tar-gz";
     return v;
   }
 
   function extFromMime(mime: string): string {
     const normalized = mime.toLowerCase();
     const map: Record<string, string> = {
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
-      'application/vnd.ms-word.document.macroenabled.12': 'docm',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.template': 'dotx',
-      'application/vnd.ms-word.template.macroenabled.12': 'dotm',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
-      'application/vnd.ms-excel.sheet.macroenabled.12': 'xlsm',
-      'application/vnd.ms-excel.sheet.binary.macroenabled.12': 'xlsb',
-      'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
-      'application/vnd.ms-powerpoint.presentation.macroenabled.12': 'pptm',
-      'application/vnd.ms-powerpoint.template.macroenabled.12': 'potm',
-      'application/vnd.openxmlformats-officedocument.presentationml.template': 'potx',
-      'application/vnd.oasis.opendocument.text': 'odt',
-      'application/vnd.oasis.opendocument.text-template': 'ott',
-      'application/vnd.oasis.opendocument.spreadsheet': 'ods',
-      'application/vnd.oasis.opendocument.spreadsheet-template': 'ots',
-      'application/vnd.oasis.opendocument.presentation': 'odp',
-      'application/vnd.oasis.opendocument.presentation-template': 'otp',
-      'application/msword': 'doc',
-      'application/vnd.ms-excel': 'xls',
-      'application/vnd.ms-powerpoint': 'ppt',
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+      "application/vnd.ms-word.document.macroenabled.12": "docm",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.template": "dotx",
+      "application/vnd.ms-word.template.macroenabled.12": "dotm",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+      "application/vnd.ms-excel.sheet.macroenabled.12": "xlsm",
+      "application/vnd.ms-excel.sheet.binary.macroenabled.12": "xlsb",
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+      "application/vnd.ms-powerpoint.presentation.macroenabled.12": "pptm",
+      "application/vnd.ms-powerpoint.template.macroenabled.12": "potm",
+      "application/vnd.openxmlformats-officedocument.presentationml.template": "potx",
+      "application/vnd.oasis.opendocument.text": "odt",
+      "application/vnd.oasis.opendocument.text-template": "ott",
+      "application/vnd.oasis.opendocument.spreadsheet": "ods",
+      "application/vnd.oasis.opendocument.spreadsheet-template": "ots",
+      "application/vnd.oasis.opendocument.presentation": "odp",
+      "application/vnd.oasis.opendocument.presentation-template": "otp",
+      "application/msword": "doc",
+      "application/vnd.ms-excel": "xls",
+      "application/vnd.ms-powerpoint": "ppt",
     };
-    return map[normalized] ?? '';
+    return map[normalized] ?? "";
   }
 
-  const RUNTIME_PREF_KEY = 'viewit.runtimePref';
+  const RUNTIME_PREF_KEY = "viewit.runtimePref";
   function loadRuntimePrefs(): Record<string, string> {
     try {
-      return JSON.parse(localStorage.getItem(RUNTIME_PREF_KEY) ?? '{}');
-    } catch { return {}; }
+      return JSON.parse(localStorage.getItem(RUNTIME_PREF_KEY) ?? "{}");
+    } catch {
+      return {};
+    }
   }
   function saveRuntimePref(ext: string, pluginId: string | null) {
     const prefs = loadRuntimePrefs();
-    if (pluginId) prefs[ext] = pluginId; else delete prefs[ext];
-    try { localStorage.setItem(RUNTIME_PREF_KEY, JSON.stringify(prefs)); } catch { /* ignore */ }
+    if (pluginId) prefs[ext] = pluginId;
+    else delete prefs[ext];
+    try {
+      localStorage.setItem(RUNTIME_PREF_KEY, JSON.stringify(prefs));
+    } catch {
+      /* ignore */
+    }
   }
 
   /** Pick the installed runtime=js PPTX plugin (if any) that should own the
    *  WebView rendering, honoring the per-format runtime pref. */
   async function resolvePptxVanillaPlugin(): Promise<PluginInfo | null> {
     if (!hasAndroidBridge()) return null;
-    const prefId = getRuntimePref('pptx');
-    if (prefId === '__builtin__') return null;
+    const prefId = getRuntimePref("pptx");
+    if (prefId === "__builtin__") return null;
     const installed = await listInstalledPlugins();
     if (prefId) {
-      return installed.find((p) => p.id === prefId && isJsPlugin(p) && pluginSupports(p, 'pptx')) ?? null;
+      return (
+        installed.find((p) => p.id === prefId && isJsPlugin(p) && pluginSupports(p, "pptx")) ?? null
+      );
     }
-    return installed.find((p) => isJsPlugin(p) && pluginSupports(p, 'pptx')) ?? null;
+    return installed.find((p) => isJsPlugin(p) && pluginSupports(p, "pptx")) ?? null;
   }
   function getRuntimePref(ext: string): string | null {
     return loadRuntimePrefs()[ext] ?? null;
@@ -510,29 +594,32 @@
     uri: string,
     nameHint?: string,
     extHint?: string,
-    pluginHint?: string
+    pluginHint?: string,
   ): Promise<Document> {
     selectedOfficePlugin = null;
-    officePluginNotice = '';
+    officePluginNotice = "";
     officeWarnings = [];
-    officeFidelity = '';
+    officeFidelity = "";
     const ext = extHint && OFFICE_ALL_EXTS.has(extHint) ? extHint : extFromUri(uri, nameHint);
-    let failedPluginId = '';
+    let failedPluginId = "";
     let readableUri = uri;
     if (hasAndroidBridge() && OFFICE_ALL_EXTS.has(ext)) {
       try {
         readableUri = materializeExternalUri(uri, ext);
       } catch (e) {
-        await dbg(`runtime[${ext}] materialize failed: ${e instanceof Error ? e.message : String(e)}`);
+        await dbg(
+          `runtime[${ext}] materialize failed: ${e instanceof Error ? e.message : String(e)}`,
+        );
         return {
-          kind: 'unsupported',
+          kind: "unsupported",
           format: ext,
-          reason: 'Android blocked direct access to this raw file path. Open it from the system file picker or share sheet so ViewIt receives a readable content URI.',
-          suggestion: 'none',
+          reason:
+            "Android blocked direct access to this raw file path. Open it from the system file picker or share sheet so ViewIt receives a readable content URI.",
+          suggestion: "none",
         } as Document;
       }
       const prefId = getRuntimePref(ext);
-      if (prefId === '__builtin__') {
+      if (prefId === "__builtin__") {
         await dbg(`runtime[${ext}] pref=builtin → skipping plugin`);
       } else {
         const plugins = await listInstalledPlugins();
@@ -540,8 +627,13 @@
         // the native renderDocumentWithPlugin bridge — skip them here.
         const plugin = prefId
           ? null
-          : plugins.find((candidate) => candidate.id === 'office-universal' && !isJsPlugin(candidate) && pluginSupports(candidate, ext))
-            ?? plugins.find((candidate) => !isJsPlugin(candidate) && pluginSupports(candidate, ext));
+          : (plugins.find(
+              (candidate) =>
+                candidate.id === "office-universal" &&
+                !isJsPlugin(candidate) &&
+                pluginSupports(candidate, ext),
+            ) ??
+            plugins.find((candidate) => !isJsPlugin(candidate) && pluginSupports(candidate, ext)));
         if (prefId) {
           const prefPlugin = plugins.find((p) => p.id === prefId && pluginSupports(p, ext));
           if (!prefPlugin) {
@@ -549,20 +641,26 @@
           } else if (isJsPlugin(prefPlugin)) {
             // The js plugin owns WebView rendering; fetch a parseable doc from the
             // native plugin so the template's pptx branch can hand bytes to it.
-            await dbg(`runtime[${ext}] pref=${prefId} → js plugin ${prefPlugin.id} (renders in WebView)`);
+            await dbg(
+              `runtime[${ext}] pref=${prefId} → js plugin ${prefPlugin.id} (renders in WebView)`,
+            );
           }
         }
         if (plugin) {
-          await dbg(`runtime[${ext}] pref=${prefId ?? 'auto'} → plugin ${plugin.id}`);
+          await dbg(`runtime[${ext}] pref=${prefId ?? "auto"} → plugin ${plugin.id}`);
           try {
             busyHint = `Opening with ${plugin.name}…`;
-            const rendered = await renderDocumentWithPlugin(plugin, readableUri, ext) as Document;
-            await dbg(`runtime[${ext}] plugin ${plugin.id} returned kind=${(rendered as any)?.kind} renderer=${(rendered as any)?.renderer?.id ?? 'none'}`);
+            const rendered = (await renderDocumentWithPlugin(plugin, readableUri, ext)) as Document;
+            await dbg(
+              `runtime[${ext}] plugin ${plugin.id} returned kind=${(rendered as any)?.kind} renderer=${(rendered as any)?.renderer?.id ?? "none"}`,
+            );
             selectedOfficePlugin = plugin;
             officePluginNotice = `Rendered by ${plugin.name}.`;
             return rendered;
           } catch (e) {
-            await dbg(`runtime[${ext}] plugin ${plugin.id} failed: ${e instanceof Error ? e.message : String(e)}`);
+            await dbg(
+              `runtime[${ext}] plugin ${plugin.id} failed: ${e instanceof Error ? e.message : String(e)}`,
+            );
             officePluginNotice = `${plugin.name} could not render this file: ${e instanceof Error ? e.message : String(e)}. Using the built-in lightweight viewer.`;
             selectedOfficePlugin = null;
             failedPluginId = plugin.id;
@@ -577,17 +675,28 @@
     if (hasAndroidBridge() && FONT_EXTS.has(ext)) {
       const fontPlugins = await listInstalledPlugins();
       const fontPlugin = fontPlugins.find(
-        (candidate) => candidate.id === 'font-universal' && !isJsPlugin(candidate) && pluginSupports(candidate, ext)
+        (candidate) =>
+          candidate.id === "font-universal" &&
+          !isJsPlugin(candidate) &&
+          pluginSupports(candidate, ext),
       );
       if (fontPlugin) {
         try {
           await dbg(`font[${ext}] via ${fontPlugin.id}`);
-          const rendered = await renderDocumentWithPlugin(fontPlugin, readableUri, ext) as Document;
-          if (rendered && rendered.kind !== 'unsupported') {
-            await dbg(`font[${ext}] plugin returned kind=${(rendered as any)?.kind} family=${(rendered as any)?.family_name}`);
+          const rendered = (await renderDocumentWithPlugin(
+            fontPlugin,
+            readableUri,
+            ext,
+          )) as Document;
+          if (rendered && rendered.kind !== "unsupported") {
+            await dbg(
+              `font[${ext}] plugin returned kind=${(rendered as any)?.kind} family=${(rendered as any)?.family_name}`,
+            );
             return rendered;
           }
-          await dbg(`font[${ext}] plugin could not parse: ${(rendered as any)?.reason ?? 'unknown'}`);
+          await dbg(
+            `font[${ext}] plugin could not parse: ${(rendered as any)?.reason ?? "unknown"}`,
+          );
         } catch (e) {
           await dbg(`font[${ext}] plugin failed: ${e instanceof Error ? e.message : String(e)}`);
         }
@@ -603,19 +712,22 @@
     if (hasAndroidBridge() && ARCHIVE_EXTS.has(ext)) {
       const archivePlugins = await listInstalledPlugins();
       const archivePlugin = archivePlugins.find(
-        (candidate) => candidate.id === 'compression-universal' && !isJsPlugin(candidate) && pluginSupports(candidate, ext)
+        (candidate) =>
+          candidate.id === "compression-universal" &&
+          !isJsPlugin(candidate) &&
+          pluginSupports(candidate, ext),
       );
       if (archivePlugin) {
-        const displayName = (nameHint ?? uri.split('/').pop()?.split('?')[0] ?? uri) || 'archive';
+        const displayName = (nameHint ?? uri.split("/").pop()?.split("?")[0] ?? uri) || "archive";
         try {
           busyHint = `Reading archive with ${archivePlugin.name}…`;
           const api = archiveBridgeFor(archivePlugin, uri, displayName);
-          if (!api) throw new Error('Archive bridge unavailable');
+          if (!api) throw new Error("Archive bridge unavailable");
           const listing = await api.listArchive();
           if (listing.ok && listing.entries) {
             await dbg(`archive[${ext}] via ${archivePlugin.id}: ${listing.entries.length} entries`);
             return {
-              kind: 'archive',
+              kind: "archive",
               entries: listing.entries,
               format: toArchiveFormat(listing.format ?? ext),
               byte_len: 0,
@@ -623,7 +735,7 @@
               renderer: { id: archivePlugin.id, label: archivePlugin.name },
             } as Document;
           }
-          pluginArchiveError = listing.error ?? 'Archive could not be listed';
+          pluginArchiveError = listing.error ?? "Archive could not be listed";
           await dbg(`archive[${ext}] ${archivePlugin.id} listing failed: ${pluginArchiveError}`);
         } catch (e) {
           pluginArchiveError = e instanceof Error ? e.message : String(e);
@@ -636,23 +748,28 @@
     // built-in runtime produced a placeholder/unsupported result, let the native
     // plugin sniff the container by magic before giving up. Never preempts an
     // extension the built-in can already render (images, office, media, …).
-    if ((builtIn.kind === 'placeholder' || builtIn.kind === 'unsupported') && hasAndroidBridge() && !pluginArchiveError && !NON_ARCHIVE_BUNDLE_EXTS.has(ext)) {
+    if (
+      (builtIn.kind === "placeholder" || builtIn.kind === "unsupported") &&
+      hasAndroidBridge() &&
+      !pluginArchiveError &&
+      !NON_ARCHIVE_BUNDLE_EXTS.has(ext)
+    ) {
       try {
         const archivePlugins = await listInstalledPlugins();
         const archivePlugin = archivePlugins.find(
-          (candidate) => candidate.id === 'compression-universal' && !isJsPlugin(candidate)
+          (candidate) => candidate.id === "compression-universal" && !isJsPlugin(candidate),
         );
         if (archivePlugin) {
-          const displayName = (nameHint ?? uri.split('/').pop()?.split('?')[0] ?? uri) || 'archive';
+          const displayName = (nameHint ?? uri.split("/").pop()?.split("?")[0] ?? uri) || "archive";
           const api = archiveBridgeFor(archivePlugin, uri, displayName);
           if (api) {
             const detected = await api.detectFormat();
-            if (detected && detected !== 'unknown') {
+            if (detected && detected !== "unknown") {
               await dbg(`archive[${ext}] sniffed ${detected} after built-in placeholder`);
               const listing = await api.listArchive();
               if (listing.ok && listing.entries) {
                 return {
-                  kind: 'archive',
+                  kind: "archive",
                   entries: listing.entries,
                   format: toArchiveFormat(listing.format ?? detected),
                   byte_len: 0,
@@ -674,30 +791,43 @@
     // archives it can't read — e.g. encrypted 7z headers. Surface the plugin's
     // reason (encrypted/password-protected/corrupted) instead of the generic
     // "Phase 1 scaffold" page in that case too.
-    if ((builtIn.kind === 'unsupported' || builtIn.kind === 'placeholder') && pluginArchiveError) {
+    if ((builtIn.kind === "unsupported" || builtIn.kind === "placeholder") && pluginArchiveError) {
       return {
-        kind: 'unsupported',
+        kind: "unsupported",
         format: toArchiveFormat(ext),
         reason: pluginArchiveError,
-        suggestion: 'open-with-external',
+        suggestion: "open-with-external",
       } as Document;
     }
     const detectedKind = builtIn.kind;
     if (hasAndroidBridge() && OFFICE_KINDS.has(detectedKind) && OFFICE_ALL_EXTS.has(ext)) {
       const prefId = getRuntimePref(detectedKind);
-      if (prefId !== '__builtin__') {
-        const plugin = (await listInstalledPlugins()).find((candidate) => candidate.id !== failedPluginId && !isJsPlugin(candidate) && pluginSupports(candidate, detectedKind));
+      if (prefId !== "__builtin__") {
+        const plugin = (await listInstalledPlugins()).find(
+          (candidate) =>
+            candidate.id !== failedPluginId &&
+            !isJsPlugin(candidate) &&
+            pluginSupports(candidate, detectedKind),
+        );
         if (plugin) {
           await dbg(`runtime[${detectedKind}] retry plugin ${plugin.id} via detected kind`);
           try {
             busyHint = `Opening with ${plugin.name}…`;
-            const rendered = await renderDocumentWithPlugin(plugin, readableUri, detectedKind) as Document;
-            await dbg(`runtime[${detectedKind}] plugin ${plugin.id} returned kind=${(rendered as any)?.kind} renderer=${(rendered as any)?.renderer?.id ?? 'none'}`);
+            const rendered = (await renderDocumentWithPlugin(
+              plugin,
+              readableUri,
+              detectedKind,
+            )) as Document;
+            await dbg(
+              `runtime[${detectedKind}] plugin ${plugin.id} returned kind=${(rendered as any)?.kind} renderer=${(rendered as any)?.renderer?.id ?? "none"}`,
+            );
             selectedOfficePlugin = plugin;
             officePluginNotice = `Rendered by ${plugin.name}.`;
             return rendered;
           } catch (e) {
-            await dbg(`runtime[${detectedKind}] retry plugin ${plugin.id} failed: ${e instanceof Error ? e.message : String(e)}`);
+            await dbg(
+              `runtime[${detectedKind}] retry plugin ${plugin.id} failed: ${e instanceof Error ? e.message : String(e)}`,
+            );
             officePluginNotice = `${plugin.name} could not render this file: ${e instanceof Error ? e.message : String(e)}. Using the built-in lightweight viewer.`;
             selectedOfficePlugin = null;
           }
@@ -715,7 +845,7 @@
     busyHint = `Opening with ${plugin.name}…`;
     error = null;
     selectedOfficePlugin = plugin;
-    officePluginNotice = '';
+    officePluginNotice = "";
     try {
       const ext = officeExt();
       const readableUri = materializeExternalUri(uri, ext);
@@ -731,10 +861,12 @@
         officePluginNotice = `WebView renderer ${plugin.name} selected.`;
         return;
       }
-      const nextDoc = await renderDocumentWithPlugin(plugin, readableUri, ext) as Document;
+      const nextDoc = (await renderDocumentWithPlugin(plugin, readableUri, ext)) as Document;
       if (seq !== loadSeq || docUri !== uri) return;
       doc = nextDoc;
-      await dbg(`runtime[${officeExt()}] manual plugin ${plugin.id} returned kind=${(doc as any)?.kind} renderer=${(doc as any)?.renderer?.id ?? 'none'}`);
+      await dbg(
+        `runtime[${officeExt()}] manual plugin ${plugin.id} returned kind=${(doc as any)?.kind} renderer=${(doc as any)?.renderer?.id ?? "none"}`,
+      );
       officePluginNotice = `Rendered by ${plugin.name}.`;
       saveRuntimePref(ext, plugin.id);
     } catch (e) {
@@ -745,7 +877,7 @@
     } finally {
       if (seq === loadSeq && docUri === uri) {
         busy = false;
-        busyHint = '';
+        busyHint = "";
       }
     }
   }
@@ -755,16 +887,16 @@
     if (!uri) return;
     const seq = ++loadSeq;
     busy = true;
-    busyHint = 'Opening with built-in lightweight viewer…';
+    busyHint = "Opening with built-in lightweight viewer…";
     error = null;
     selectedOfficePlugin = null;
-    officePluginNotice = '';
+    officePluginNotice = "";
     try {
       const nextDoc = await openFile(materializeExternalUri(uri, officeExt()));
       if (seq !== loadSeq || (docUri ?? pendingUri) !== uri) return;
       doc = nextDoc;
-      officePluginNotice = 'Rendered by built-in lightweight viewer.';
-      saveRuntimePref(officeExt(), '__builtin__');
+      officePluginNotice = "Rendered by built-in lightweight viewer.";
+      saveRuntimePref(officeExt(), "__builtin__");
     } catch (e) {
       if (seq !== loadSeq || (docUri ?? pendingUri) !== uri) return;
       error = e instanceof Error ? e.message : String(e);
@@ -772,7 +904,7 @@
     } finally {
       if (seq === loadSeq && (docUri ?? pendingUri) === uri) {
         busy = false;
-        busyHint = '';
+        busyHint = "";
       }
     }
   }
@@ -782,11 +914,21 @@
   <header>
     <h1>ViewIt</h1>
     <div class="header-actions">
-      <button class="theme-toggle" onclick={toggleTheme} aria-label="Toggle dark mode" title="Toggle theme">
-        {theme.mode === 'dark' ? '☀' : '☾'}
+      <button
+        class="theme-toggle"
+        onclick={toggleTheme}
+        aria-label="Toggle dark mode"
+        title="Toggle theme"
+      >
+        {theme.mode === "dark" ? "☀" : "☾"}
       </button>
-      {#if root === 'mobile'}
-        <button class="plugin-btn" onclick={() => pluginStoreOpen = true} aria-label="Plugin store" title="Plugin store">
+      {#if root === "mobile"}
+        <button
+          class="plugin-btn"
+          onclick={() => (pluginStoreOpen = true)}
+          aria-label="Plugin store"
+          title="Plugin store"
+        >
           ⚡
         </button>
       {/if}
@@ -795,145 +937,208 @@
         type="button"
         class="hint-btn"
         title="Tap for on-device debug log (replaces Chrome inspect)"
-        onclick={() => (debugOpen = !debugOpen)}
-      >{debugOpen ? '▾ log' : '▸ log'}</button>
-      <button class="mode-toggle" onclick={() => mode = mode === 'view' ? 'browse' : 'view'} aria-label="Toggle browse mode" title="Toggle browse mode">
-        {mode === 'view' ? '▦' : '↩'}
+        onclick={() => (debugOpen = !debugOpen)}>{debugOpen ? "▾ log" : "▸ log"}</button
+      >
+      <button
+        class="mode-toggle"
+        onclick={() => (mode = mode === "view" ? "browse" : "view")}
+        aria-label="Toggle browse mode"
+        title="Toggle browse mode"
+      >
+        {mode === "view" ? "▦" : "↩"}
       </button>
     </div>
   </header>
 
   <main>
-    {#if mode === 'browse'}
-      <GridView root={root} onPick={(f) => { mode = 'view'; pickFile(f); }} />
+    {#if mode === "browse"}
+      <GridView
+        {root}
+        onPick={(f) => {
+          mode = "view";
+          pickFile(f);
+        }}
+      />
     {:else if !busy && !error && !doc}
       <Onboarding />
       <p class="empty">Drop a file or pick one — everything opens.</p>
-      <GridView root={root} onPick={(f) => { mode = 'view'; pickFile(f); }} />
+      <GridView
+        {root}
+        onPick={(f) => {
+          mode = "view";
+          pickFile(f);
+        }}
+      />
     {:else if busy}
-      <p class="status">{busyHint || 'Reading file…'}</p>
+      <p class="status">{busyHint || "Reading file…"}</p>
     {:else if error}
       <pre class="error">{error}</pre>
     {:else if doc}
-      {#if doc.kind === 'text'}
+      {#if doc.kind === "text"}
         {#key docUri}
-        {#if docUri && /\.ics?$/i.test(docUri) && IcsViewer}
-          <IcsViewer {...(doc as any)} />
-        {:else if docUri && /\.vcf$/i.test(docUri) && VcfViewer}
-          <VcfViewer {...(doc as any)} />
-        {:else if docUri && /\.desktop$/i.test(docUri) && DesktopEntryViewer}
-          <DesktopEntryViewer {...(doc as any)} />
-        {:else}
-          <TextViewer {...(doc as any)} />
-        {/if}
+          {#if docUri && /\.ics?$/i.test(docUri) && IcsViewer}
+            <IcsViewer {...doc as any} />
+          {:else if docUri && /\.vcf$/i.test(docUri) && VcfViewer}
+            <VcfViewer {...doc as any} />
+          {:else if docUri && /\.desktop$/i.test(docUri) && DesktopEntryViewer}
+            <DesktopEntryViewer {...doc as any} />
+          {:else}
+            <TextViewer {...doc as any} />
+          {/if}
         {/key}
-      {:else if doc.kind === 'image' && docUri}
+      {:else if doc.kind === "image" && docUri}
         {#key docUri}
-        <ImageViewer uri={docUri} {...(doc as any)} />
+          <ImageViewer uri={docUri} {...doc as any} />
         {/key}
-      {:else if doc.kind === 'markdown' && MarkdownViewer}
+      {:else if doc.kind === "markdown" && MarkdownViewer}
         {#key docUri}
-        <MarkdownViewer {...(doc as any)} />
+          <MarkdownViewer {...doc as any} />
         {/key}
-      {:else if doc.kind === 'json' && JsonViewer}
+      {:else if doc.kind === "json" && JsonViewer}
         {#key docUri}
-        <JsonViewer {...(doc as any)} />
+          <JsonViewer {...doc as any} />
         {/key}
-      {:else if doc.kind === 'csv' && CsvViewer}
+      {:else if doc.kind === "csv" && CsvViewer}
         {#key docUri}
-        <CsvViewer {...(doc as any)} />
+          <CsvViewer {...doc as any} />
         {/key}
-      {:else if doc.kind === 'stream-file'}
+      {:else if doc.kind === "stream-file"}
         {#key docUri}
-        {#if PdfViewer}
-          <PdfViewer document={doc} source_uri={docUri ?? ''} />
-        {:else}
-          <p class="status">Loading PDF viewer…</p>
-        {/if}
+          {#if PdfViewer}
+            <PdfViewer document={doc} source_uri={docUri ?? ""} />
+          {:else}
+            <p class="status">Loading PDF viewer…</p>
+          {/if}
         {/key}
-      {:else if doc.kind === 'media'}
+      {:else if doc.kind === "media"}
         {#key docUri}
-        <MediaViewer uri={docUri ?? ''} {...(doc as any)} />
+          <MediaViewer uri={docUri ?? ""} {...doc as any} />
         {/key}
-      {:else if doc.kind === 'pdf' && PdfViewer}
+      {:else if doc.kind === "pdf" && PdfViewer}
         {#key docUri}
-        <PdfViewer document={doc} source_uri={docUri ?? ''} />
+          <PdfViewer document={doc} source_uri={docUri ?? ""} />
         {/key}
-      {:else if (doc.kind === 'epub' || doc.kind === 'mobi' || doc.kind === 'azw3') && EpubViewer}
+      {:else if (doc.kind === "epub" || doc.kind === "mobi" || doc.kind === "azw3") && EpubViewer}
         {#key docUri}
-        <EpubViewer {...(doc as any)} uri={docUri ?? ''} onclose={() => { doc = null; }} />
+          <EpubViewer
+            {...doc as any}
+            uri={docUri ?? ""}
+            onclose={() => {
+              doc = null;
+            }}
+          />
         {/key}
-      {:else if doc.kind === 'archive' && ArchiveViewer}
+      {:else if doc.kind === "archive" && ArchiveViewer}
         {#key docUri}
-        <ArchiveViewer {...(doc as any)} name={pendingName ?? ''} uri={docUri ?? ''} />
+          <ArchiveViewer {...doc as any} name={pendingName ?? ""} uri={docUri ?? ""} />
         {/key}
       {:else if isOfficePluginHtml()}
         {#key docUri}
-        <div class="plugin-renderer-shell">
-        <div class="runtime-bar plugin-runtime-bar">
-          <button type="button" onclick={() => officeRuntimeChooserOpen = true}>Runtime: {selectedOfficePlugin?.name ?? 'Office plugin'}</button>
-          {#if officePluginNotice}<span>{officePluginNotice}</span>{/if}
-          {#if officeFidelity}<span class="fidelity">{officeFidelity}</span>{/if}
-          {#if officeWarnings.length > 0}<details class="warnings"><summary>{officeWarnings.length} warning(s)</summary><ul>{#each officeWarnings as w}<li>{w}</li>{/each}</ul></details>{/if}
-        </div>
-        <OfficePluginHtmlViewer document={doc} />
-        </div>
+          <div class="plugin-renderer-shell">
+            <div class="runtime-bar plugin-runtime-bar">
+              <button type="button" onclick={() => (officeRuntimeChooserOpen = true)}
+                >Runtime: {selectedOfficePlugin?.name ?? "Office plugin"}</button
+              >
+              {#if officePluginNotice}<span>{officePluginNotice}</span>{/if}
+              {#if officeFidelity}<span class="fidelity">{officeFidelity}</span>{/if}
+              {#if officeWarnings.length > 0}<details class="warnings">
+                  <summary>{officeWarnings.length} warning(s)</summary>
+                  <ul>
+                    {#each officeWarnings as w}<li>{w}</li>{/each}
+                  </ul>
+                </details>{/if}
+            </div>
+            <OfficePluginHtmlViewer document={doc} />
+          </div>
         {/key}
-      {:else if doc.kind === 'pptx' && PptxViewer}
+      {:else if doc.kind === "pptx" && PptxViewer}
         {#key docUri}
-        <div class:plugin-renderer-shell={isPluginRendered()}>
-        <div class="runtime-bar" class:plugin-runtime-bar={isPluginRendered()}>
-          <button type="button" onclick={() => officeRuntimeChooserOpen = true}>Runtime: {selectedOfficePlugin?.name ?? 'Built-in lightweight viewer'}</button>
-          {#if officePluginNotice}<span>{officePluginNotice}</span>{/if}
-          {#if officeFidelity}<span class="fidelity">{officeFidelity}</span>{/if}
-          {#if officeWarnings.length > 0}<details class="warnings"><summary>{officeWarnings.length} warning(s)</summary><ul>{#each officeWarnings as w}<li>{w}</li>{/each}</ul></details>{/if}
-        </div>
-        {#if PptxVanillaViewer && pptxVanillaPlugin}
-          <PptxVanillaViewer document={doc} source_uri={docUri ?? ''} plugin={pptxVanillaPlugin} />
-        {:else}
-          {#if (doc as any).html}<div class="plugin-html-surface">{@html (doc as any).html}</div>{:else}<PptxViewer document={doc} source_uri={docUri ?? ''} />{/if}
-        {/if}
-        </div>
+          <div class:plugin-renderer-shell={isPluginRendered()}>
+            <div class="runtime-bar" class:plugin-runtime-bar={isPluginRendered()}>
+              <button type="button" onclick={() => (officeRuntimeChooserOpen = true)}
+                >Runtime: {selectedOfficePlugin?.name ?? "Built-in lightweight viewer"}</button
+              >
+              {#if officePluginNotice}<span>{officePluginNotice}</span>{/if}
+              {#if officeFidelity}<span class="fidelity">{officeFidelity}</span>{/if}
+              {#if officeWarnings.length > 0}<details class="warnings">
+                  <summary>{officeWarnings.length} warning(s)</summary>
+                  <ul>
+                    {#each officeWarnings as w}<li>{w}</li>{/each}
+                  </ul>
+                </details>{/if}
+            </div>
+            {#if PptxVanillaViewer && pptxVanillaPlugin}
+              <PptxVanillaViewer
+                document={doc}
+                source_uri={docUri ?? ""}
+                plugin={pptxVanillaPlugin}
+              />
+            {:else if (doc as any).html}<div class="plugin-html-surface">
+                {@html (doc as any).html}
+              </div>{:else}<PptxViewer document={doc} source_uri={docUri ?? ""} />{/if}
+          </div>
         {/key}
-      {:else if doc.kind === 'docx' && (officeExt() === 'odt' || officeExt() === 'ott' ? DocxViewer : DocxPreview)}
+      {:else if doc.kind === "docx" && (officeExt() === "odt" || officeExt() === "ott" ? DocxViewer : DocxPreview)}
         {#key docUri}
-        <div class="plugin-renderer-shell">
-        <div class="runtime-bar plugin-runtime-bar">
-          <button type="button" onclick={() => officeRuntimeChooserOpen = true}>Runtime: {selectedOfficePlugin?.name ?? 'Office Universal'}</button>
-          {#if officePluginNotice}<span>{officePluginNotice}</span>{/if}
-          {#if officeFidelity}<span class="fidelity">{officeFidelity}</span>{/if}
-          {#if officeWarnings.length > 0}<details class="warnings"><summary>{officeWarnings.length} warning(s)</summary><ul>{#each officeWarnings as w}<li>{w}</li>{/each}</ul></details>{/if}
-        </div>
-        {#if officeExt() === 'odt' || officeExt() === 'ott'}
-          <DocxViewer document={doc} />
-        {:else}
-          <DocxPreview source_uri={docUri ?? ''} />
-        {/if}
-        </div>
+          <div class="plugin-renderer-shell">
+            <div class="runtime-bar plugin-runtime-bar">
+              <button type="button" onclick={() => (officeRuntimeChooserOpen = true)}
+                >Runtime: {selectedOfficePlugin?.name ?? "Office Universal"}</button
+              >
+              {#if officePluginNotice}<span>{officePluginNotice}</span>{/if}
+              {#if officeFidelity}<span class="fidelity">{officeFidelity}</span>{/if}
+              {#if officeWarnings.length > 0}<details class="warnings">
+                  <summary>{officeWarnings.length} warning(s)</summary>
+                  <ul>
+                    {#each officeWarnings as w}<li>{w}</li>{/each}
+                  </ul>
+                </details>{/if}
+            </div>
+            {#if officeExt() === "odt" || officeExt() === "ott"}
+              <DocxViewer document={doc} />
+            {:else}
+              <DocxPreview source_uri={docUri ?? ""} />
+            {/if}
+          </div>
         {/key}
-      {:else if doc.kind === 'xlsx' && XlsxViewer}
+      {:else if doc.kind === "xlsx" && XlsxViewer}
         {#key docUri}
-        <div class:plugin-renderer-shell={isPluginRendered()}>
-        <div class="runtime-bar" class:plugin-runtime-bar={isPluginRendered()}>
-          <button type="button" onclick={() => officeRuntimeChooserOpen = true}>Runtime: {selectedOfficePlugin?.name ?? 'Built-in lightweight viewer'}</button>
-          {#if officePluginNotice}<span>{officePluginNotice}</span>{/if}
-          {#if officeFidelity}<span class="fidelity">{officeFidelity}</span>{/if}
-          {#if officeWarnings.length > 0}<details class="warnings"><summary>{officeWarnings.length} warning(s)</summary><ul>{#each officeWarnings as w}<li>{w}</li>{/each}</ul></details>{/if}
-        </div>
-        {#if (doc as any).html}<div class="plugin-html-surface">{@html (doc as any).html}</div>{:else}<XlsxViewer document={doc} />{/if}
-        </div>
+          <div class:plugin-renderer-shell={isPluginRendered()}>
+            <div class="runtime-bar" class:plugin-runtime-bar={isPluginRendered()}>
+              <button type="button" onclick={() => (officeRuntimeChooserOpen = true)}
+                >Runtime: {selectedOfficePlugin?.name ?? "Built-in lightweight viewer"}</button
+              >
+              {#if officePluginNotice}<span>{officePluginNotice}</span>{/if}
+              {#if officeFidelity}<span class="fidelity">{officeFidelity}</span>{/if}
+              {#if officeWarnings.length > 0}<details class="warnings">
+                  <summary>{officeWarnings.length} warning(s)</summary>
+                  <ul>
+                    {#each officeWarnings as w}<li>{w}</li>{/each}
+                  </ul>
+                </details>{/if}
+            </div>
+            {#if (doc as any).html}<div class="plugin-html-surface">
+                {@html (doc as any).html}
+              </div>{:else}<XlsxViewer document={doc} />{/if}
+          </div>
         {/key}
-      {:else if doc.kind === 'unsupported'}
+      {:else if doc.kind === "unsupported"}
         {#key docUri}
-        <UnsupportedViewer uri={docUri ?? undefined} document={doc} onPluginInstalled={() => { if (docUri) load(docUri); }} />
+          <UnsupportedViewer
+            uri={docUri ?? undefined}
+            document={doc}
+            onPluginInstalled={() => {
+              if (docUri) load(docUri);
+            }}
+          />
         {/key}
-      {:else if doc.kind === 'font' && FontViewer}
+      {:else if doc.kind === "font" && FontViewer}
         {#key docUri}
-        <FontViewer {...(doc as any)} />
+          <FontViewer {...doc as any} />
         {/key}
-      {:else if doc.kind === 'placeholder'}
+      {:else if doc.kind === "placeholder"}
         {#key docUri}
-        <PlaceholderViewer document={doc} />
+          <PlaceholderViewer document={doc} />
         {/key}
       {:else}
         <p class="error">Unknown document kind: <code>{(doc as any).kind}</code></p>
@@ -943,21 +1148,23 @@
     {/if}
   </main>
   <DebugPanel bind:open={debugOpen} />
-  <PluginStore open={pluginStoreOpen} onClose={() => pluginStoreOpen = false} />
+  <PluginStore open={pluginStoreOpen} onClose={() => (pluginStoreOpen = false)} />
   <RuntimeChooser
     open={officeRuntimeChooserOpen}
-    uri={docUri ?? ''}
-    name={(docUri ?? 'Office file').split('/').pop() ?? 'Office file'}
+    uri={docUri ?? ""}
+    name={(docUri ?? "Office file").split("/").pop() ?? "Office file"}
     ext={officeExt()}
     builtInLabel="Built-in lightweight Office viewer"
-    onClose={() => officeRuntimeChooserOpen = false}
+    onClose={() => (officeRuntimeChooserOpen = false)}
     onUseBuiltIn={chooseBuiltInOfficeRuntime}
     onUseInstalledPlugin={chooseOfficePlugin}
   />
 </div>
 
 <style>
-  :global(*) { box-sizing: border-box; }
+  :global(*) {
+    box-sizing: border-box;
+  }
   :global(:root) {
     --text-primary: #222;
     --text-secondary: #888;
@@ -965,7 +1172,7 @@
     --bg-secondary: #f7f7f7;
     --border: #ddd;
     --error: #b22;
-    --link: #124FC2;
+    --link: #124fc2;
   }
   :global([data-theme="dark"]) {
     --text-primary: #e8e8e8;
@@ -976,35 +1183,120 @@
     --error: #ff6b6b;
     --link: #6ea8ff;
   }
-  :global(body) { margin: 0; font-family: system-ui, sans-serif; color: var(--text-primary); background: var(--bg-primary); }
-  .viewit-root { display: flex; flex-direction: column; min-height: 100vh; }
-  header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: calc(0.5rem + env(safe-area-inset-top, 0px)) max(1rem, env(safe-area-inset-right, 0px)) 0.5rem max(1rem, env(safe-area-inset-left, 0px));
-    border-bottom: 1px solid var(--border); background: var(--bg-primary);
-    position: sticky; top: 0; z-index: 10;
+  :global(body) {
+    margin: 0;
+    font-family: system-ui, sans-serif;
+    color: var(--text-primary);
+    background: var(--bg-primary);
   }
-  header h1 { font-size: 1.2rem; margin: 0; letter-spacing: -0.01em; color: var(--text-primary); }
-  .header-actions { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
-  .hint-btn { font-size: 0.65rem; padding: 0.25rem 0.45rem; }
-  header button { cursor: pointer; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border); border-radius: 0.3rem; padding: 0.3rem 0.7rem; font-size: 0.85rem; }
-  header button:hover { background: var(--border); }
-  .theme-toggle { font-size: 1rem; padding: 0.3rem 0.5rem; }
-  .plugin-btn { font-size: 1rem; padding: 0.3rem 0.5rem; }
-  .mode-toggle { font-size: 1rem; padding: 0.3rem 0.5rem; }
+  .viewit-root {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: calc(0.5rem + env(safe-area-inset-top, 0px)) max(1rem, env(safe-area-inset-right, 0px))
+      0.5rem max(1rem, env(safe-area-inset-left, 0px));
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-primary);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  header h1 {
+    font-size: 1.2rem;
+    margin: 0;
+    letter-spacing: -0.01em;
+    color: var(--text-primary);
+  }
+  .header-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .hint-btn {
+    font-size: 0.65rem;
+    padding: 0.25rem 0.45rem;
+  }
+  header button {
+    cursor: pointer;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 0.3rem;
+    padding: 0.3rem 0.7rem;
+    font-size: 0.85rem;
+  }
+  header button:hover {
+    background: var(--border);
+  }
+  .theme-toggle {
+    font-size: 1rem;
+    padding: 0.3rem 0.5rem;
+  }
+  .plugin-btn {
+    font-size: 1rem;
+    padding: 0.3rem 0.5rem;
+  }
+  .mode-toggle {
+    font-size: 1rem;
+    padding: 0.3rem 0.5rem;
+  }
   main {
-    padding: 1rem max(1rem, env(safe-area-inset-right, 0px)) max(1rem, env(safe-area-inset-bottom, 0px)) max(1rem, env(safe-area-inset-left, 0px));
+    padding: 1rem max(1rem, env(safe-area-inset-right, 0px))
+      max(1rem, env(safe-area-inset-bottom, 0px)) max(1rem, env(safe-area-inset-left, 0px));
     flex: 1;
   }
-  .status, .empty { color: var(--text-secondary); font-style: italic; }
-  .error { color: var(--error); white-space: pre-wrap; }
-  .runtime-bar { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin: 0 0 0.75rem; color: var(--text-secondary); font-size: 0.8rem; }
-  .runtime-bar button { cursor: pointer; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-secondary); color: var(--text-primary); padding: 0.35rem 0.7rem; }
-  .runtime-bar span { flex: 1 1 18rem; }
-  .runtime-bar .fidelity { font-style: italic; opacity: 0.8; font-size: 0.72rem; }
-  .runtime-bar .warnings { font-size: 0.72rem; color: var(--text-secondary); }
-  .runtime-bar .warnings summary { cursor: pointer; }
-  .runtime-bar .warnings ul { margin: 0.25rem 0 0; padding-left: 1rem; max-width: 40rem; }
+  .status,
+  .empty {
+    color: var(--text-secondary);
+    font-style: italic;
+  }
+  .error {
+    color: var(--error);
+    white-space: pre-wrap;
+  }
+  .runtime-bar {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    flex-wrap: wrap;
+    margin: 0 0 0.75rem;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+  }
+  .runtime-bar button {
+    cursor: pointer;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    padding: 0.35rem 0.7rem;
+  }
+  .runtime-bar span {
+    flex: 1 1 18rem;
+  }
+  .runtime-bar .fidelity {
+    font-style: italic;
+    opacity: 0.8;
+    font-size: 0.72rem;
+  }
+  .runtime-bar .warnings {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+  }
+  .runtime-bar .warnings summary {
+    cursor: pointer;
+  }
+  .runtime-bar .warnings ul {
+    margin: 0.25rem 0 0;
+    padding-left: 1rem;
+    max-width: 40rem;
+  }
   .plugin-renderer-shell {
     display: grid;
     gap: 0.75rem;

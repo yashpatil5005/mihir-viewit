@@ -7,7 +7,7 @@
     header = [],
     preview_rows = [],
     total_rows_hint,
-    byte_len = 0
+    byte_len = 0,
   }: {
     header: string[];
     preview_rows: string[][];
@@ -20,7 +20,11 @@
 
 <article class="csv-viewer">
   <aside class="meta">
-    <strong>{knownTotal.toLocaleString()}{total_rows_hint == null ? '+ rows (previewing first ' + preview_rows.length + ')' : ' rows'}</strong>
+    <strong
+      >{knownTotal.toLocaleString()}{total_rows_hint == null
+        ? "+ rows (previewing first " + preview_rows.length + ")"
+        : " rows"}</strong
+    >
     · {byte_len.toLocaleString()} bytes · csv
   </aside>
   <div class="table-frame">
@@ -28,7 +32,7 @@
       <thead>
         <tr>
           {#each header as h, i}
-            <th>{h || '#' + i}</th>
+            <th>{h || "#" + i}</th>
           {/each}
         </tr>
       </thead>
@@ -46,11 +50,43 @@
 </article>
 
 <style>
-  .csv-viewer { padding: 0.5rem 1rem; }
-  .meta { color: var(--text-secondary); margin-bottom: 0.5rem; font-size: 0.75rem; }
-  .table-frame { overflow: auto; max-height: 75vh; border: 1px solid var(--border); border-radius: 0.4rem; }
-  table { border-collapse: collapse; width: 100%; font-family: ui-monospace, monospace; font-size: 0.85rem; }
-  th, td { border-bottom: 1px solid var(--border); padding: 0.3rem 0.6rem; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 30ch; }
-  th { background: var(--bg-secondary); font-weight: 600; position: sticky; top: 0; }
-  tr:nth-child(even) td { background: var(--bg-secondary); }
+  .csv-viewer {
+    padding: 0.5rem 1rem;
+  }
+  .meta {
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+    font-size: 0.75rem;
+  }
+  .table-frame {
+    overflow: auto;
+    max-height: 75vh;
+    border: 1px solid var(--border);
+    border-radius: 0.4rem;
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-family: ui-monospace, monospace;
+    font-size: 0.85rem;
+  }
+  th,
+  td {
+    border-bottom: 1px solid var(--border);
+    padding: 0.3rem 0.6rem;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 30ch;
+  }
+  th {
+    background: var(--bg-secondary);
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+  }
+  tr:nth-child(even) td {
+    background: var(--bg-secondary);
+  }
 </style>

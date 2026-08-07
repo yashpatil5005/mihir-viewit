@@ -1,0 +1,47 @@
+# Reverify that plugins/catalog.signed.json is a valid Ed25519 signature over
+# plugins/catalog.json using the project's public key.
+#
+# Trust model: the PRIVATE key must NEVER appear in CI. The public key is
+# supplied here from a repository/organization secret (VIEWIT_CATALOG_PUBKEY,
+# the base64-encoded Ed25519 verify key — see scripts/sign-catalog.py generate),
+# not committed to the tree. This gates every PR that touches the catalog.
+
+name: catalog-sign
+
+on:
+  pull_request:
+    paths:
+      - 'plugins/catalog.json'
+      - 'plugins/catalog.signed.json'
+      - 'scripts/sign-catalog.py'
+  push:
+    branches: [main, develop]
+    paths:
+      - 'plugins/catalog.json'
+      - 'plugins/catalog.signed.json'
+      - 'scripts/sign-catalog.py'
+  workflow_dispatch:
+
+jobs:
+  verify:
+    name: verify catalog signature
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - name: Install PyNaCl
+        run: python -m pip install pynacl
+      - name: Inject public key (from secret; never the private key)
+        env:
+          VIEWIT_CATALOG_PUBKEY: ${{ secrets.VIEWIT_CATALOG_PUBKEY }}
+        run: |
+          test -n "$VIEWIT_CATALOG_PUBKEY" || { echo "::error::VIEWIT_CATALOG_PUBKEY secret not configured"; exit 1; }
+          mkdir -p scripts
+          printf '%s' "$VIEWIT_CATALOG_PUBKEY" > scripts/.catalog-signing-key.pub
+      - name: Verify catalog signature
+        run: python3 scripts/sign-catalog.py verify

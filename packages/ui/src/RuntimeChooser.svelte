@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { openWithExternal } from '@viewit/platform';
+  import { openWithExternal } from "@viewit/platform";
   import {
     fetchPluginCatalogSources,
     formatPluginSize,
@@ -9,14 +9,14 @@
     listInstalledPlugins,
     pluginSupports,
     type PluginInfo,
-  } from './pluginBridge';
+  } from "./pluginBridge";
 
   let {
     open = false,
-    uri = '',
-    name = 'file',
-    ext = '',
-    builtInLabel = 'Built-in viewer',
+    uri = "",
+    name = "file",
+    ext = "",
+    builtInLabel = "Built-in viewer",
     onClose,
     onUseBuiltIn,
     onUseInstalledPlugin,
@@ -35,12 +35,12 @@
   let installing = $state<string | null>(null);
   let installed = $state<PluginInfo[]>([]);
   let downloadable = $state<PluginInfo[]>([]);
-  let errorMsg = $state('');
+  let errorMsg = $state("");
 
   async function refresh() {
     if (!open) return;
     loading = true;
-    errorMsg = '';
+    errorMsg = "";
     try {
       const allInstalled = await listInstalledPlugins();
       const catalog = (await fetchPluginCatalogSources()).flatMap((source) => source.plugins);
@@ -60,7 +60,7 @@
 
   async function installAndRefresh(plugin: PluginInfo) {
     installing = plugin.id;
-    errorMsg = '';
+    errorMsg = "";
     try {
       await installPlugin(plugin);
       await new Promise((resolve) => setTimeout(resolve, 3000));
@@ -105,7 +105,10 @@
         <button class="close" type="button" onclick={onClose} aria-label="Close">×</button>
       </header>
 
-      <p class="summary">Choose how ViewIt should handle <code>.{ext}</code>. Plugin sizes are optional downloads, not part of the base app.</p>
+      <p class="summary">
+        Choose how ViewIt should handle <code>.{ext}</code>. Plugin sizes are optional downloads,
+        not part of the base app.
+      </p>
 
       <button class="option primary" type="button" onclick={chooseBuiltIn}>
         <strong>{builtInLabel}</strong>
@@ -121,7 +124,7 @@
           {#each installed as plugin}
             <button class="option" type="button" onclick={() => chooseInstalled(plugin)}>
               <strong>{plugin.name}</strong>
-              <span>Installed plugin · {plugin.formats.join(', ')}</span>
+              <span>Installed plugin · {plugin.formats.join(", ")}</span>
             </button>
           {/each}
 
@@ -132,10 +135,18 @@
                   <strong>{plugin.name}</strong>
                   <span>{plugin.description}</span>
                   {#if plugin.sourceName}<small>{plugin.sourceName}</small>{/if}
-                  <small>{formatPluginSize(plugin.sizeBytes)} download{plugin.installedSizeBytes ? ` · ${formatPluginSize(plugin.installedSizeBytes)} installed` : ''}</small>
+                  <small
+                    >{formatPluginSize(plugin.sizeBytes)} download{plugin.installedSizeBytes
+                      ? ` · ${formatPluginSize(plugin.installedSizeBytes)} installed`
+                      : ""}</small
+                  >
                 </div>
-                <button type="button" onclick={() => installAndRefresh(plugin)} disabled={installing === plugin.id}>
-                  {installing === plugin.id ? 'Installing…' : 'Install'}
+                <button
+                  type="button"
+                  onclick={() => installAndRefresh(plugin)}
+                  disabled={installing === plugin.id}
+                >
+                  {installing === plugin.id ? "Installing…" : "Install"}
                 </button>
               </div>
             {/if}
@@ -147,7 +158,14 @@
         {/if}
       {/if}
 
-      <button class="option external" type="button" onclick={() => { openWithExternal(uri); onClose(); }}>
+      <button
+        class="option external"
+        type="button"
+        onclick={() => {
+          openWithExternal(uri);
+          onClose();
+        }}
+      >
         <strong>Open with another app</strong>
         <span>Use Android or the host OS if ViewIt cannot handle this file.</span>
       </button>
@@ -156,22 +174,127 @@
 {/if}
 
 <style>
-  .overlay { position: fixed; inset: 0; z-index: 1100; background: rgba(0, 0, 0, 0.58); display: grid; place-items: center; padding: 1rem; }
-  .chooser { width: min(94vw, 34rem); max-height: 86vh; overflow: auto; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border); border-radius: 1rem; box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, 0.35); padding: 1rem; }
-  header { display: flex; justify-content: space-between; gap: 1rem; align-items: start; margin-bottom: 0.75rem; }
-  .eyebrow { margin: 0 0 0.2rem; color: var(--text-secondary); font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; }
-  h2 { margin: 0; font-size: 1.15rem; }
-  .close { border: 0; background: transparent; color: var(--text-secondary); font-size: 1.5rem; cursor: pointer; }
-  .summary, .muted { color: var(--text-secondary); font-size: 0.86rem; line-height: 1.45; }
-  code { background: var(--bg-secondary); padding: 0.08rem 0.24rem; border-radius: 0.25rem; }
-  .option { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 1rem; text-align: left; border: 1px solid var(--border); background: var(--bg-secondary); color: var(--text-primary); border-radius: 0.75rem; padding: 0.8rem; margin: 0.55rem 0; cursor: pointer; }
-  .option strong { display: block; font-size: 0.94rem; }
-  .option span, .option small { display: block; color: var(--text-secondary); font-size: 0.78rem; line-height: 1.35; margin-top: 0.16rem; }
-  .primary { border-color: var(--link); background: color-mix(in srgb, var(--link) 10%, var(--bg-primary)); }
-  .external { border-style: dashed; }
-  .download { cursor: default; }
-  .download button { flex: 0 0 auto; border: 0; border-radius: 0.55rem; padding: 0.48rem 0.8rem; background: var(--link); color: white; font-weight: 700; cursor: pointer; }
-  .download button:disabled { opacity: 0.65; cursor: wait; }
-  .error { color: var(--error); background: var(--bg-secondary); border-radius: 0.6rem; padding: 0.65rem; font-size: 0.82rem; }
-  @media (max-width: 520px) { .download { align-items: stretch; flex-direction: column; } .download button { width: 100%; } }
+  .overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1100;
+    background: rgba(0, 0, 0, 0.58);
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+  }
+  .chooser {
+    width: min(94vw, 34rem);
+    max-height: 86vh;
+    overflow: auto;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+    box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, 0.35);
+    padding: 1rem;
+  }
+  header {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: start;
+    margin-bottom: 0.75rem;
+  }
+  .eyebrow {
+    margin: 0 0 0.2rem;
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  h2 {
+    margin: 0;
+    font-size: 1.15rem;
+  }
+  .close {
+    border: 0;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 1.5rem;
+    cursor: pointer;
+  }
+  .summary,
+  .muted {
+    color: var(--text-secondary);
+    font-size: 0.86rem;
+    line-height: 1.45;
+  }
+  code {
+    background: var(--bg-secondary);
+    padding: 0.08rem 0.24rem;
+    border-radius: 0.25rem;
+  }
+  .option {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    text-align: left;
+    border: 1px solid var(--border);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border-radius: 0.75rem;
+    padding: 0.8rem;
+    margin: 0.55rem 0;
+    cursor: pointer;
+  }
+  .option strong {
+    display: block;
+    font-size: 0.94rem;
+  }
+  .option span,
+  .option small {
+    display: block;
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    line-height: 1.35;
+    margin-top: 0.16rem;
+  }
+  .primary {
+    border-color: var(--link);
+    background: color-mix(in srgb, var(--link) 10%, var(--bg-primary));
+  }
+  .external {
+    border-style: dashed;
+  }
+  .download {
+    cursor: default;
+  }
+  .download button {
+    flex: 0 0 auto;
+    border: 0;
+    border-radius: 0.55rem;
+    padding: 0.48rem 0.8rem;
+    background: var(--link);
+    color: white;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .download button:disabled {
+    opacity: 0.65;
+    cursor: wait;
+  }
+  .error {
+    color: var(--error);
+    background: var(--bg-secondary);
+    border-radius: 0.6rem;
+    padding: 0.65rem;
+    font-size: 0.82rem;
+  }
+  @media (max-width: 520px) {
+    .download {
+      align-items: stretch;
+      flex-direction: column;
+    }
+    .download button {
+      width: 100%;
+    }
+  }
 </style>

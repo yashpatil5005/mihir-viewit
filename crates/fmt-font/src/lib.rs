@@ -1,7 +1,7 @@
 //! Font metadata extraction for TTF/OTF/WOFF via `ttf-parser`.
 
+use base64::{engine::general_purpose, Engine as _};
 use viewit_core_types::{Document, Error, Format};
-use base64::{Engine as _, engine::general_purpose};
 
 pub fn parse(bytes: &[u8], format: Format, _name: &str) -> Result<Document, Error> {
     let face = ttf_parser::Face::parse(bytes, 0)

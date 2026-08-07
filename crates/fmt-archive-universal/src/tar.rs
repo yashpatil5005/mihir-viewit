@@ -1,6 +1,6 @@
+use crate::{ArchiveManifest, Error, InternalArchiveEntry};
 use std::io::{Read, Seek};
 use tar::Archive;
-use crate::{ArchiveManifest, InternalArchiveEntry, Error};
 
 pub fn list_tar<R: Read + Seek + Send>(reader: R, gzipped: bool) -> Result<ArchiveManifest, Error> {
     let mut archive: Archive<Box<dyn Read + Send>> = if gzipped {
@@ -18,28 +18,39 @@ pub fn list_tar<R: Read + Seek + Send>(reader: R, gzipped: bool) -> Result<Archi
     };
 
     let mut entries = Vec::new();
-    for entry in archive.entries()
+    for entry in archive
+        .entries()
         .map_err(|e| Error::Parse(format!("tar: {}", e)))?
     {
         let entry = entry.map_err(|e| Error::Parse(format!("tar entry: {}", e)))?;
         let header = entry.header();
 
-        let name = header.path()
+        let name = header
+            .path()
             .map_err(|e| Error::Parse(format!("tar path: {}", e)))?
             .to_string_lossy()
             .into_owned();
 
-        let size = header.size()
+        let size = header
+            .size()
             .map_err(|e| Error::Parse(format!("tar size: {}", e)))?;
         let is_dir = header.entry_type().is_dir();
         let compressed_size = size;
-        let modified: Option<i64> = Some(header.mtime()
-            .map_err(|e| Error::Parse(format!("tar mtime: {}", e)))? as i64);
+        let modified: Option<i64> = Some(
+            header
+                .mtime()
+                .map_err(|e| Error::Parse(format!("tar mtime: {}", e)))? as i64,
+        );
         let method = Some(if gzipped { "gzip" } else { "tar" }.to_string());
 
         let mut entry_data = InternalArchiveEntry::with_metadata(
-            name, size, compressed_size, is_dir,
-            modified, None, method
+            name,
+            size,
+            compressed_size,
+            is_dir,
+            modified,
+            None,
+            method,
         );
 
         if !is_dir {
@@ -55,17 +66,26 @@ pub fn list_tar<R: Read + Seek + Send>(reader: R, gzipped: bool) -> Result<Archi
 }
 
 fn is_nested_archive(name: &str) -> bool {
-    name.ends_with(".tar.gz") || name.ends_with(".tgz") ||
-    name.ends_with(".tar.bz2") || name.ends_with(".tbz2") ||
-    name.ends_with(".tar.xz") || name.ends_with(".txz") ||
-    name.ends_with(".tar.zst") || name.ends_with(".tzst") ||
-    name.ends_with(".tar.lz4") ||
-    name.ends_with(".tar.lzma") || name.ends_with(".tlz") ||
-    name.ends_with(".zip") || name.ends_with(".7z") ||
-    name.ends_with(".rar") || name.ends_with(".gz") ||
-    name.ends_with(".bz2") || name.ends_with(".xz") ||
-    name.ends_with(".zst") || name.ends_with(".lz4") ||
-    name.ends_with(".lzma")
+    name.ends_with(".tar.gz")
+        || name.ends_with(".tgz")
+        || name.ends_with(".tar.bz2")
+        || name.ends_with(".tbz2")
+        || name.ends_with(".tar.xz")
+        || name.ends_with(".txz")
+        || name.ends_with(".tar.zst")
+        || name.ends_with(".tzst")
+        || name.ends_with(".tar.lz4")
+        || name.ends_with(".tar.lzma")
+        || name.ends_with(".tlz")
+        || name.ends_with(".zip")
+        || name.ends_with(".7z")
+        || name.ends_with(".rar")
+        || name.ends_with(".gz")
+        || name.ends_with(".bz2")
+        || name.ends_with(".xz")
+        || name.ends_with(".zst")
+        || name.ends_with(".lz4")
+        || name.ends_with(".lzma")
 }
 
 pub fn extract_entry<R: Read + Seek>(
@@ -75,12 +95,14 @@ pub fn extract_entry<R: Read + Seek>(
 ) -> Result<Vec<u8>, Error> {
     let mut archive = Archive::new(Box::new(reader));
 
-    for entry in archive.entries()
+    for entry in archive
+        .entries()
         .map_err(|e| Error::Parse(format!("tar: {}", e)))?
     {
         let mut entry = entry.map_err(|e| Error::Parse(format!("tar entry: {}", e)))?;
         let header = entry.header();
-        let name = header.path()
+        let name = header
+            .path()
             .map_err(|e| Error::Parse(format!("tar path: {}", e)))?
             .to_string_lossy()
             .into_owned();
@@ -107,12 +129,14 @@ pub fn extract_all<R: Read + Seek>(
     let mut archive = Archive::new(Box::new(reader));
     let mut results = Vec::new();
 
-    for entry in archive.entries()
+    for entry in archive
+        .entries()
         .map_err(|e| Error::Parse(format!("tar: {}", e)))?
     {
         let mut entry = entry.map_err(|e| Error::Parse(format!("tar entry: {}", e)))?;
         let header = entry.header();
-        let name = header.path()
+        let name = header
+            .path()
             .map_err(|e| Error::Parse(format!("tar path: {}", e)))?
             .to_string_lossy()
             .into_owned();

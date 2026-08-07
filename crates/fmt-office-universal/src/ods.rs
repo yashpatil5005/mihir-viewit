@@ -127,9 +127,8 @@ impl SheetAcc {
                 .clone()
                 .or_else(|| non_empty(&self.cell_text))
                 .unwrap_or_default(),
-            Some("boolean") | Some("date") | Some("time") | Some("float") | Some("currency") | Some("percentage") => {
-                self.cell_value.clone().unwrap_or_default()
-            }
+            Some("boolean") | Some("date") | Some("time") | Some("float") | Some("currency")
+            | Some("percentage") => self.cell_value.clone().unwrap_or_default(),
             _ => self
                 .cell_value
                 .clone()
@@ -167,7 +166,8 @@ impl SheetAcc {
     fn end_row(&mut self) {
         self.in_row = false;
         if self.row_has_content {
-            self.content_rows_max = std::cmp::max(self.content_rows_max, self.cur_abs_row + self.row_repeat);
+            self.content_rows_max =
+                std::cmp::max(self.content_rows_max, self.cur_abs_row + self.row_repeat);
             self.row_has_content = false;
         }
         let remaining_window = MAX_PREVIEW_ROWS.saturating_sub(self.cur_abs_row);
@@ -233,7 +233,7 @@ fn push_sheet(a: SheetAcc, sheets: &mut Vec<XlsxSheet>) {
     if sheets.len() >= MAX_SHEETS {
         return;
     }
-    let emit_cols = a.content_cols_max.max(1).min(MAX_EMIT_COLS);
+    let emit_cols = a.content_cols_max.clamp(1, MAX_EMIT_COLS);
     let trimmed_len = a.rows.len().min(a.content_rows_max);
     if trimmed_len == 0 {
         return;
@@ -409,7 +409,11 @@ fn push_spaces(text: &mut String, e: &quick_xml::events::BytesStart<'_>) {
         .attributes()
         .flatten()
         .find(|attr| attr.key.as_ref() == b"text:c")
-        .and_then(|attr| String::from_utf8_lossy(attr.value.as_ref()).parse::<usize>().ok())
+        .and_then(|attr| {
+            String::from_utf8_lossy(attr.value.as_ref())
+                .parse::<usize>()
+                .ok()
+        })
         .unwrap_or(1)
         .min(64);
     for _ in 0..count {
@@ -507,7 +511,12 @@ mod tests {
         assert_eq!(s1.total_cols_hint, Some(4));
         assert_eq!(
             s1.preview_rows[0],
-            vec!["x".to_string(), "x".to_string(), "x".to_string(), "y".to_string()]
+            vec![
+                "x".to_string(),
+                "x".to_string(),
+                "x".to_string(),
+                "y".to_string()
+            ]
         );
     }
 

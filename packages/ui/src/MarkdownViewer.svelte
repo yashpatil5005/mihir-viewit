@@ -12,7 +12,7 @@
 
   let {
     html,
-    byte_len = 0
+    byte_len = 0,
   }: {
     html: string;
     byte_len?: number;
@@ -28,20 +28,76 @@
 </article>
 
 <style>
-  .markdown-viewer { padding: 1rem 2rem; max-width: 70ch; margin: 0 auto; color: var(--text-primary); }
-  .meta { color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.75rem; }
-  .prose :global(h1) { font-size: 1.8rem; margin: 1.5rem 0 0.75rem; }
-  .prose :global(h2) { font-size: 1.45rem; margin: 1.25rem 0 0.6rem; }
-  .prose :global(h3) { font-size: 1.2rem; margin: 1rem 0 0.5rem; }
-  .prose :global(p) { margin: 0.6rem 0; line-height: 1.6; }
-  .prose :global(pre) { background: var(--bg-secondary); padding: 0.75rem 1rem; border-radius: 0.4rem; overflow: auto; }
-  .prose :global(code) { background: var(--bg-secondary); padding: 0.1rem 0.3rem; border-radius: 0.2rem; font-family: ui-monospace, monospace; }
-  .prose :global(pre code) { background: transparent; padding: 0; }
-  .prose :global(blockquote) { border-left: 3px solid var(--border); margin-left: 0; padding-left: 1rem; color: var(--text-secondary); }
-  .prose :global(table) { border-collapse: collapse; }
-  .prose :global(th), .prose :global(td) { border: 1px solid var(--border); padding: 0.4rem 0.6rem; }
-  .prose :global(a) { color: var(--link); text-decoration: none; }
-  .prose :global(a:hover) { text-decoration: underline; }
-  .prose :global(ul), .prose :global(ol) { padding-left: 1.5rem; }
-  .prose :global(li) { margin: 0.2rem 0; line-height: 1.5; }
+  .markdown-viewer {
+    padding: 1rem 2rem;
+    max-width: 70ch;
+    margin: 0 auto;
+    color: var(--text-primary);
+  }
+  .meta {
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+    font-size: 0.75rem;
+  }
+  .prose :global(h1) {
+    font-size: 1.8rem;
+    margin: 1.5rem 0 0.75rem;
+  }
+  .prose :global(h2) {
+    font-size: 1.45rem;
+    margin: 1.25rem 0 0.6rem;
+  }
+  .prose :global(h3) {
+    font-size: 1.2rem;
+    margin: 1rem 0 0.5rem;
+  }
+  .prose :global(p) {
+    margin: 0.6rem 0;
+    line-height: 1.6;
+  }
+  .prose :global(pre) {
+    background: var(--bg-secondary);
+    padding: 0.75rem 1rem;
+    border-radius: 0.4rem;
+    overflow: auto;
+  }
+  .prose :global(code) {
+    background: var(--bg-secondary);
+    padding: 0.1rem 0.3rem;
+    border-radius: 0.2rem;
+    font-family: ui-monospace, monospace;
+  }
+  .prose :global(pre code) {
+    background: transparent;
+    padding: 0;
+  }
+  .prose :global(blockquote) {
+    border-left: 3px solid var(--border);
+    margin-left: 0;
+    padding-left: 1rem;
+    color: var(--text-secondary);
+  }
+  .prose :global(table) {
+    border-collapse: collapse;
+  }
+  .prose :global(th),
+  .prose :global(td) {
+    border: 1px solid var(--border);
+    padding: 0.4rem 0.6rem;
+  }
+  .prose :global(a) {
+    color: var(--link);
+    text-decoration: none;
+  }
+  .prose :global(a:hover) {
+    text-decoration: underline;
+  }
+  .prose :global(ul),
+  .prose :global(ol) {
+    padding-left: 1.5rem;
+  }
+  .prose :global(li) {
+    margin: 0.2rem 0;
+    line-height: 1.5;
+  }
 </style>

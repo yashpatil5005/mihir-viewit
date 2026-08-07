@@ -462,7 +462,10 @@ pub fn open_from_uri(
         let (stream_url, asset_path) = match materialize_cached_stream(app, &uri, "pdf") {
             Ok(v) => v,
             Err(e) => {
-                eprintln!("[viewit] pdf materialize failed, falling back to raw stream: {}", e);
+                eprintln!(
+                    "[viewit] pdf materialize failed, falling back to raw stream: {}",
+                    e
+                );
                 let stream_url = build_stream_url(app, &uri);
                 (stream_url, String::new())
             }
@@ -535,22 +538,15 @@ pub fn open_from_uri(
                 let bytes = read_uri_bytes(app, &uri)?;
                 match viewit_fmt_image::decode_to_png(&bytes, format) {
                     Ok(png_bytes) => {
-                        let cache_dir = app
-                            .path()
-                            .app_cache_dir()
-                            .map_err(|e| e.to_string())?;
-                        std::fs::create_dir_all(&cache_dir)
-                            .map_err(|e| e.to_string())?;
-                        let cache_path =
-                            cache_dir.join(format!("{}_converted.png", display_name));
-                        std::fs::write(&cache_path, &png_bytes)
-                            .map_err(|e| e.to_string())?;
-                        let stream_url =
-                            crate::stream_server::register_cached_path(
-                                app,
-                                cache_path,
-                                "png".into(),
-                            );
+                        let cache_dir = app.path().app_cache_dir().map_err(|e| e.to_string())?;
+                        std::fs::create_dir_all(&cache_dir).map_err(|e| e.to_string())?;
+                        let cache_path = cache_dir.join(format!("{}_converted.png", display_name));
+                        std::fs::write(&cache_path, &png_bytes).map_err(|e| e.to_string())?;
+                        let stream_url = crate::stream_server::register_cached_path(
+                            app,
+                            cache_path,
+                            "png".into(),
+                        );
                         return Ok(Document::Image {
                             format,
                             byte_len: png_bytes.len(),

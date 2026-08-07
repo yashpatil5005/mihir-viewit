@@ -1,35 +1,35 @@
-use std::io::{Read, Seek, Cursor};
-use viewit_core_types::{Document, Error, Format};
 use crate::archive::ArchiveManifest as ManifestType;
+use std::io::{Cursor, Read, Seek};
+use viewit_core_types::{Document, Error, Format};
 
-pub mod entry;
 pub mod archive;
-pub mod zip;
-pub mod tar;
-pub mod gzip;
 #[cfg(feature = "bzip2")]
 pub mod bzip2;
-#[cfg(feature = "xz")]
-pub mod xz;
-#[cfg(feature = "zstd")]
-pub mod zstd;
+pub mod entry;
+pub mod gzip;
 #[cfg(feature = "lz4")]
 pub mod lz4;
 #[cfg(feature = "lzma")]
 pub mod lzma;
-#[cfg(feature = "sevenz")]
-pub mod sevenz;
+pub mod nested;
 #[cfg(feature = "rar")]
 pub mod rar;
-pub mod nested;
+#[cfg(feature = "sevenz")]
+pub mod sevenz;
+pub mod tar;
+#[cfg(feature = "xz")]
+pub mod xz;
+pub mod zip;
+#[cfg(feature = "zstd")]
+pub mod zstd;
 
 #[cfg(target_arch = "wasm32")]
 pub mod wasm_entry;
 
 // Re-export
-pub use viewit_core_types::ArchiveEntry;
 pub use crate::entry::ArchiveEntry as InternalArchiveEntry;
 pub use archive::ArchiveManifest;
+pub use viewit_core_types::ArchiveEntry;
 
 /// Streaming reader wrapper for HTTP Range support
 pub struct RangeReader<R: Read + Seek> {
@@ -41,7 +41,12 @@ pub struct RangeReader<R: Read + Seek> {
 
 impl<R: Read + Seek> RangeReader<R> {
     pub fn new(inner: R, start: u64, end: Option<u64>) -> std::io::Result<Self> {
-        let mut reader = Self { inner, start, end, pos: 0 };
+        let mut reader = Self {
+            inner,
+            start,
+            end,
+            pos: 0,
+        };
         reader.inner.seek(std::io::SeekFrom::Start(start))?;
         Ok(reader)
     }
@@ -70,7 +75,8 @@ impl<R: Read + Seek> Seek for RangeReader<R> {
     fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
         let new_pos = match pos {
             std::io::SeekFrom::Start(offset) => {
-                self.inner.seek(std::io::SeekFrom::Start(self.start + offset))?;
+                self.inner
+                    .seek(std::io::SeekFrom::Start(self.start + offset))?;
                 offset
             }
             std::io::SeekFrom::End(offset) => {
@@ -98,7 +104,8 @@ impl<R: Read + Seek> Seek for RangeReader<R> {
                         "seek before range start",
                     ));
                 }
-                self.inner.seek(std::io::SeekFrom::Start(self.start + target as u64))?;
+                self.inner
+                    .seek(std::io::SeekFrom::Start(self.start + target as u64))?;
                 target as u64
             }
         };
@@ -170,7 +177,10 @@ pub fn peek_format<R: Read + Seek>(reader: &mut R) -> std::io::Result<Format> {
 }
 
 /// Parse an archive from a streaming reader
-pub fn parse_stream<R: Read + Seek + Send>(mut reader: R, filename: &str) -> Result<ManifestType, Error> {
+pub fn parse_stream<R: Read + Seek + Send>(
+    mut reader: R,
+    filename: &str,
+) -> Result<ManifestType, Error> {
     let format = peek_format(&mut reader)?;
     let _ext = filename.split('.').next_back().unwrap_or("").to_lowercase();
 
@@ -300,7 +310,9 @@ pub fn parse(bytes: &[u8], format: Format, name: &str) -> Result<Document, Error
     let cursor = Cursor::new(bytes);
     let manifest = parse_stream(cursor, name)?;
 
-    let entries: Vec<ArchiveEntry> = manifest.entries.into_iter()
+    let entries: Vec<ArchiveEntry> = manifest
+        .entries
+        .into_iter()
         .map(|e| ArchiveEntry {
             name: e.name,
             size: e.size,

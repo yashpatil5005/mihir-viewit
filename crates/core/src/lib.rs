@@ -177,10 +177,10 @@ fn sniff_magic(bytes: &[u8], ext: &str) -> Option<Format> {
     }
     // RIFF container — AVI or WAVE audio
     if bytes.len() >= 12 && bytes[..4] == *b"RIFF" {
-        if &bytes[8..12] == *b"AVI " {
+        if bytes[8..12] == *b"AVI " {
             return Some(Format::Video);
         }
-        if &bytes[8..12] == *b"WAVE" {
+        if bytes[8..12] == *b"WAVE" {
             return Some(Format::Audio);
         }
     }
@@ -214,7 +214,10 @@ fn sniff_magic(bytes: &[u8], ext: &str) -> Option<Format> {
         [0x38, 0x42, 0x50, 0x53, ..] => Format::ImagePsd,
         // TIFF LE / BE (but check for RAW extensions first)
         [0x49, 0x49, 0x2A, 0x00, ..] | [0x4D, 0x4D, 0x00, 0x2A, ..] => {
-            if matches!(ext, "nef" | "cr2" | "cr3" | "arw" | "orf" | "rw2" | "raf" | "srw" | "pef" | "dng") {
+            if matches!(
+                ext,
+                "nef" | "cr2" | "cr3" | "arw" | "orf" | "rw2" | "raf" | "srw" | "pef" | "dng"
+            ) {
                 Format::ImageRaw
             } else {
                 Format::ImageTiff
@@ -437,7 +440,9 @@ fn sniff_ext(ext: &str) -> Format {
         "fb2" => Format::FictionBook,
         "lrf" | "pdb" | "snb" => Format::PalmDoc,
         // Fonts
-        "ttf" | "otf" | "woff" | "woff2" | "pfb" | "cff" | "dfont" | "sfd" | "ps" | "ttc" => Format::Font,
+        "ttf" | "otf" | "woff" | "woff2" | "pfb" | "cff" | "dfont" | "sfd" | "ps" | "ttc" => {
+            Format::Font
+        }
         "zip" => Format::ArchiveZip,
         "tar" => Format::ArchiveTar,
         "tgz" | "gz" => Format::ArchiveTarGz,
@@ -492,17 +497,13 @@ fn sniff_ext(ext: &str) -> Format {
 /// time, we return Placeholder instead — keeps the binary lean.
 pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<Document, Error> {
     match format {
-        Format::PlainText | Format::Code => {
-            return parse_text_like(bytes, format, name);
-        }
+        Format::PlainText | Format::Code => parse_text_like(bytes, format, name),
         Format::Markdown
         | Format::Json
         | Format::Csv
         | Format::Plist
         | Format::Ics
-        | Format::Vcf => {
-            return parse_text_like(bytes, format, name);
-        }
+        | Format::Vcf => parse_text_like(bytes, format, name),
         Format::Pdf => {
             #[cfg(feature = "fmt-pdf")]
             {
@@ -525,7 +526,7 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
             } else {
                 viewit_core_types::MediaKind::Audio
             };
-            return Ok(Document::Media {
+            Ok(Document::Media {
                 format,
                 media_kind: kind,
                 name: name.to_string(),
@@ -533,7 +534,7 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
                 asset_path: String::new(),
                 ext: ext.to_string(),
                 stream_url: None,
-            });
+            })
         }
         Format::ImagePng
         | Format::ImageJpg
@@ -548,13 +549,13 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
             // Per plan §5: native webview decoder. Rust emits the `Image`
             // variant; the frontend uses `<img src=...>` directly.
             // (Phase 2.1 — zero Rust deps added.)
-            return Ok(Document::Image {
+            Ok(Document::Image {
                 format,
                 byte_len: bytes.len(),
                 name: name.to_string(),
                 asset_path: String::new(),
                 stream_url: None,
-            });
+            })
         }
         Format::Epub | Format::Mobi | Format::Azw3 => {
             #[cfg(feature = "fmt-ebook")]
@@ -570,11 +571,11 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
         }
         Format::FictionBook | Format::PalmDoc => {
             // Non-EPUB/MOBI ebooks — show placeholder with format info
-            return Ok(Document::Placeholder {
+            Ok(Document::Placeholder {
                 format,
                 name: name.to_string(),
                 byte_len: bytes.len(),
-            });
+            })
         }
         Format::Font => {
             #[cfg(feature = "fmt-font")]
@@ -588,12 +589,20 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
                 byte_len: bytes.len(),
             });
         }
-        Format::ArchiveZip | Format::ArchiveTar | Format::ArchiveTarGz | Format::Archive7z
-        | Format::ArchiveTarBz2 | Format::ArchiveTarXz | Format::ArchiveTarZstd
-        | Format::ArchiveTarLz4 | Format::ArchiveTarLzma | Format::ArchiveRar => {
+        Format::ArchiveZip
+        | Format::ArchiveTar
+        | Format::ArchiveTarGz
+        | Format::Archive7z
+        | Format::ArchiveTarBz2
+        | Format::ArchiveTarXz
+        | Format::ArchiveTarZstd
+        | Format::ArchiveTarLz4
+        | Format::ArchiveTarLzma
+        | Format::ArchiveRar => {
             #[cfg(feature = "fmt-archive-universal")]
             {
-                return viewit_fmt_archive_universal::parse(bytes, format, name).map_err(Error::from_parse);
+                return viewit_fmt_archive_universal::parse(bytes, format, name)
+                    .map_err(Error::from_parse);
             }
             #[cfg(all(feature = "fmt-archive", not(feature = "fmt-archive-universal")))]
             {
@@ -629,7 +638,7 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
         Format::Rtf => {
             #[cfg(feature = "fmt-text")]
             {
-                return viewit_fmt_text::parse_text(bytes, format, name).map_err(Error::from_parse);
+                viewit_fmt_text::parse_text(bytes, format, name).map_err(Error::from_parse)
             }
             #[cfg(not(feature = "fmt-text"))]
             return Ok(Document::Placeholder {
@@ -658,7 +667,7 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
             } else {
                 format!("No handler for file extension '.{}'", ext)
             };
-            return Ok(Document::Unsupported {
+            Ok(Document::Unsupported {
                 format,
                 reason,
                 suggestion: if is_video_ext(ext) {
@@ -666,15 +675,13 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
                 } else {
                     Suggestion::None
                 },
-            });
-        }
-        _ => {
-            return Ok(Document::Unsupported {
-                format,
-                reason: format!("Unknown format in this build: {:?}", format),
-                suggestion: Suggestion::None,
             })
         }
+        _ => Ok(Document::Unsupported {
+            format,
+            reason: format!("Unknown format in this build: {:?}", format),
+            suggestion: Suggestion::None,
+        }),
     }
 }
 
@@ -684,7 +691,7 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
 fn parse_text_like(bytes: &[u8], format: Format, name: &str) -> Result<Document, Error> {
     #[cfg(feature = "fmt-text")]
     {
-        return viewit_fmt_text::parse_text(bytes, format, name).map_err(Error::from_parse);
+        viewit_fmt_text::parse_text(bytes, format, name).map_err(Error::from_parse)
     }
     #[cfg(not(feature = "fmt-text"))]
     {

@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { debugLogLines, debugLogClear } from '@viewit/platform';
+  import { debugLogLines, debugLogClear } from "@viewit/platform";
 
   let { open = $bindable(false) }: { open?: boolean } = $props();
-  let text = $state('');
+  let text = $state("");
 
   $effect(() => {
     if (!open) return;
     const tick = () => {
-      text = debugLogLines().join('\n') || '(no events yet — open a file)';
+      text = debugLogLines().join("\n") || "(no events yet — open a file)";
     };
     tick();
     const id = setInterval(tick, 500);
@@ -48,7 +48,10 @@
     background: #222;
     align-items: center;
   }
-  header button { font-size: 0.65rem; padding: 0.2rem 0.4rem; }
+  header button {
+    font-size: 0.65rem;
+    padding: 0.2rem 0.4rem;
+  }
   pre {
     margin: 0;
     padding: 0.5rem;

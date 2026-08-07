@@ -1,0 +1,17 @@
+{
+  "id": "<name>",
+  "name": "<Human Readable Name> Plugin",
+  "version": "0.1.0",
+  "description": "<what this plugin renders>",
+  "minAppVersion": 1,
+  "entryClass": "ai.viewit.plugins.<name>.<Name>Plugin",
+  "supportedFormats": ["png", "txt"],
+  "capabilities": ["document-render"],
+  "downloadUrl": "",
+  "sizeBytes": 0,
+  "installedSizeBytes": 0,
+  "checksum": "",
+  "abi": "arm64-v8a",
+  "abiVersion": 1,
+  "runtime": "native"
+}

@@ -1,7 +1,7 @@
 <script lang="ts">
   let { document: doc = {} }: { document?: any } = $props();
 
-  let html = $derived((doc.html ?? '') as string);
+  let html = $derived((doc.html ?? "") as string);
 </script>
 
 <article class="office-plugin-html-viewer">

@@ -71,10 +71,14 @@ async fn open_uri(
 }
 
 #[tauri::command]
-async fn decode_heic_to_data_url(app: tauri::AppHandle, asset_path: String, uri: Option<String>) -> Result<String, String> {
-    use tauri_plugin_fs::{FsExt, FilePath};
-    use std::str::FromStr;
+async fn decode_heic_to_data_url(
+    app: tauri::AppHandle,
+    asset_path: String,
+    uri: Option<String>,
+) -> Result<String, String> {
     use std::io::Read;
+    use std::str::FromStr;
+    use tauri_plugin_fs::{FilePath, FsExt};
     let data = if !asset_path.is_empty() && !asset_path.starts_with("content://") {
         let fp = std::path::PathBuf::from(&asset_path);
         std::fs::read(&fp).map_err(|e| format!("read HEIC: {e}"))?
@@ -86,9 +90,14 @@ async fn decode_heic_to_data_url(app: tauri::AppHandle, asset_path: String, uri:
             let fp = FilePath::from_str(u).map_err(|e| format!("parse URI: {e}"))?;
             let mut opts = tauri_plugin_fs::OpenOptions::new();
             opts.read(true);
-            let mut reader = app.fs().open(fp, opts).map_err(|e| format!("open HEIC via ContentResolver: {e}"))?;
+            let mut reader = app
+                .fs()
+                .open(fp, opts)
+                .map_err(|e| format!("open HEIC via ContentResolver: {e}"))?;
             let mut buf = Vec::new();
-            reader.read_to_end(&mut buf).map_err(|e| format!("read HEIC via ContentResolver: {e}"))?;
+            reader
+                .read_to_end(&mut buf)
+                .map_err(|e| format!("read HEIC via ContentResolver: {e}"))?;
             buf
         }
     } else {

@@ -1,6 +1,8 @@
-use wasm_bindgen::prelude::*;
-use crate::{parse_stream, extract_entry_stream, extract_all_stream, peek_format, ArchiveManifest, Error};
+use crate::{
+    extract_all_stream, extract_entry_stream, parse_stream, peek_format, ArchiveManifest, Error,
+};
 use std::io::Cursor;
+use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(start)]
 pub fn init() {
@@ -16,7 +18,8 @@ pub fn init() {
 #[wasm_bindgen(js_name = "parseArchive")]
 pub fn parse_archive(bytes: &[u8], filename: &str) -> Result<String, JsError> {
     let _format = peek_format(&mut Cursor::new(bytes)).map_err(|e| JsError::new(&e.to_string()))?;
-    let manifest = parse_stream(Cursor::new(bytes), filename).map_err(|e| JsError::new(&e.to_string()))?;
+    let manifest =
+        parse_stream(Cursor::new(bytes), filename).map_err(|e| JsError::new(&e.to_string()))?;
     serde_json::to_string(&manifest).map_err(|e| JsError::new(&e.to_string()))
 }
 
@@ -40,12 +43,27 @@ pub fn extract_all(bytes: &[u8], filename: &str) -> Result<String, JsError> {
 #[wasm_bindgen(js_name = "supportedFormats")]
 pub fn supported_formats() -> Vec<String> {
     vec![
-        "zip".into(), "tar".into(), "tgz".into(), "gz".into(),
-        "tar.gz".into(), "tar.bz2".into(), "tbz2".into(),
-        "tar.xz".into(), "txz".into(), "tar.zst".into(), "tzst".into(),
-        "tar.lz4".into(), "tar.lzma".into(), "tlz".into(),
-        "bz2".into(), "xz".into(), "zst".into(), "lz4".into(), "lzma".into(),
-        "7z".into(), "rar".into(),
+        "zip".into(),
+        "tar".into(),
+        "tgz".into(),
+        "gz".into(),
+        "tar.gz".into(),
+        "tar.bz2".into(),
+        "tbz2".into(),
+        "tar.xz".into(),
+        "txz".into(),
+        "tar.zst".into(),
+        "tzst".into(),
+        "tar.lz4".into(),
+        "tar.lzma".into(),
+        "tlz".into(),
+        "bz2".into(),
+        "xz".into(),
+        "zst".into(),
+        "lz4".into(),
+        "lzma".into(),
+        "7z".into(),
+        "rar".into(),
     ]
 }
 

@@ -1,0 +1,79 @@
+# CI — shared quality gates for the monorepo.
+#
+# Complement to ./android-release-gate.yml (Android APK + 16 KB) and
+# ./size-budget.yml. This workflow is fast and runs on every PR/push:
+#   * prettier lint check (npm run lint)
+#   * TypeScript typecheck for packages/platform (npm run check)
+#   * `cargo fmt --check` and `clippy -D warnings` for host crates
+#   * `cargo test` for every format crate that runs without an Android SDK
+#   * `npm run build:web` (web + WASM parsers)
+#   * catalog signature reverify lives in catalog-sign.yml
+
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-ts:
+    name: prettier + typecheck (TS/Svelte)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm install --workspaces --include-workspace-root
+      - name: Lint (prettier --check)
+        run: npm run lint
+      - name: Typecheck packages/platform
+        run: npm run check
+
+  rust:
+    name: fmt + clippy + test (host crates)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: '1.96.0'
+          components: rustfmt,clippy
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Clippy (workspace minus android/desktop backends)
+        run: cargo clippy --workspace --exclude viewit-mobile --exclude viewit-desktop -- -D warnings
+      - name: Test
+        run: cargo test --workspace --exclude viewit-mobile --exclude viewit-desktop --lib
+      - name: Supply-chain (cargo deny)
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+          arguments: --config deny.toml
+
+  web:
+    name: build web + wasm
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: '1.96.0'
+          target: 'wasm32-unknown-unknown'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm install --workspaces --include-workspace-root
+      - name: Build web
+        run: npm run build:web

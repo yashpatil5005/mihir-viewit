@@ -26,13 +26,25 @@ pub fn render(bytes: &[u8], ext: &str) -> Result<String, JsError> {
 #[wasm_bindgen]
 pub fn supported_formats() -> Vec<String> {
     vec![
-        "docx".into(), "docm".into(), "dotx".into(), "dotm".into(),
-        "xlsx".into(), "xlsm".into(), "xlsb".into(), "xls".into(),
-        "pptx".into(), "pptm".into(), "potx".into(),
-        "odt".into(), "ott".into(),
-        "ods".into(), "ots".into(),
-        "odp".into(), "otp".into(),
-        "doc".into(), "ppt".into(),
+        "docx".into(),
+        "docm".into(),
+        "dotx".into(),
+        "dotm".into(),
+        "xlsx".into(),
+        "xlsm".into(),
+        "xlsb".into(),
+        "xls".into(),
+        "pptx".into(),
+        "pptm".into(),
+        "potx".into(),
+        "odt".into(),
+        "ott".into(),
+        "ods".into(),
+        "ots".into(),
+        "odp".into(),
+        "otp".into(),
+        "doc".into(),
+        "ppt".into(),
     ]
 }
 

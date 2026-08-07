@@ -14,7 +14,7 @@
     onPrev?: () => void;
   } = $props();
 
-  let query = $state('');
+  let query = $state("");
   let caseSensitive = $state(false);
 
   $effect(() => {
@@ -23,8 +23,19 @@
 </script>
 
 <div class="search-bar">
-  <input type="search" placeholder="Search in file…" bind:value={query} aria-label="Search in file" />
-  <button class="cs-toggle" class:active={caseSensitive} onclick={() => caseSensitive = !caseSensitive} aria-label="Case sensitive" title="Case sensitive">Aa</button>
+  <input
+    type="search"
+    placeholder="Search in file…"
+    bind:value={query}
+    aria-label="Search in file"
+  />
+  <button
+    class="cs-toggle"
+    class:active={caseSensitive}
+    onclick={() => (caseSensitive = !caseSensitive)}
+    aria-label="Case sensitive"
+    title="Case sensitive">Aa</button
+  >
   {#if query}
     <span class="count">{currentMatch}/{matchCount}</span>
     <button onclick={onPrev} aria-label="Previous match">↑</button>
@@ -33,9 +44,39 @@
 </div>
 
 <style>
-  .search-bar { display: flex; gap: 0.4rem; align-items: center; padding: 0.4rem 1rem; background: var(--bg-secondary); border-bottom: 1px solid var(--border); }
-  input[type="search"] { flex: 1; padding: 0.3rem 0.5rem; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border); border-radius: 0.3rem; font-size: 0.85rem; }
-  button { cursor: pointer; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border); border-radius: 0.3rem; padding: 0.3rem 0.6rem; font-size: 0.85rem; }
-  .cs-toggle.active { background: var(--border); }
-  .count { font-size: 0.75rem; color: var(--text-secondary); min-width: 3.5rem; text-align: center; }
+  .search-bar {
+    display: flex;
+    gap: 0.4rem;
+    align-items: center;
+    padding: 0.4rem 1rem;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+  }
+  input[type="search"] {
+    flex: 1;
+    padding: 0.3rem 0.5rem;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 0.3rem;
+    font-size: 0.85rem;
+  }
+  button {
+    cursor: pointer;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 0.3rem;
+    padding: 0.3rem 0.6rem;
+    font-size: 0.85rem;
+  }
+  .cs-toggle.active {
+    background: var(--border);
+  }
+  .count {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    min-width: 3.5rem;
+    text-align: center;
+  }
 </style>

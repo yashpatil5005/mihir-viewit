@@ -3,28 +3,99 @@
 export const OPEN_BYTES_CAP = 32 * 1024 * 1024;
 
 const VIDEO_EXT = new Set([
-  'mp4', 'm4v', 'webm', 'mkv', 'mov', 'avi', 'mpg', 'mpeg', '3gp', 'wmv', 'flv', 'ts',
-  'asf', 'f4v', 'hevc', 'm2ts', 'm2v', 'mjpeg', 'mts', 'mxf', 'ogv', 'rm', 'swf', 'vob', 'wtv',
+  "mp4",
+  "m4v",
+  "webm",
+  "mkv",
+  "mov",
+  "avi",
+  "mpg",
+  "mpeg",
+  "3gp",
+  "wmv",
+  "flv",
+  "ts",
+  "asf",
+  "f4v",
+  "hevc",
+  "m2ts",
+  "m2v",
+  "mjpeg",
+  "mts",
+  "mxf",
+  "ogv",
+  "rm",
+  "swf",
+  "vob",
+  "wtv",
 ]);
 
 const AUDIO_EXT = new Set([
-  'mp3', 'm4a', 'aac', 'flac', 'ogg', 'wav', 'wma', 'opus',
-  '8svx', 'ac3', 'aiff', 'amb', 'au', 'avr', 'caf', 'cdda', 'cvs', 'cvsd', 'cvu', 'dts',
-  'dvms', 'fap', 'fssd', 'gsrt', 'hcom', 'htk', 'ima', 'ircam', 'm4r', 'maud', 'mp2', 'nist',
-  'oga', 'paf', 'prc', 'pvf', 'ra', 'sd2', 'sln', 'smp', 'snd', 'sndr', 'sndt', 'sou', 'sph',
-  'spx', 'tta', 'txw', 'vms', 'voc', 'vox', 'w64', 'wv', 'wve',
+  "mp3",
+  "m4a",
+  "aac",
+  "flac",
+  "ogg",
+  "wav",
+  "wma",
+  "opus",
+  "8svx",
+  "ac3",
+  "aiff",
+  "amb",
+  "au",
+  "avr",
+  "caf",
+  "cdda",
+  "cvs",
+  "cvsd",
+  "cvu",
+  "dts",
+  "dvms",
+  "fap",
+  "fssd",
+  "gsrt",
+  "hcom",
+  "htk",
+  "ima",
+  "ircam",
+  "m4r",
+  "maud",
+  "mp2",
+  "nist",
+  "oga",
+  "paf",
+  "prc",
+  "pvf",
+  "ra",
+  "sd2",
+  "sln",
+  "smp",
+  "snd",
+  "sndr",
+  "sndt",
+  "sou",
+  "sph",
+  "spx",
+  "tta",
+  "txw",
+  "vms",
+  "voc",
+  "vox",
+  "w64",
+  "wv",
+  "wve",
 ]);
 
 export function fileExtension(name: string | null | undefined): string {
-  if (!name) return '';
+  if (!name) return "";
   const base = name.split(/[/\\]/).pop() ?? name;
-  const i = base.lastIndexOf('.');
-  return i >= 0 ? base.slice(i + 1).toLowerCase() : '';
+  const i = base.lastIndexOf(".");
+  return i >= 0 ? base.slice(i + 1).toLowerCase() : "";
 }
 
 export type PickerReject =
-  | { reject: true; reason: string; openWithExternal: boolean }
-  | { reject: false };
+  { reject: true; reason: string; openWithExternal: boolean } | { reject: false };
 
 export function checkFileBeforeRead(file: File): PickerReject {
   const viewitUri = (file as File & { viewitUri?: string }).viewitUri;
@@ -35,15 +106,14 @@ export function checkFileBeforeRead(file: File): PickerReject {
   if (VIDEO_EXT.has(ext) || AUDIO_EXT.has(ext)) {
     return { reject: false };
   }
-  if (ext === 'pdf') {
+  if (ext === "pdf") {
     return { reject: false };
   }
   if (file.size > OPEN_BYTES_CAP) {
     return {
       reject: true,
       openWithExternal: true,
-      reason:
-        `File is ${mb} MB — max ${OPEN_BYTES_CAP / 1_048_576} MB loaded at once. Use Share → another app, or split the file.`,
+      reason: `File is ${mb} MB — max ${OPEN_BYTES_CAP / 1_048_576} MB loaded at once. Use Share → another app, or split the file.`,
     };
   }
   return { reject: false };
@@ -52,11 +122,16 @@ export function checkFileBeforeRead(file: File): PickerReject {
 export function unsupportedDocument(
   reason: string,
   openWithExternal: boolean,
-): { kind: 'unsupported'; format: 'unsupported'; reason: string; suggestion: 'open-with-external' | 'none' } {
+): {
+  kind: "unsupported";
+  format: "unsupported";
+  reason: string;
+  suggestion: "open-with-external" | "none";
+} {
   return {
-    kind: 'unsupported',
-    format: 'unsupported',
+    kind: "unsupported",
+    format: "unsupported",
     reason,
-    suggestion: openWithExternal ? 'open-with-external' : 'none',
+    suggestion: openWithExternal ? "open-with-external" : "none",
   };
 }

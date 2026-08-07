@@ -66,18 +66,26 @@ fn decode_tiff_exotic(bytes: &[u8]) -> Result<image::DynamicImage, String> {
     let color_type = decoder
         .colortype()
         .map_err(|e| format!("tiff colortype: {}", e))?;
-    eprintln!("[viewit] tiff color_type={:?} {}x{}", color_type, width, height);
+    eprintln!(
+        "[viewit] tiff color_type={:?} {}x{}",
+        color_type, width, height
+    );
 
     // For YCbCr: read strips manually since tiff crate fails on ChromaSubsampling
     if matches!(color_type, tiff::ColorType::YCbCr(_)) {
         match decode_tiff_ycbcr_manual(bytes, width, height) {
             Ok(img) => return Ok(img),
             Err(e) => {
-                eprintln!("[viewit] tiff ycbcr manual failed ({}), trying tiff crate read_image", e);
+                eprintln!(
+                    "[viewit] tiff ycbcr manual failed ({}), trying tiff crate read_image",
+                    e
+                );
             }
         }
         // Fallback: try tiff crate read_image (may work for non-subsampled or JPEG-compressed)
-        let buf = decoder.read_image().map_err(|e| format!("tiff read: {:?}", e))?;
+        let buf = decoder
+            .read_image()
+            .map_err(|e| format!("tiff read: {:?}", e))?;
         if let tiff::decoder::DecodingResult::U8(pixels) = buf {
             // For YCbCr without subsampling, pixel count should equal w*h*3
             if pixels.len() == (width * height * 3) as usize {
@@ -88,17 +96,18 @@ fn decode_tiff_exotic(bytes: &[u8]) -> Result<image::DynamicImage, String> {
             if pixels.len() == (width * height * 3) as usize {
                 return make_rgb_image(width, height, pixels, "YCbCr-crate-rgb");
             }
-            return Err(format!("YCbCr crate decode: unexpected pixel count {}", pixels.len()));
+            return Err(format!(
+                "YCbCr crate decode: unexpected pixel count {}",
+                pixels.len()
+            ));
         }
         return Err("YCbCr crate decode: unexpected result type".into());
     }
 
-    let buf = decoder
-        .read_image()
-        .map_err(|e| {
-            eprintln!("[viewit] tiff read_image error: {:?}", e);
-            format!("tiff read: {:?}", e)
-        })?;
+    let buf = decoder.read_image().map_err(|e| {
+        eprintln!("[viewit] tiff read_image error: {:?}", e);
+        format!("tiff read: {:?}", e)
+    })?;
 
     match color_type {
         tiff::ColorType::CMYK(8) => {
@@ -157,17 +166,28 @@ fn decode_tiff_exotic(bytes: &[u8]) -> Result<image::DynamicImage, String> {
 
 /// Manual TIFF strip reader for YCbCr images.
 /// Bypasses the tiff crate's broken ChromaSubsampling handling.
-fn decode_tiff_ycbcr_manual(bytes: &[u8], width: u32, height: u32) -> Result<image::DynamicImage, String> {
+fn decode_tiff_ycbcr_manual(
+    bytes: &[u8],
+    width: u32,
+    height: u32,
+) -> Result<image::DynamicImage, String> {
     if bytes.len() < 8 {
         return Err("tiff too short".into());
     }
     let le = bytes[0] == b'I' && bytes[1] == b'I';
     let u16r = |o: usize| -> u16 {
-        if le { u16::from_le_bytes([bytes[o], bytes[o+1]]) } else { u16::from_be_bytes([bytes[o], bytes[o+1]]) }
+        if le {
+            u16::from_le_bytes([bytes[o], bytes[o + 1]])
+        } else {
+            u16::from_be_bytes([bytes[o], bytes[o + 1]])
+        }
     };
     let u32r = |o: usize| -> u32 {
-        if le { u32::from_le_bytes([bytes[o], bytes[o+1], bytes[o+2], bytes[o+3]]) }
-        else { u32::from_be_bytes([bytes[o], bytes[o+1], bytes[o+2], bytes[o+3]]) }
+        if le {
+            u32::from_le_bytes([bytes[o], bytes[o + 1], bytes[o + 2], bytes[o + 3]])
+        } else {
+            u32::from_be_bytes([bytes[o], bytes[o + 1], bytes[o + 2], bytes[o + 3]])
+        }
     };
 
     if u16r(2) != 42 {
@@ -192,7 +212,11 @@ fn decode_tiff_ycbcr_manual(bytes: &[u8], width: u32, height: u32) -> Result<ima
 
         match tag {
             259 => {
-                compression = if typ == 3 && count == 1 { u16r(pos + 8) } else { 1 };
+                compression = if typ == 3 && count == 1 {
+                    u16r(pos + 8)
+                } else {
+                    1
+                };
             }
             278 => {
                 rows_per_strip = if typ == 4 && count == 1 {
@@ -208,9 +232,7 @@ fn decode_tiff_ycbcr_manual(bytes: &[u8], width: u32, height: u32) -> Result<ima
                     strip_offsets = vec![u32r(pos + 8)];
                 } else {
                     let off = u32r(pos + 8) as usize;
-                    strip_offsets = (0..count as usize)
-                        .map(|i| u32r(off + i * 4))
-                        .collect();
+                    strip_offsets = (0..count as usize).map(|i| u32r(off + i * 4)).collect();
                 }
             }
             279 => {
@@ -218,9 +240,7 @@ fn decode_tiff_ycbcr_manual(bytes: &[u8], width: u32, height: u32) -> Result<ima
                     strip_byte_counts = vec![u32r(pos + 8)];
                 } else {
                     let off = u32r(pos + 8) as usize;
-                    strip_byte_counts = (0..count as usize)
-                        .map(|i| u32r(off + i * 4))
-                        .collect();
+                    strip_byte_counts = (0..count as usize).map(|i| u32r(off + i * 4)).collect();
                 }
             }
             _ => {}
@@ -268,8 +288,8 @@ fn decode_tiff_ycbcr_manual(bytes: &[u8], width: u32, height: u32) -> Result<ima
     // Each strip contains: Y(rows*320), Cb(rows/2*160), Cr(rows/2*160)
     // We need to extract per-strip planes and copy into full-image planes.
     let mut y_plane_full = vec![0u8; (width * height) as usize];
-    let cb_w = ((width + 1) / 2) as usize;
-    let cb_h = ((height + 1) / 2) as usize;
+    let cb_w = width.div_ceil(2) as usize;
+    let cb_h = height.div_ceil(2) as usize;
     let mut cb_plane_full = vec![0u8; cb_w * cb_h];
     let mut cr_plane_full = vec![0u8; cb_w * cb_h];
 
@@ -287,27 +307,30 @@ fn decode_tiff_ycbcr_manual(bytes: &[u8], width: u32, height: u32) -> Result<ima
             remaining.min(rows_per_strip as usize)
         };
         let strip_y_size = width as usize * strip_rows;
-        let strip_cb_size = cb_w * ((strip_rows + 1) / 2);
+        let strip_cb_size = cb_w * strip_rows.div_ceil(2);
         let strip_cr_size = strip_cb_size;
 
         // Copy Y
         let y_end = (src_offset + strip_y_size).min(all_yuv.len());
         let copy_len = (y_end - src_offset).min(y_plane_full.len() - y_dst);
-        y_plane_full[y_dst..y_dst + copy_len].copy_from_slice(&all_yuv[src_offset..src_offset + copy_len]);
+        y_plane_full[y_dst..y_dst + copy_len]
+            .copy_from_slice(&all_yuv[src_offset..src_offset + copy_len]);
         src_offset += strip_y_size;
         y_dst += copy_len;
 
         // Copy Cb
         let cb_end = (src_offset + strip_cb_size).min(all_yuv.len());
         let copy_len = (cb_end - src_offset).min(cb_plane_full.len() - cb_dst);
-        cb_plane_full[cb_dst..cb_dst + copy_len].copy_from_slice(&all_yuv[src_offset..src_offset + copy_len]);
+        cb_plane_full[cb_dst..cb_dst + copy_len]
+            .copy_from_slice(&all_yuv[src_offset..src_offset + copy_len]);
         src_offset += strip_cb_size;
         cb_dst += copy_len;
 
         // Copy Cr
         let cr_end = (src_offset + strip_cr_size).min(all_yuv.len());
         let copy_len = (cr_end - src_offset).min(cr_plane_full.len() - cr_dst);
-        cr_plane_full[cr_dst..cr_dst + copy_len].copy_from_slice(&all_yuv[src_offset..src_offset + copy_len]);
+        cr_plane_full[cr_dst..cr_dst + copy_len]
+            .copy_from_slice(&all_yuv[src_offset..src_offset + copy_len]);
         src_offset += strip_cr_size;
         cr_dst += copy_len;
     }
@@ -323,9 +346,23 @@ fn decode_tiff_ycbcr_manual(bytes: &[u8], width: u32, height: u32) -> Result<ima
     let bytes_per_pixel = all_yuv.len() as f64 / (width as f64 * height as f64);
     let rgb = if (bytes_per_pixel - 1.5).abs() < 0.01 {
         // 4:2:0 subsampling with per-strip planar layout
-        ycbcr_420_from_planes(&y_plane_full, &cb_plane_full, &cr_plane_full, width as usize, height as usize, cb_w)
+        ycbcr_420_from_planes(
+            &y_plane_full,
+            &cb_plane_full,
+            &cr_plane_full,
+            width as usize,
+            height as usize,
+            cb_w,
+        )
     } else if (bytes_per_pixel - 2.0).abs() < 0.01 {
-        ycbcr_422_from_planes(&y_plane_full, &cb_plane_full, &cr_plane_full, width as usize, height as usize, cb_w)
+        ycbcr_422_from_planes(
+            &y_plane_full,
+            &cb_plane_full,
+            &cr_plane_full,
+            width as usize,
+            height as usize,
+            cb_w,
+        )
     } else {
         ycbcr_to_rgb(&y_plane_full, width as usize, height as usize)
     };
@@ -355,7 +392,7 @@ fn packbits_decompress(input: &[u8]) -> Result<Vec<u8>, String> {
             }
             let byte = input[i];
             i += 1;
-            output.extend(std::iter::repeat(byte).take(count));
+            output.extend(std::iter::repeat_n(byte, count));
         }
     }
     Ok(output)
@@ -399,15 +436,30 @@ fn ycbcr_to_rgb(pixels: &[u8], w: usize, h: usize) -> Vec<u8> {
 }
 
 /// YCbCr 4:2:0 from separate Y, Cb, Cr planes → RGB.
-fn ycbcr_420_from_planes(y: &[u8], cb: &[u8], cr: &[u8], w: usize, h: usize, cb_w: usize) -> Vec<u8> {
+fn ycbcr_420_from_planes(
+    y: &[u8],
+    cb: &[u8],
+    cr: &[u8],
+    w: usize,
+    h: usize,
+    cb_w: usize,
+) -> Vec<u8> {
     let mut rgb = vec![0u8; w * h * 3];
     for row in 0..h {
         for col in 0..w {
             let yi = row * w + col;
             let y_val = if yi < y.len() { y[yi] as f32 } else { 0.0 };
             let ci = (row / 2) * cb_w + col / 2;
-            let cb_val = if ci < cb.len() { cb[ci] as f32 - 128.0 } else { 0.0 };
-            let cr_val = if ci < cr.len() { cr[ci] as f32 - 128.0 } else { 0.0 };
+            let cb_val = if ci < cb.len() {
+                cb[ci] as f32 - 128.0
+            } else {
+                0.0
+            };
+            let cr_val = if ci < cr.len() {
+                cr[ci] as f32 - 128.0
+            } else {
+                0.0
+            };
             let r = (y_val + 1.402 * cr_val).clamp(0.0, 255.0) as u8;
             let g = (y_val - 0.344136 * cb_val - 0.714136 * cr_val).clamp(0.0, 255.0) as u8;
             let b = (y_val + 1.772 * cb_val).clamp(0.0, 255.0) as u8;
@@ -421,15 +473,30 @@ fn ycbcr_420_from_planes(y: &[u8], cb: &[u8], cr: &[u8], w: usize, h: usize, cb_
 }
 
 /// YCbCr 4:2:2 from separate Y, Cb, Cr planes → RGB.
-fn ycbcr_422_from_planes(y: &[u8], cb: &[u8], cr: &[u8], w: usize, h: usize, cb_w: usize) -> Vec<u8> {
+fn ycbcr_422_from_planes(
+    y: &[u8],
+    cb: &[u8],
+    cr: &[u8],
+    w: usize,
+    h: usize,
+    cb_w: usize,
+) -> Vec<u8> {
     let mut rgb = vec![0u8; w * h * 3];
     for row in 0..h {
         for col in 0..w {
             let yi = row * w + col;
             let y_val = if yi < y.len() { y[yi] as f32 } else { 0.0 };
             let ci = row * cb_w + col / 2;
-            let cb_val = if ci < cb.len() { cb[ci] as f32 - 128.0 } else { 0.0 };
-            let cr_val = if ci < cr.len() { cr[ci] as f32 - 128.0 } else { 0.0 };
+            let cb_val = if ci < cb.len() {
+                cb[ci] as f32 - 128.0
+            } else {
+                0.0
+            };
+            let cr_val = if ci < cr.len() {
+                cr[ci] as f32 - 128.0
+            } else {
+                0.0
+            };
             let r = (y_val + 1.402 * cr_val).clamp(0.0, 255.0) as u8;
             let g = (y_val - 0.344136 * cb_val - 0.714136 * cr_val).clamp(0.0, 255.0) as u8;
             let b = (y_val + 1.772 * cb_val).clamp(0.0, 255.0) as u8;
@@ -479,5 +546,61 @@ fn format_short_name(f: Format) -> &'static str {
         Format::ImageRaw => "RAW",
         Format::ImagePsd => "PSD",
         _ => "image",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn needs_conversion_targets_only_structurally_unsupported_formats() {
+        assert!(needs_conversion(Format::ImageTiff));
+        assert!(needs_conversion(Format::ImageRaw));
+        assert!(needs_conversion(Format::ImagePsd));
+        // WebView handles these natively — never re-encode them.
+        assert!(!needs_conversion(Format::ImagePng));
+        assert!(!needs_conversion(Format::ImageJpg));
+        assert!(!needs_conversion(Format::ImageWebp));
+        assert!(!needs_conversion(Format::ImageGif));
+    }
+
+    #[test]
+    fn packbits_decompress_literal_run() {
+        let out = packbits_decompress(&[0x02, 0x41, 0x42, 0x43]).unwrap();
+        assert_eq!(out, vec![0x41, 0x42, 0x43]);
+    }
+
+    #[test]
+    fn packbits_decompress_repeat_run() {
+        // 0xFE as i8 == -2 → repeat the following byte (count = 1 - (-2) = 3).
+        let out = packbits_decompress(&[0xFE, 0x41]).unwrap();
+        assert_eq!(out, vec![0x41, 0x41, 0x41]);
+    }
+
+    #[test]
+    fn packbits_decompress_noop_marker() {
+        // 0x80 (-128) is a no-op; output unchanged.
+        let out = packbits_decompress(&[0x00, 0xAA, 0x80]).unwrap();
+        assert_eq!(out, vec![0xAA]);
+    }
+
+    #[test]
+    fn packbits_decompress_detects_overread() {
+        assert!(packbits_decompress(&[0x05, 0x41]).is_err());
+    }
+
+    #[test]
+    fn cmyk_black_and_white_roundtrip() {
+        // All-zero CMYK = white; pure black-key = black.
+        assert_eq!(cmyk_to_rgb(&[0, 0, 0, 0], 1, 1), vec![255, 255, 255]);
+        assert_eq!(cmyk_to_rgb(&[0, 0, 0, 255], 1, 1), vec![0, 0, 0]);
+    }
+
+    #[test]
+    fn ycbcr_produces_3_bytes_per_pixel() {
+        let px = [128u8, 128, 128, 128, 128, 128]; // 2 pixels, gray-ish
+        let rgb = ycbcr_to_rgb(&px, 2, 1);
+        assert_eq!(rgb.len(), 6); // 2px * 3
     }
 }
