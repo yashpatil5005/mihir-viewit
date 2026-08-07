@@ -1,7 +1,7 @@
 //! JNI bindings for the office-universal Android plugin.
 
 use jni::objects::{JClass, JString, JObject};
-use jni::sys::{jstring, jboolean, jlong, jint};
+use jni::sys::{jstring, jboolean};
 use jni::JNIEnv;
 use viewit_fmt_office::render;
 

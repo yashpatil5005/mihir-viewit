@@ -268,7 +268,7 @@ DOM_QUERY = """(() => {
     hasRawHtml: body.includes('<html') || body.includes('<head') || body.includes('<body') || body.includes('<p ') || body.includes('<div ') || body.includes('<guide') || body.includes('<reference '),
     hasPartial: body.includes('Partial') || body.includes('partial'),
     archiveFallback: /Archive contents|zip entries|\\bindex\\/|\\[Content_Types\\]/.test(body) || !!document.querySelector('.archive-viewer'),
-    archiveEntryCount: parseInt(document.querySelector('.archive-viewer .meta strong')?.textContent?.match(/(\d+)/)?.[1] ?? '0', 10),
+    archiveEntryCount: parseInt(document.querySelector('.archive-viewer .meta strong')?.textContent?.match(/(\\d+)/)?.[1] ?? '0', 10),
     archiveDrillButtons: document.querySelectorAll('.archive-viewer .drill').length,
     archivePluginSaveButtons: document.querySelectorAll('.archive-viewer .save').length,
     listedByPlugin: body.includes('listed by'),
@@ -320,7 +320,7 @@ DOM_QUERY = """(() => {
         return hasText || hasImg || hasSvgImage || hasSvg || srcdocLen > 100;
       } catch { return false; }
     })(),
-    strategy: (document.querySelector('.media-viewer .hint')?.textContent || document.querySelector('.hint')?.textContent || '').trim().replace(/^strategy:\s*/i, ''),
+    strategy: (document.querySelector('.media-viewer .hint')?.textContent || document.querySelector('.hint')?.textContent || '').trim().replace(/^strategy:\\s*/i, ''),
     title: document.title,
     url: location.href,
     viewport: { width: innerWidth, height: innerHeight, devicePixelRatio },

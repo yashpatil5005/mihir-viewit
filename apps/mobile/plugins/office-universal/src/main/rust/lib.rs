@@ -2,8 +2,8 @@
 //!
 //! This crate provides JNI bindings for the office-universal parser.
 
-use jni::objects::{JClass, JString, JObject};
-use jni::sys::{jstring, jboolean, jlong, jint};
+use jni::objects::{JClass, JObject, JString};
+use jni::sys::{jboolean, jstring};
 use jni::JNIEnv;
 use viewit_fmt_office::render;
 
@@ -24,7 +24,10 @@ pub extern "system" fn Java_ai_viewit_plugins_officeuniversal_OfficeUniversalPlu
     _class: JClass,
     mime_type: JString,
 ) -> jboolean {
-    let mime: String = env.get_string(&mime_type).expect("Couldn't get java string!").into();
+    let mime: String = env
+        .get_string(&mime_type)
+        .expect("Couldn't get java string!")
+        .into();
     let can_handle = matches!(
         mime.as_str(),
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document" // docx
@@ -57,16 +60,31 @@ pub extern "system" fn Java_ai_viewit_plugins_officeuniversal_OfficeUniversalPlu
     _class: JClass,
     ext: JString,
 ) -> jboolean {
-    let ext: String = env.get_string(&ext).expect("Couldn't get java string!").into();
+    let ext: String = env
+        .get_string(&ext)
+        .expect("Couldn't get java string!")
+        .into();
     let can_handle = matches!(
         ext.to_lowercase().as_str(),
-        "docx" | "docm" | "dotx" | "dotm"
-        | "xlsx" | "xlsm" | "xlsb" | "xls"
-        | "pptx" | "pptm" | "potx"
-        | "odt" | "ott"
-        | "ods" | "ots"
-        | "odp" | "otp"
-        | "doc" | "ppt"
+        "docx"
+            | "docm"
+            | "dotx"
+            | "dotm"
+            | "xlsx"
+            | "xlsm"
+            | "xlsb"
+            | "xls"
+            | "pptx"
+            | "pptm"
+            | "potx"
+            | "odt"
+            | "ott"
+            | "ods"
+            | "ots"
+            | "odp"
+            | "otp"
+            | "doc"
+            | "ppt"
     );
     can_handle as jboolean
 }
@@ -79,15 +97,27 @@ pub extern "system" fn Java_ai_viewit_plugins_officeuniversal_OfficeUniversalPlu
     file_path: JString,
     ext: JString,
 ) -> jstring {
-    let file_path: String = env.get_string(&file_path).expect("Couldn't get java string!").into();
-    let ext: String = env.get_string(&ext).expect("Couldn't get java string!").into();
+    let file_path: String = env
+        .get_string(&file_path)
+        .expect("Couldn't get java string!")
+        .into();
+    let ext: String = env
+        .get_string(&ext)
+        .expect("Couldn't get java string!")
+        .into();
 
     // Read file bytes
     let bytes = match std::fs::read(&file_path) {
         Ok(b) => b,
         Err(e) => {
-            let error_json = format!(r#"{{"kind":"unsupported","format":"{}","reason":"Failed to read file: {}","suggestion":"none"}}"#, ext, e);
-            return env.new_string(error_json).expect("Couldn't create java string!").into_raw();
+            let error_json = format!(
+                r#"{{"kind":"unsupported","format":"{}","reason":"Failed to read file: {}","suggestion":"none"}}"#,
+                ext, e
+            );
+            return env
+                .new_string(error_json)
+                .expect("Couldn't create java string!")
+                .into_raw();
         }
     };
 
@@ -95,10 +125,18 @@ pub extern "system" fn Java_ai_viewit_plugins_officeuniversal_OfficeUniversalPlu
     let result = render(&bytes, &ext.to_lowercase());
 
     match result {
-        Ok(json) => env.new_string(json).expect("Couldn't create java string!").into_raw(),
+        Ok(json) => env
+            .new_string(json)
+            .expect("Couldn't create java string!")
+            .into_raw(),
         Err(e) => {
-            let error_json = format!(r#"{{"kind":"unsupported","format":"{}","reason":"{}","suggestion":"none"}}"#, ext, e);
-            env.new_string(error_json).expect("Couldn't create java string!").into_raw()
+            let error_json = format!(
+                r#"{{"kind":"unsupported","format":"{}","reason":"{}","suggestion":"none"}}"#,
+                ext, e
+            );
+            env.new_string(error_json)
+                .expect("Couldn't create java string!")
+                .into_raw()
         }
     }
 }
@@ -111,16 +149,29 @@ pub extern "system" fn Java_ai_viewit_plugins_officeuniversal_OfficeUniversalPlu
     bytes: jni::objects::JByteArray,
     ext: JString,
 ) -> jstring {
-    let ext: String = env.get_string(&ext).expect("Couldn't get java string!").into();
-    let bytes_vec: Vec<u8> = env.convert_byte_array(&bytes).expect("Couldn't convert byte array!");
+    let ext: String = env
+        .get_string(&ext)
+        .expect("Couldn't get java string!")
+        .into();
+    let bytes_vec: Vec<u8> = env
+        .convert_byte_array(&bytes)
+        .expect("Couldn't convert byte array!");
 
     let result = render(&bytes_vec, &ext.to_lowercase());
 
     match result {
-        Ok(json) => env.new_string(json).expect("Couldn't create java string!").into_raw(),
+        Ok(json) => env
+            .new_string(json)
+            .expect("Couldn't create java string!")
+            .into_raw(),
         Err(e) => {
-            let error_json = format!(r#"{{"kind":"unsupported","format":"{}","reason":"{}","suggestion":"none"}}"#, ext, e);
-            env.new_string(error_json).expect("Couldn't create java string!").into_raw()
+            let error_json = format!(
+                r#"{{"kind":"unsupported","format":"{}","reason":"{}","suggestion":"none"}}"#,
+                ext, e
+            );
+            env.new_string(error_json)
+                .expect("Couldn't create java string!")
+                .into_raw()
         }
     }
 }
@@ -132,16 +183,13 @@ pub extern "system" fn Java_ai_viewit_plugins_officeuniversal_OfficeUniversalPlu
     _class: JClass,
 ) -> jstring {
     let formats = vec![
-        "docx", "docm", "dotx", "dotm",
-        "xlsx", "xlsm", "xlsb", "xls",
-        "pptx", "pptm", "potx",
-        "odt", "ott",
-        "ods", "ots",
-        "odp", "otp",
-        "doc", "ppt",
+        "docx", "docm", "dotx", "dotm", "xlsx", "xlsm", "xlsb", "xls", "pptx", "pptm", "potx",
+        "odt", "ott", "ods", "ots", "odp", "otp", "doc", "ppt",
     ];
     let json = serde_json::to_string(&formats).unwrap_or_else(|_| "[]".to_string());
-    env.new_string(json).expect("Couldn't create java string!").into_raw()
+    env.new_string(json)
+        .expect("Couldn't create java string!")
+        .into_raw()
 }
 
 /// Get plugin version
@@ -151,7 +199,9 @@ pub extern "system" fn Java_ai_viewit_plugins_officeuniversal_OfficeUniversalPlu
     _class: JClass,
 ) -> jstring {
     let version = env!("CARGO_PKG_VERSION");
-    env.new_string(version).expect("Couldn't create java string!").into_raw()
+    env.new_string(version)
+        .expect("Couldn't create java string!")
+        .into_raw()
 }
 
 /// Get plugin ID
@@ -160,7 +210,9 @@ pub extern "system" fn Java_ai_viewit_plugins_officeuniversal_OfficeUniversalPlu
     mut env: JNIEnv,
     _class: JClass,
 ) -> jstring {
-    env.new_string("office-universal").expect("Couldn't create java string!").into_raw()
+    env.new_string("office-universal")
+        .expect("Couldn't create java string!")
+        .into_raw()
 }
 
 /// Cleanup (no-op for now)
