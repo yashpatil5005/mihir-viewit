@@ -36,6 +36,8 @@ node_modules/
 dist/
 build/
 .svelte-kit/
+# Turborepo local cache
+.turbo/
 package-lock.json.bak
 .vite/
 .stats/
