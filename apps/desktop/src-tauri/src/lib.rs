@@ -6,10 +6,15 @@ use std::sync::Mutex;
 
 use base64::{engine::general_purpose, Engine as _};
 use tauri::{Manager, Url};
-use viewit_core::{is_stream_ext, open, open_stream, Document, Format, Suggestion, OPEN_BYTES_CAP};
+use viewit_core::{is_stream_ext, open, open_stream, sniff, Document, Format, OPEN_BYTES_CAP};
 
 #[cfg(feature = "fmt-pdf")]
 use viewit_fmt_pdf;
+
+/// How much of a file we read to sniff its format before deciding whether we
+/// can stream it to the WebView (images, PDF, media) instead of loading the
+/// whole thing into memory.
+const SNIFF_READ_CAP: usize = 256 * 1024;
 
 /// Buffer for cold-start file URIs (the webview/JS may not be listening yet
 /// when RunEvent::Opened fires during a cold-start launch).
@@ -47,6 +52,28 @@ async fn open_uri(uri: String, name: Option<String>) -> Result<Document, String>
     if is_stream_ext(&ext) {
         return open_stream(&ext, &display_name).map_err(|e| e.to_string());
     }
+    // Sniff from a small header first: images stream to the WebView via the
+    // asset protocol (`convertFileSrc`) — no full-file read, no 32 MB cap, no
+    // OOM on huge images.
+    let prefix = read_prefix(&path, SNIFF_READ_CAP).map_err(|e| e.to_string())?;
+    let format = sniff(&prefix, &ext);
+    if is_image_format(format) {
+        let asset_path = path.to_string_lossy().to_string();
+        let byte_len = std::fs::metadata(&path)
+            .map(|m| m.len() as usize)
+            .unwrap_or(prefix.len());
+        return Ok(Document::Image {
+            format,
+            byte_len,
+            name: display_name,
+            asset_path,
+            stream_url: None,
+        });
+    }
+    // Small file that fully fit in the sniff buffer — skip the second read.
+    if prefix.len() < SNIFF_READ_CAP {
+        return open(&prefix, &ext, &display_name).map_err(|e| e.to_string());
+    }
     let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
     if bytes.len() > OPEN_BYTES_CAP {
         return Err(format!(
@@ -55,6 +82,32 @@ async fn open_uri(uri: String, name: Option<String>) -> Result<Document, String>
         ));
     }
     open(&bytes, &ext, &display_name).map_err(|e| e.to_string())
+}
+
+/// Read at most `cap` bytes (fewer if the file is smaller).
+fn read_prefix(path: &std::path::Path, cap: usize) -> std::io::Result<Vec<u8>> {
+    use std::io::Read;
+    let f = std::fs::File::open(path)?;
+    let mut buf = Vec::with_capacity(cap.min(64 * 1024));
+    let mut bounded = f.take(cap as u64);
+    bounded.read_to_end(&mut buf)?;
+    Ok(buf)
+}
+
+fn is_image_format(format: Format) -> bool {
+    matches!(
+        format,
+        Format::ImagePng
+            | Format::ImageJpg
+            | Format::ImageWebp
+            | Format::ImageGif
+            | Format::ImageBmp
+            | Format::ImageTiff
+            | Format::ImageSvg
+            | Format::ImageHeic
+            | Format::ImagePsd
+            | Format::ImageRaw
+    )
 }
 
 #[cfg(feature = "fmt-pdf")]
