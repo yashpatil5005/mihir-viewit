@@ -19,7 +19,7 @@ serde.workspace = true
 serde_json.workspace = true
 bytes.workspace = true
 # ZIP
-zip = { workspace = true, default-features = false, features = ["chrono"] }
+zip = { workspace = true, default-features = false, features = ["chrono", "deflate-flate2"] }
 # TAR
 tar.workspace = true
 # Compression

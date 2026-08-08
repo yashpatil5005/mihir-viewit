@@ -171,6 +171,10 @@ fn is_iwork_format(format: Format) -> bool {
     )
 }
 
+fn is_ebook_format(format: Format) -> bool {
+    matches!(format, Format::Epub | Format::Mobi | Format::Azw3)
+}
+
 fn format_from_ext(ext: &str) -> Format {
     sniff(&[], ext)
 }
@@ -351,7 +355,7 @@ fn sniff_prefix(app: &AppHandle, uri: &str, ext: &str) -> Result<(String, Format
     }
     if !ext_hint.is_empty() {
         let f = format_from_ext(&ext_hint);
-        if is_image_format(f) || is_office_format(f) || is_iwork_format(f) {
+        if is_image_format(f) || is_office_format(f) || is_iwork_format(f) || is_ebook_format(f) {
             return Ok((ext_hint.clone(), f));
         }
     }
