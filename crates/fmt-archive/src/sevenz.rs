@@ -22,9 +22,9 @@ pub fn list_7z<R: Read + Seek>(mut reader: R) -> Result<ArchiveManifest, Error> 
         let name = f.name().to_string();
         let size = f.size();
         let is_dir = f.is_directory();
-        let compressed_size = f.compressed_size().unwrap_or(size);
-        let method = f.method().map(|m| format!("{:?}", m));
-        let crc32 = f.crc32();
+        let compressed_size = f.compressed_size;
+        let crc32 = if f.has_crc { Some(f.crc as u32) } else { None };
+        let method = None;
 
         let mut entry = InternalArchiveEntry::with_metadata(
             name,
@@ -87,15 +87,22 @@ pub fn extract_entry<R: Read + Seek>(mut reader: R, entry_name: &str) -> Result<
         SevenZReader::new(reader, len, password).map_err(|e| Error::Parse(format!("7z: {}", e)))?;
 
     let archive = sevenz_reader.archive();
-    let file_idx = archive
-        .files
-        .iter()
-        .position(|f| f.name() == entry_name)
-        .ok_or_else(|| Error::Parse(format!("entry '{}' not found", entry_name)))?;
+    if !archive.files.iter().any(|f| f.name() == entry_name) {
+        return Err(Error::Parse(format!("entry '{}' not found", entry_name)));
+    }
 
     let mut data = Vec::new();
     sevenz_reader
-        .extract_file(file_idx, &mut data)
+        .for_each_entries(|file, reader| {
+            if file.name() == entry_name {
+                reader
+                    .read_to_end(&mut data)
+                    .map_err(|e| sevenz_rust::Error::Io(e, "extract".into()))?;
+                Ok(false)
+            } else {
+                Ok(true)
+            }
+        })
         .map_err(|e| Error::Parse(format!("extract '{}': {}", entry_name, e)))?;
 
     Ok(data)
@@ -116,22 +123,21 @@ pub fn extract_all<R: Read + Seek>(mut reader: R) -> Result<Vec<(String, Vec<u8>
     let mut sevenz_reader =
         SevenZReader::new(reader, len, password).map_err(|e| Error::Parse(format!("7z: {}", e)))?;
 
-    let archive = sevenz_reader.archive();
     let mut results = Vec::new();
 
-    for (idx, file) in archive.files.iter().enumerate() {
-        if file.is_directory() {
-            continue;
-        }
-
-        let name = file.name().to_string();
-        let mut data = Vec::new();
-        sevenz_reader
-            .extract_file(idx, &mut data)
-            .map_err(|e| Error::Parse(format!("extract '{}': {}", name, e)))?;
-
-        results.push((name, data));
-    }
+    sevenz_reader
+        .for_each_entries(|file, reader| {
+            if !file.is_directory() {
+                let name = file.name().to_string();
+                let mut data = Vec::new();
+                reader
+                    .read_to_end(&mut data)
+                    .map_err(|e| sevenz_rust::Error::Io(e, "extract".into()))?;
+                results.push((name, data));
+            }
+            Ok(true)
+        })
+        .map_err(|e| Error::Parse(format!("extract: {}", e)))?;
 
     Ok(results)
 }
