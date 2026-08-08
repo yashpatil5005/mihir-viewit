@@ -103,16 +103,14 @@ async fn decode_heic_to_data_url(
     } else {
         return Err("no path or URI for HEIC file".into());
     };
-    let output = heic::DecoderConfig::new()
-        .decode(&data, heic::PixelLayout::Rgba8)
-        .map_err(|e| format!("decode HEIC: {e}"))?;
-    let rgba = output.data;
-    let w = output.width as u32;
-    let h = output.height as u32;
-    let img = image::RgbaImage::from_raw(w, h, rgba)
-        .ok_or("failed to create RgbaImage from HEIC pixels")?;
+    // HEIC/HEIF decode via the pure-Rust `hpvcd` crate (BSD-3-Clause OR
+    // Apache-2.0) — display-ready 8-bit RGB, orientation/crop applied. Replaces
+    // the former AGPL-3.0 `heic` crate with no copyleft in the dependency graph.
+    let rgb = hpvcd::decode_heic_rgb8(&data).map_err(|e| format!("decode HEIC: {e}"))?;
+    let img = image::RgbImage::from_raw(rgb.width, rgb.height, rgb.pixels)
+        .ok_or("invalid HEIC pixel dimensions")?;
     let mut jpeg_buf = std::io::Cursor::new(Vec::new());
-    image::DynamicImage::ImageRgba8(img)
+    image::DynamicImage::ImageRgb8(img)
         .write_to(&mut jpeg_buf, image::ImageFormat::Jpeg)
         .map_err(|e| format!("encode JPEG: {e}"))?;
     let jpeg_bytes = jpeg_buf.into_inner();

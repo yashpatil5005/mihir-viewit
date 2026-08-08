@@ -43,7 +43,9 @@ url = "2"
 tiny_http = "0.12"
 viewit-fmt-pdf = { path = "../../../crates/fmt-pdf", optional = true }
 viewit-fmt-image = { path = "../../../crates/fmt-image" }
-heic = "0.1"
+# HEIC/HEIF decode — pure-Rust `hpvcd` (BSD-3-Clause OR Apache-2.0, no copyleft;
+# replaces the former AGPL `heic` crate). neon = arm64 SIMD.
+hpvcd = { version = "0.3", features = ["neon"] }
 image = { workspace = true, default-features = false, features = ["jpeg"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
