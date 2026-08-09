@@ -246,28 +246,9 @@ fn parse_xlsx_xls_ods(bytes: &[u8], format: Format) -> Result<Document, Error> {
 
     match format {
         Format::Xlsx => {
-            let mut workbook = calamine::Xlsx::<Cursor<Vec<u8>>>::new(cursor)
-                .map_err(|e| Error::Parse(format!("calamine xlsx: {}", e)))?;
-            let sheets_meta = workbook.worksheets();
-            for (name, range) in sheets_meta.into_iter().take(8) {
-                let mut rows_iter = range.rows();
-                let header: Vec<String> = rows_iter
-                    .next()
-                    .map(|r| r.iter().map(|c| c.to_string()).collect())
-                    .unwrap_or_default();
-                let preview_rows: Vec<Vec<String>> = rows_iter
-                    .take(200)
-                    .map(|r| r.iter().map(|c| c.to_string()).collect())
-                    .collect();
-                sheets.push(XlsxSheet {
-                    name,
-                    header,
-                    preview_rows,
-                    total_rows_hint: Some(range.height()),
-                    total_cols_hint: Some(range.width()),
-                    preview_formulas: None,
-                });
-            }
+            // Enriched XLSX: calamine data + merges / frozen panes / column
+            // widths / formulas from the worksheet parts (see xlsx.rs).
+            return crate::xlsx::parse_xlsx(bytes);
         }
         Format::Xls => {
             let mut workbook = calamine::Xls::<Cursor<Vec<u8>>>::new(cursor)
@@ -290,6 +271,9 @@ fn parse_xlsx_xls_ods(bytes: &[u8], format: Format) -> Result<Document, Error> {
                     total_rows_hint: Some(range.height()),
                     total_cols_hint: Some(range.width()),
                     preview_formulas: None,
+                    merged_cells: None,
+                    frozen_panes: None,
+                    column_widths: None,
                 });
             }
         }

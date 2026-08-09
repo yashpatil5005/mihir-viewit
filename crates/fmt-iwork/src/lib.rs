@@ -80,6 +80,9 @@ pub fn parse(bytes: &[u8], format: Format, _name: &str) -> Result<Document, Erro
                     preview_image.as_ref().is_some() || preview_pdf.is_some(),
                 ),
                 elements: iwork_key_elements(preview_image.as_ref()),
+                width: None,
+                height: None,
+                background: None,
             }],
             byte_len: bytes.len(),
             asset_path: String::new(),
@@ -176,6 +179,9 @@ fn iwork_numbers_sheets(
         total_rows_hint: Some(total_rows),
         total_cols_hint: Some(total_cols),
         preview_formulas: None,
+        merged_cells: None,
+        frozen_panes: None,
+        column_widths: None,
     }]
 }
 
@@ -212,6 +218,7 @@ fn iwork_key_elements(preview_image: Option<&(String, Vec<u8>)>) -> Vec<PptxElem
                 src: Some(data_url_for_image(name, bytes)),
                 text: None,
                 font_size: None,
+                paragraphs: None,
             }]
         })
         .unwrap_or_default()

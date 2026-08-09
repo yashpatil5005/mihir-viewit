@@ -14,6 +14,7 @@
       merged_cells?: string[];
       frozen_panes?: { x_split: number; y_split: number; active_pane: string };
       preview_formulas?: string[][];
+      column_widths?: (number | null | undefined)[];
     }>,
   );
   let pluginHtml = $derived((docProp.html ?? "") as string);
@@ -90,6 +91,88 @@
     }
     return label;
   }
+
+  // --- Enriched worksheet geometry (merged cells / column widths / frozen) ---
+  function colIndexOf(letters: string): number {
+    let n = 0;
+    for (const ch of letters) n = n * 26 + (ch.charCodeAt(0) - 64);
+    return n - 1;
+  }
+  function refToRect(ref: string): { r1: number; r2: number; c1: number; c2: number } {
+    const [a, b] = ref.split(":");
+    const end = b || a;
+    const r1 = parseInt(a.match(/(\d+)$/)?.[1] ?? "1", 10);
+    const r2 = parseInt(end.match(/(\d+)$/)?.[1] ?? String(r1), 10);
+    const c1 = colIndexOf(a.replace(/\d+$/, ""));
+    const c2 = colIndexOf(end.replace(/\d+$/, ""));
+    return { r1, r2, c1, c2 };
+  }
+
+  // Map "bodyRow:col" → { colspan, rowspan } for merge anchors or { skip: true }
+  // for covered cells. Body rows are preview_rows indices (excel row = idx + 2).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let mergeMap = $derived.by((): Record<string, any> => {
+    const map: Record<string, any> = {};
+    if (!sheet?.merged_cells) return map;
+    for (const ref of sheet.merged_cells) {
+      const { r1, r2, c1, c2 } = refToRect(ref);
+      const rowspan = r2 - r1 + 1;
+      const colspan = c2 - c1 + 1;
+      for (let r = r1; r <= r2; r++) {
+        const bRow = r - 2;
+        if (bRow < 0) continue;
+        for (let c = c1; c <= c2; c++) {
+          if (r === r1 && c === c1) map[`${bRow}:${c}`] = { colspan, rowspan };
+          else map[`${bRow}:${c}`] = { skip: true };
+        }
+      }
+    }
+    return map;
+  });
+
+  // Header-row merges (r1 === 1): the anchor spans header columns.
+  let headerMergeSpan = $derived.by((): Record<number, number> => {
+    const spans: Record<number, number> = {};
+    if (!sheet?.merged_cells) return spans;
+    for (const ref of sheet.merged_cells) {
+      const { r1, r2, c1, c2 } = refToRect(ref);
+      if (r1 === 1 && r2 === 1) {
+        for (let c = c1; c <= c2; c++) spans[c] = c2 - c1 + 1;
+      }
+    }
+    return spans;
+  });
+
+  let columnWidths = $derived((sheet?.column_widths ?? []) as (number | null | undefined)[]);
+  let frozenCols = $derived(Math.max(0, sheet?.frozen_panes?.x_split ?? 0));
+
+  function cellColSpan(bodyRow: number, col: number): number {
+    const m = mergeMap[`${bodyRow}:${col}`];
+    return m && !m.skip && m.colspan ? m.colspan : 1;
+  }
+  function cellRowSpan(bodyRow: number, col: number): number {
+    const m = mergeMap[`${bodyRow}:${col}`];
+    return m && !m.skip && m.rowspan ? m.rowspan : 1;
+  }
+  function cellCovered(bodyRow: number, col: number): boolean {
+    return Boolean(mergeMap[`${bodyRow}:${col}`]?.skip);
+  }
+
+  const ROW_LABEL_PX = 3.6 * 16;
+  function colStyle(col: number): string {
+    const w = columnWidths[col];
+    const widthPx = w ? Math.max(48, Math.round(w * 7)) : undefined;
+    return widthPx ? `width:${widthPx}px;max-width:${widthPx}px;` : "";
+  }
+  function frozenLeft(col: number): string {
+    if (col >= frozenCols) return "";
+    let left = ROW_LABEL_PX;
+    for (let c = 0; c < col; c++) {
+      const w = columnWidths[c];
+      left += w ? Math.max(48, Math.round(w * 7)) : 0;
+    }
+    return `left:${left}px;`;
+  }
 </script>
 
 <article class="xlsx-viewer">
@@ -136,13 +219,23 @@
           <thead>
             <tr>
               <th class="corner"></th>
-              {#each columnLabels as label}
-                <th class="col-label">{label}</th>
+              {#each columnLabels as label, i}
+                <th
+                  class="col-label"
+                  class:frozen-c={i < frozenCols}
+                  style={colStyle(i) + frozenLeft(i)}>{label}</th
+                >
               {/each}
             </tr>
             <tr>
               <th class="row-label header-row">1</th>
-              {#each headerCells as h}<th>{@html cellMatches(h)}</th>{/each}
+              {#each headerCells as h, i}
+                <th
+                  colspan={headerMergeSpan[i] ?? 1}
+                  class:frozen-c={i < frozenCols}
+                  style={colStyle(i) + frozenLeft(i)}>{@html cellMatches(h)}</th
+                >
+              {/each}
             </tr>
           </thead>
           <tbody>
@@ -151,16 +244,23 @@
                 <th class="row-label">{rowIndex + 2}</th>
                 {#each row as cell, c}
                   {@const fmt = formulaGrid[rowIndex][c]}
-                  <td
-                    class:formula={(cell ?? "").startsWith("=") || (!(cell ?? "").trim() && !!fmt)}
-                    title={fmt ? fmt + "\n" + (cell ?? "") : cell}
-                  >
-                    {#if !(cell ?? "").trim() && fmt}
-                      <span class="fx-empty" title={fmt}>{fmt}</span>
-                    {:else}
-                      {@html cellMatches(cell ?? "")}
-                    {/if}
-                  </td>
+                  {#if !cellCovered(rowIndex, c)}
+                    <td
+                      colspan={cellColSpan(rowIndex, c)}
+                      rowspan={cellRowSpan(rowIndex, c)}
+                      class:formula={(cell ?? "").startsWith("=") ||
+                        (!(cell ?? "").trim() && !!fmt)}
+                      class:frozen-c={c < frozenCols}
+                      style={colStyle(c) + frozenLeft(c)}
+                      title={fmt ? fmt + "\n" + (cell ?? "") : cell}
+                    >
+                      {#if !(cell ?? "").trim() && fmt}
+                        <span class="fx-empty" title={fmt}>{fmt}</span>
+                      {:else}
+                        {@html cellMatches(cell ?? "")}
+                      {/if}
+                    </td>
+                  {/if}
                 {/each}
               </tr>
             {/each}
@@ -277,6 +377,15 @@
     color: var(--text-secondary);
     background: var(--bg-secondary);
     font-size: 0.72rem;
+  }
+  /* Frozen (sticky) leading columns from the worksheet's frozen pane. */
+  .frozen-c {
+    position: sticky;
+    z-index: 1;
+    background: var(--bg-secondary);
+  }
+  thead th.frozen-c {
+    z-index: 3;
   }
   .col-label {
     min-width: 7ch;

@@ -5632,6 +5632,7 @@ name = "viewit-fmt-office"
 version = "0.1.0-scaffold"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "bytes",
  "calamine",
  "cfb",

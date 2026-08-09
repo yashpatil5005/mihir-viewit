@@ -18,6 +18,7 @@ thiserror.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 bytes.workspace = true
+base64.workspace = true
 
 # XLSX + ODS via calamine (disable zstd for WASM)
 calamine = { workspace = true, default-features = false }

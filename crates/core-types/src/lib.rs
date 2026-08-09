@@ -299,8 +299,28 @@ pub enum DocxBlock {
 pub struct PptxSlide {
     pub title: String,
     pub body: String,
+    /// Slide extents in EMUs (e.g. 9_144_000 x 5_143_500). Present when the
+    /// parser read `p:sldSz`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub width: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub height: Option<u64>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub elements: Vec<PptxElement>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background: Option<PptxBackground>,
+}
+
+/// Slide background (solid / gradient), rendered behind the positioned
+/// elements so the deck keeps its look rather than a plain text dump.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PptxBackground {
+    #[serde(rename = "type", default)]
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gradient: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -316,6 +336,42 @@ pub struct PptxElement {
     pub text: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub font_size: Option<f64>,
+    /// Rich stylised runs (bold/italic/underline/color) per paragraph. When
+    /// present, viewers render these instead of the flat `text`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paragraphs: Option<Vec<PptxParagraph>>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PptxParagraph {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub runs: Vec<PptxRun>,
+    #[serde(default)]
+    pub bullet: bool,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PptxRun {
+    pub text: String,
+    #[serde(default)]
+    pub bold: bool,
+    #[serde(default)]
+    pub italic: bool,
+    #[serde(default)]
+    pub underline: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font_size: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+}
+
+/// Frozen-pane info read from a worksheet's `<pane>` element.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct XlsxFrozenPanes {
+    pub x_split: u32,
+    pub y_split: u32,
+    #[serde(default)]
+    pub active_pane: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -327,10 +383,22 @@ pub struct XlsxSheet {
     #[serde(default)]
     pub total_cols_hint: Option<usize>,
     /// Formula source per preview cell, aligned with `preview_rows` (same
-    /// shape; empty string when a cell has no formula). Only populated by
-    /// ODS (native parser) — XLSX stays calamine-sourced without formulas.
-    #[serde(default)]
+    /// shape; empty string when a cell has no formula). Populated for ODS
+    /// (native parser) and XLSX (from worksheet `<f>` elements).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preview_formulas: Option<Vec<Vec<String>>>,
+    /// Merge ranges (e.g. `"A1:B2"`) for the populated cell; only cells in the
+    /// top-left corner of a range carry a value, so viewers must skip the
+    /// covered cells.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub merged_cells: Option<Vec<String>>,
+    /// Frozen panes (sticky header rows / leading columns).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frozen_panes: Option<XlsxFrozenPanes>,
+    /// Column widths in Excel character units, index-aligned with the grid;
+    /// `None` entries mean "default width".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub column_widths: Option<Vec<Option<f64>>>,
 }
 
 /// Errors that any fmt-* crate may return. Uniform so the frontend can rely

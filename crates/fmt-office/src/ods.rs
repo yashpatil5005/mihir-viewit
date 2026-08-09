@@ -251,6 +251,9 @@ fn push_sheet(a: SheetAcc, sheets: &mut Vec<XlsxSheet>) {
         total_rows_hint: Some(a.content_rows_max),
         total_cols_hint: Some(a.content_cols_max),
         preview_formulas: Some(preview_formulas),
+        merged_cells: None,
+        frozen_panes: None,
+        column_widths: None,
     });
 }
 
@@ -448,6 +451,9 @@ fn parse_ods_calamine(bytes: &[u8], _format: Format, _name: &str) -> Result<Docu
             total_rows_hint: Some(range.height()),
             total_cols_hint: Some(range.width()),
             preview_formulas: None,
+            merged_cells: None,
+            frozen_panes: None,
+            column_widths: None,
         });
     }
 

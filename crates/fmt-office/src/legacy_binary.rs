@@ -103,6 +103,9 @@ pub(crate) fn legacy_ppt_slides(text: &str) -> Vec<PptxSlide> {
             title: "Legacy PowerPoint preview".into(),
             body: "No extractable slide text found. Legacy binary PowerPoint layout is not decoded in the lightweight viewer.".into(),
             elements: Vec::new(),
+            width: None,
+            height: None,
+            background: None,
         }];
     }
 
@@ -119,6 +122,9 @@ pub(crate) fn legacy_ppt_slides(text: &str) -> Vec<PptxSlide> {
             title,
             body,
             elements: Vec::new(),
+            width: None,
+            height: None,
+            background: None,
         });
     }
     slides

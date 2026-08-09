@@ -95,6 +95,9 @@ fn extract_odp_slides(xml: &str) -> Vec<PptxSlide> {
                         title,
                         body,
                         elements: Vec::new(),
+                        width: None,
+                        height: None,
+                        background: None,
                     });
                 }
             }
