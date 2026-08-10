@@ -130,15 +130,10 @@ def universal_entries() -> list[dict]:
             zip_path = mdir / "build" / "output" / f"{pid}-{manifest['version']}-{abi}.zip"
             if not zip_path.exists():
                 continue
-            url = manifest.get("downloadUrl") or ""
-            # Prefer per-abi downloadUrl, else derive from the omnia/Pages proxy.
-            if url and url.endswith(f"-{abi}.zip"):
-                abi_url = url
-            elif url:
-                stem = url[: url.rfind(".zip")]
-                abi_url = f"{stem}-{abi}.zip"
-            else:
-                abi_url = f"https://omnia.mihirpatil.co/plugins/{pid}-{manifest['version']}-{abi}.zip"
+            # The catalog host serves `<id>-<version>-<abi>.zip` (omnia proxy to
+            # Pages); derive the URL from the packaged zip name, not the manifest
+            # (which may only pin one ABI).
+            abi_url = f"https://omnia.mihirpatil.co/plugins/{pid}-{manifest['version']}-{abi}.zip"
             out.append({
                 **base,
                 "abi": abi,

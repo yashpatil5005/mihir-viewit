@@ -140,7 +140,7 @@
         ],
         "runtime": "native",
         "abiVersion": 1,
-        "downloadUrl": "https://omnia.mihirpatil.co/plugins/office-universal-0.1.0-arm64-v8a-x86_64.zip",
+        "downloadUrl": "https://omnia.mihirpatil.co/plugins/office-universal-0.1.0-x86_64.zip",
         "jsEntry": "index.js",
         "pptxVanilla": true,
         "abi": "x86_64",
@@ -230,7 +230,7 @@
         ],
         "runtime": "native",
         "abiVersion": 1,
-        "downloadUrl": "https://omnia.mihirpatil.co/plugins/compression-universal-0.1.0-arm64-v8a-x86_64.zip",
+        "downloadUrl": "https://omnia.mihirpatil.co/plugins/compression-universal-0.1.0-x86_64.zip",
         "jsEntry": "",
         "pptxVanilla": false,
         "abi": "x86_64",
@@ -304,5 +304,5 @@
       }
     ]
   },
-  "signature": "A13MlA9y4IofI7lKqscum2b3jZxkVysyMetY8Pm8WGT+yb3rkjGxKp4vuVKAm7ulz9QLedq0716KVJVw/D9RBw=="
+  "signature": "Cpbtnvq/utqea+laXeSnBqHfvhBtH1qkWUGo9In0D7DkbEBrx5Ad64vX/sYRLhDNUT8wa3hRAmYQ0Z1CkR1VBA=="
 }
