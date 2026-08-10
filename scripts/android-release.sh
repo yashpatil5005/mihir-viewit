@@ -121,21 +121,14 @@ for DEST in "$JNI/libviewit_mobile_lib.so" "$FLAVOR_JNI/libviewit_mobile_lib.so"
   fi
 done
 
-# Sync plugin .so files into BOTH src/main/jniLibs and src/arm64/jniLibs
-# BEFORE gradle: the arm64 flavor merges the two source dirs, so stale or
-# differing copies in either produce a "Duplicate resources" merge failure.
-PLUGIN_LIBS=(
-  "$ROOT/apps/mobile/plugins/office-universal/build/output/arm64-v8a/libviewit_plugin_office_universal.so"
-  "$ROOT/apps/mobile/plugins/compression-universal/build/output/arm64-v8a/libviewit_plugin_compression_universal.so"
-  "$ROOT/apps/mobile/plugins/font-universal/build/output/arm64-v8a/libviewit_plugin_font_universal.so"
-)
-for PLIB in "${PLUGIN_LIBS[@]}"; do
-  [[ -f "$PLIB" ]] || continue
-  for DEST in "$JNI" "$FLAVOR_JNI"; do
-    if [[ "$(realpath "$PLIB")" != "$(realpath -m "$DEST/$(basename "$PLIB")")" ]]; then
-      cp "$PLIB" "$DEST/"
-    fi
-  done
+# ALL feature plugins (office / compression / font universal + pptx-vanilla) are
+# NOW downloadable catalog plugins — nothing is baked into the APK. Remove any
+# plugin .so that a previous build staged into jniLibs so it does not leak in.
+
+for DEST in "$JNI" "$FLAVOR_JNI"; do
+  rm -f "$DEST/libviewit_plugin_office_universal.so" \
+        "$DEST/libviewit_plugin_compression_universal.so" \
+        "$DEST/libviewit_plugin_font_universal.so"
 done
 
 echo "[android] sync frontend into APK assets (WebViewAssetLoader fallback)"
@@ -174,31 +167,8 @@ TMP_LIB_DIR="$ROOT/dist/android-native-lib"
 rm -rf "$TMP_LIB_DIR"
 mkdir -p "$TMP_LIB_DIR/lib/arm64-v8a"
 cp "$RUST_LIB" "$TMP_LIB_DIR/lib/arm64-v8a/libviewit_mobile_lib.so"
-# office-universal plugin .so: prefer the canonical plugins/.../build.sh output.
-# assembleArm64Release re-stages a *cached* copy over $GEN jniLibs, silently
-# undoing any fresh build.sh output — so only fall back to that stale copy.
-OFFICE_LIB="$ROOT/apps/mobile/plugins/office-universal/build/output/arm64-v8a/libviewit_plugin_office_universal.so"
-[[ -f "$OFFICE_LIB" ]] || OFFICE_LIB="$GEN/app/src/main/jniLibs/arm64-v8a/libviewit_plugin_office_universal.so"
-if [[ -f "$OFFICE_LIB" ]]; then
-  cp "$OFFICE_LIB" "$TMP_LIB_DIR/lib/arm64-v8a/libviewit_plugin_office_universal.so"
-  echo "[android] adding office-universal plugin to APK ($OFFICE_LIB)"
-fi
-# compression-universal plugin .so — staged into jniLibs before gradle above;
-# here just carried into the tmp staging dir for the final zip step.
-COMPRESSION_LIB="$ROOT/apps/mobile/plugins/compression-universal/build/output/arm64-v8a/libviewit_plugin_compression_universal.so"
-[[ -f "$COMPRESSION_LIB" ]] || COMPRESSION_LIB="$GEN/app/src/main/jniLibs/arm64-v8a/libviewit_plugin_compression_universal.so"
-if [[ -f "$COMPRESSION_LIB" ]]; then
-  cp "$COMPRESSION_LIB" "$TMP_LIB_DIR/lib/arm64-v8a/libviewit_plugin_compression_universal.so"
-  echo "[android] adding compression-universal plugin to APK ($COMPRESSION_LIB)"
-fi
-# font-universal plugin .so — staged into jniLibs before gradle above; carried
-# into the staging dir here for the final zip step like the other plugins.
-FONT_LIB="$ROOT/apps/mobile/plugins/font-universal/build/output/arm64-v8a/libviewit_plugin_font_universal.so"
-[[ -f "$FONT_LIB" ]] || FONT_LIB="$GEN/app/src/main/jniLibs/arm64-v8a/libviewit_plugin_font_universal.so"
-if [[ -f "$FONT_LIB" ]]; then
-  cp "$FONT_LIB" "$TMP_LIB_DIR/lib/arm64-v8a/libviewit_plugin_font_universal.so"
-  echo "[android] adding font-universal plugin to APK ($FONT_LIB)"
-fi
+# Feature plugins are downloadable catalog plugins; the native-lib staging dir
+# carries only the core mobile lib, so no plugin .so ships inside any artifact.
 # The main Rust lib must stay stored + 16 KB-aligned (verify-android-16kb.sh).
 # Plugin .so files load via System.loadLibrary from the extracted native-lib
 # dir (useLegacyPackaging=true), so they can be deflated to save APK budget.

@@ -21,5 +21,7 @@
   "checksum": "",
   "abi": "arm64-v8a",
   "abiVersion": 1,
-  "runtime": "native"
+  "runtime": "native",
+  "jsEntry": "index.js",
+  "pptxVanilla": true
 }

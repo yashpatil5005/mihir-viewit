@@ -1,0 +1,19 @@
+{
+  "id": "pptx-vanilla",
+  "name": "PPTX Vanilla Viewer",
+  "version": "1.0.1",
+  "description": "High-fidelity PPTX viewing via pptx-viewer-core — real HTML/CSS slide rendering (images, shapes, theme, charts), fully offline after install.",
+  "minAppVersion": 1,
+  "entryClass": "",
+  "supportedFormats": ["pptx"],
+  "capabilities": ["document-render", "webview-render"],
+  "downloadUrl": "http://127.0.0.1:8890/pptx-vanilla-1.0.1.zip",
+  "sizeBytes": 6453000,
+  "installedSizeBytes": 6452586,
+  "checksum": "",
+  "abi": "",
+  "abiVersion": 1,
+  "runtime": "js",
+  "jsEntry": "index.js",
+  "cssEntry": ""
+}

@@ -446,8 +446,8 @@ class MainActivity : TauriActivity() {
           put("checksum", p.manifest.checksum)
           put("abi", p.manifest.abi)
           put("runtime", p.manifest.runtime.ifBlank { "native" })
-          if (p.manifest.runtime == "js") put("jsEntry", p.manifest.jsEntry)
-          if (p.manifest.runtime == "js" && p.manifest.cssEntry.isNotEmpty()) put("cssEntry", p.manifest.cssEntry)
+          if (p.manifest.runtime == "js" || p.manifest.jsEntry.isNotBlank()) put("jsEntry", p.manifest.jsEntry)
+          if (p.manifest.cssEntry.isNotEmpty()) put("cssEntry", p.manifest.cssEntry)
         })
       }
       return arr.toString()

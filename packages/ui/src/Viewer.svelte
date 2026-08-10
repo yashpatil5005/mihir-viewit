@@ -383,6 +383,7 @@
       const nextDoc = await openWithDefaultRuntime(uri, nameHint, extHint, pluginHint);
       if (seq !== loadSeq || pendingUri !== uri) return;
       doc = nextDoc;
+      void hintInstallIfMissing(extHint);
     } catch (e: any) {
       if (seq !== loadSeq || pendingUri !== uri) return;
       error = e?.toString?.() ?? String(e);
@@ -574,17 +575,87 @@
 
   /** Pick the installed runtime=js PPTX plugin (if any) that should own the
    *  WebView rendering, honoring the per-format runtime pref. */
+  // A plugin renders PPTX faithfully when it bundles the pptx-vanilla JS engine:
+  // either a standalone runtime=js plugin OR a hybrid native plugin (office-universal)
+  // that ships the bundle as its jsEntry. Keep `p` loosely typed; listPlugins exposes
+  // `jsEntry` on the manifest even for native plugins when it is set.
+  function hasPptxJsRenderer(p: PluginInfo): boolean {
+    return (
+      (isJsPlugin(p) || Boolean((p as unknown as { jsEntry?: string }).jsEntry)) &&
+      pluginSupports(p, "pptx")
+    );
+  }
+
+  // Office/archive/font formats each have an optional faithful downloadable
+  // plugin. On first open (online) prompt the PluginStore if that plugin isn't
+  // installed yet; the built-in fmt-* renderers stay as an offline fallback.
+  const FORMAT_PLUGIN: Record<string, string> = {
+    docx: "office-universal",
+    docm: "office-universal",
+    dotx: "office-universal",
+    dotm: "office-universal",
+    xlsx: "office-universal",
+    xlsm: "office-universal",
+    xlsb: "office-universal",
+    xls: "office-universal",
+    pptx: "office-universal",
+    pptm: "office-universal",
+    potx: "office-universal",
+    odt: "office-universal",
+    ott: "office-universal",
+    ods: "office-universal",
+    ots: "office-universal",
+    odp: "office-universal",
+    otp: "office-universal",
+    doc: "office-universal",
+    ppt: "office-universal",
+    zip: "compression-universal",
+    "7z": "compression-universal",
+    rar: "compression-universal",
+    tar: "compression-universal",
+    gz: "compression-universal",
+    tgz: "compression-universal",
+    bz2: "compression-universal",
+    tbz2: "compression-universal",
+    xz: "compression-universal",
+    txz: "compression-universal",
+    zst: "compression-universal",
+    tzst: "compression-universal",
+    lz4: "compression-universal",
+    lzma: "compression-universal",
+    tlz: "compression-universal",
+    ttf: "font-universal",
+    otf: "font-universal",
+    woff: "font-universal",
+    woff2: "font-universal",
+    ttc: "font-universal",
+    pfb: "font-universal",
+    cff: "font-universal",
+    dfont: "font-universal",
+    sfd: "font-universal",
+    ps: "font-universal",
+  };
+
+  async function hintInstallIfMissing(extHint: string | undefined): Promise<void> {
+    if (!extHint || !hasAndroidBridge()) return;
+    if (typeof navigator === "undefined" || !navigator.onLine) return;
+    const ext = extHint.toLowerCase();
+    const pluginId = FORMAT_PLUGIN[ext];
+    if (!pluginId) return;
+    const installed = await listInstalledPlugins();
+    const present = installed.some((p) => p.id === pluginId && pluginSupports(p, ext));
+    if (!present) pluginStoreOpen = true;
+  }
+
   async function resolvePptxVanillaPlugin(): Promise<PluginInfo | null> {
     if (!hasAndroidBridge()) return null;
     const prefId = getRuntimePref("pptx");
     if (prefId === "__builtin__") return null;
     const installed = await listInstalledPlugins();
     if (prefId) {
-      return (
-        installed.find((p) => p.id === prefId && isJsPlugin(p) && pluginSupports(p, "pptx")) ?? null
-      );
+      return installed.find((p) => p.id === prefId && hasPptxJsRenderer(p)) ?? null;
     }
-    return installed.find((p) => isJsPlugin(p) && pluginSupports(p, "pptx")) ?? null;
+    return installed.find((p) => hasPptxJsRenderer(p)) ?? null;
   }
   function getRuntimePref(ext: string): string | null {
     return loadRuntimePrefs()[ext] ?? null;

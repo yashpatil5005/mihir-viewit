@@ -94,9 +94,66 @@ def pptx_vanilla_entries() -> list[dict]:
     }]
 
 
+UNIVERSAL_PLUGINS = ("office-universal", "compression-universal", "font-universal")
+
+
+def universal_entries() -> list[dict]:
+    """Per-ABI catalog entries for the downloadable native universal plugins.
+
+    These live under apps/mobile/plugins/<id> and are built by their build.sh
+    into build/output/<id>-<version>-{arm64-v8a,x86_64}.zip. Since plugins are
+    now fully downloadable (never baked into the APK), every ABI ships here.
+    """
+    out: list[dict] = []
+    for pid in UNIVERSAL_PLUGINS:
+        mdir = ROOT / "apps" / "mobile" / "plugins" / pid
+        manifest_file = mdir / "plugin.json"
+        if not manifest_file.exists():
+            continue
+        manifest = json.loads(manifest_file.read_text())
+        base = {
+            "id": manifest["id"],
+            "name": manifest["name"],
+            "version": manifest["version"],
+            "description": manifest["description"],
+            "minAppVersion": manifest.get("minAppVersion", 1),
+            "entryClass": manifest.get("entryClass", ""),
+            "capabilities": manifest.get("capabilities", []),
+            "supportedFormats": manifest.get("supportedFormats", []),
+            "runtime": manifest.get("runtime", "native"),
+            "abiVersion": manifest.get("abiVersion", 1),
+            "downloadUrl": manifest.get("downloadUrl") or "",
+            "jsEntry": manifest.get("jsEntry", ""),
+            "pptxVanilla": manifest.get("pptxVanilla", False),
+        }
+        for abi in ("arm64-v8a", "x86_64"):
+            zip_path = mdir / "build" / "output" / f"{pid}-{manifest['version']}-{abi}.zip"
+            if not zip_path.exists():
+                continue
+            url = manifest.get("downloadUrl") or ""
+            # Prefer per-abi downloadUrl, else derive from the omnia/Pages proxy.
+            if url and url.endswith(f"-{abi}.zip"):
+                abi_url = url
+            elif url:
+                stem = url[: url.rfind(".zip")]
+                abi_url = f"{stem}-{abi}.zip"
+            else:
+                abi_url = f"https://omnia.mihirpatil.co/plugins/{pid}-{manifest['version']}-{abi}.zip"
+            out.append({
+                **base,
+                "abi": abi,
+                "sizeBytes": zip_path.stat().st_size,
+                "installedSizeBytes": installed_size(zip_path),
+                "checksum": sha256(zip_path),
+                "downloadUrl": abi_url,
+            })
+    return out
+
+
 def build_entries(existing: list[dict]) -> list[dict]:
-    kept = [e for e in existing if e.get("id") not in ("office-ooxml", "pptx-vanilla")]
-    return kept + office_ooxml_entries() + pptx_vanilla_entries()
+    rebuilt = {"office-ooxml", "pptx-vanilla", *UNIVERSAL_PLUGINS}
+    kept = [e for e in existing if e.get("id") not in rebuilt]
+    return kept + office_ooxml_entries() + pptx_vanilla_entries() + universal_entries()
 
 
 def main() -> int:

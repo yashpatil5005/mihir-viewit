@@ -111,3 +111,11 @@ patches/pdfium-render/
 apps/mobile/gen/
 plugins/*/build/
 plugins/*.zip
+
+# --- Plugin build artifacts (downloadable plugins are built, not committed) ---
+apps/mobile/plugins/*/dexout/
+apps/mobile/plugins/*/build/output/package/
+plugins/pptx-vanilla/node_modules/
+plugins/pptx-vanilla/dist/
+plugins/pptx-vanilla/zipout/
+plugins/*.zip

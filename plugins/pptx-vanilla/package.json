@@ -1,0 +1,13 @@
+{
+  "name": "@viewit/plugin-pptx-vanilla",
+  "version": "1.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/entry.js --bundle --format=iife --global-name=ViewItPlugin__pptx_vanilla --minify --external:three --external:three/ --outfile=dist/index.js && node -e \"const fs=require('fs');fs.writeFileSync('dist/.bundle-size',String(fs.statSync('dist/index.js').size))\""
+  },
+  "devDependencies": {
+    "esbuild": "^0.23.0",
+    "pptx-vanilla-viewer": "^1.18.2"
+  }
+}
