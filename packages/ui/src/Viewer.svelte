@@ -1209,7 +1209,7 @@
         {/key}
       {:else if doc.kind === "placeholder"}
         {#key docUri}
-          <PlaceholderViewer document={doc} />
+          <PlaceholderViewer document={doc} onInstall={() => (pluginStoreOpen = true)} />
         {/key}
       {:else}
         <p class="error">Unknown document kind: <code>{(doc as any).kind}</code></p>
