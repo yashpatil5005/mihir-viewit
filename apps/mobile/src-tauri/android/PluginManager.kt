@@ -221,25 +221,49 @@ class PluginManager(private val context: Context) {
         onProgress: (Float) -> Unit,
     ): Result<InstalledPlugin> {
         return try {
-            // Warm reuse: same artifact reinstalled after a remove in this process.
+            // A native plugin loaded this process stays loaded (Android cannot
+            // dlclose it). Reinstall of the SAME artifact reuses the loaded
+            // instance; an UPGRADE persists the new files and asks for a restart
+            // (reloading the .so into a fresh classloader would throw an
+            // UnsatisfiedLinkError cross-loader).
             val warm = warmLoaded[manifest.id]
-            if (warm != null
-                && warm.manifest.version == manifest.version
-                && (manifest.checksum.isEmpty()
-                    || warm.manifest.checksum.equals(manifest.checksum, ignoreCase = true))
-            ) {
+            if (warm != null && (warm.mediaPlugin != null || warm.documentPlugin != null)) {
+                val sameArtifact =
+                    warm.manifest.version == manifest.version
+                        && (manifest.checksum.isEmpty()
+                            || warm.manifest.checksum.equals(manifest.checksum, ignoreCase = true))
+                if (sameArtifact) {
+                    val stagingDir = File(pluginsDir, "${manifest.id}.staging")
+                    stagingDir.deleteRecursively()
+                    stagingDir.mkdirs()
+                    unzip(zipFile, stagingDir)
+                    val dir2 = File(pluginsDir, manifest.id)
+                    dir2.deleteRecursively()
+                    stagingDir.renameTo(dir2)
+                    val reinstalled = warm.copy(manifest = manifest, installDir = dir2)
+                    installed[manifest.id] = reinstalled
+                    onProgress(1f)
+                    Log.i(TAG, "Reused warm-loaded plugin (native stays loaded): ${manifest.id} v${manifest.version}")
+                    return Result.success(reinstalled)
+                }
                 val stagingDir = File(pluginsDir, "${manifest.id}.staging")
                 stagingDir.deleteRecursively()
                 stagingDir.mkdirs()
+                if (manifest.checksum.isNotEmpty()) {
+                    val hash = sha256(zipFile)
+                    if (!hash.equals(manifest.checksum, ignoreCase = true)) {
+                        stagingDir.deleteRecursively()
+                        return Result.failure(Exception("Checksum mismatch"))
+                    }
+                }
                 unzip(zipFile, stagingDir)
+                saveManifest(stagingDir, manifest)
                 val dir2 = File(pluginsDir, manifest.id)
                 dir2.deleteRecursively()
                 stagingDir.renameTo(dir2)
-                val reinstalled = warm.copy(manifest = manifest, installDir = dir2)
-                installed[manifest.id] = reinstalled
-                onProgress(1f)
-                Log.i(TAG, "Reused warm-loaded plugin (native stays loaded): ${manifest.id} v${manifest.version}")
-                return Result.success(reinstalled)
+                installed[manifest.id] = warm // keep this session working on the old loaded instance
+                Log.w(TAG, "Native plugin update staged; restart to apply: ${manifest.id} → v${manifest.version}")
+                return Result.failure(Exception("Update downloaded. Restart the app to apply it."))
             }
 
             val dir = File(pluginsDir, manifest.id)

@@ -32,7 +32,9 @@
   import OfficePluginHtmlViewer from "./OfficePluginHtmlViewer.svelte";
   import {
     archiveBridgeFor,
+    fetchPluginCatalog,
     hasAndroidBridge,
+    installPlugin,
     isJsPlugin,
     listInstalledPlugins,
     materializeExternalUri,
@@ -383,7 +385,7 @@
       const nextDoc = await openWithDefaultRuntime(uri, nameHint, extHint, pluginHint);
       if (seq !== loadSeq || pendingUri !== uri) return;
       doc = nextDoc;
-      void hintInstallIfMissing(extHint);
+      void hintInstallIfMissing(extHint, uri);
     } catch (e: any) {
       if (seq !== loadSeq || pendingUri !== uri) return;
       error = e?.toString?.() ?? String(e);
@@ -589,6 +591,12 @@
   // Office/archive/font formats each have an optional faithful downloadable
   // plugin. On first open (online) prompt the PluginStore if that plugin isn't
   // installed yet; the built-in fmt-* renderers stay as an offline fallback.
+  const PLUGIN_LABEL: Record<string, string> = {
+    "office-universal": "Office",
+    "compression-universal": "Archive",
+    "font-universal": "Font",
+  };
+
   const FORMAT_PLUGIN: Record<string, string> = {
     docx: "office-universal",
     docm: "office-universal",
@@ -636,15 +644,55 @@
     ps: "font-universal",
   };
 
-  async function hintInstallIfMissing(extHint: string | undefined): Promise<void> {
-    if (!extHint || !hasAndroidBridge()) return;
-    if (typeof navigator === "undefined" || !navigator.onLine) return;
+  async function hintInstallIfMissing(
+    extHint: string | undefined,
+    uri: string | null,
+  ): Promise<void> {
+    if (!extHint || !hasAndroidBridge()) {
+      formatInstallCta = null;
+      return;
+    }
     const ext = extHint.toLowerCase();
     const pluginId = FORMAT_PLUGIN[ext];
-    if (!pluginId) return;
+    if (!pluginId || typeof navigator === "undefined" || !navigator.onLine) {
+      formatInstallCta = null;
+      return;
+    }
     const installed = await listInstalledPlugins();
     const present = installed.some((p) => p.id === pluginId && pluginSupports(p, ext));
-    if (!present) pluginStoreOpen = true;
+    if (present) {
+      formatInstallCta = null;
+      return;
+    }
+    formatInstallCta = { ext, pluginName: PLUGIN_LABEL[pluginId] ?? pluginId, uri: uri ?? "" };
+  }
+
+  // One-tap: install the matching plugin from the catalog, then reopen the file so
+  // the richer renderer (or the plugin's viewer) takes over.
+  let formatInstallCta = $state<{ ext: string; pluginName: string; uri: string } | null>(null);
+  let formatInstalling = $state(false);
+
+  async function confirmFormatInstall(): Promise<void> {
+    const cta = formatInstallCta;
+    if (!cta || formatInstalling) return;
+    formatInstalling = true;
+    try {
+      const pluginId = FORMAT_PLUGIN[cta.ext];
+      const catalog = (await fetchPluginCatalog()) ?? [];
+      const manifest = catalog.find((p) => p.id === pluginId && pluginSupports(p, cta.ext));
+      if (!manifest) throw new Error(`No ${pluginId} plugin in the catalog`);
+      await installPlugin(manifest);
+      formatInstallCta = null;
+      // reopen after the plugin is in place
+      if (cta.uri) {
+        pendingUri = cta.uri;
+        void load();
+      }
+    } catch (e) {
+      console.error("[viewit] plugin auto-install failed:", e);
+    } finally {
+      formatInstalling = false;
+    }
   }
 
   async function resolvePptxVanillaPlugin(): Promise<PluginInfo | null> {
@@ -1045,6 +1093,22 @@
     {:else if error}
       <pre class="error">{error}</pre>
     {:else if doc}
+      {#if formatInstallCta}
+        <div class="plugin-cta">
+          <span
+            >This format is provided by the <strong>{formatInstallCta.pluginName}</strong> plugin.</span
+          >
+          <button type="button" onclick={confirmFormatInstall} disabled={formatInstalling}>
+            {formatInstalling ? "Installing…" : "Install & reopen"}
+          </button>
+          <button
+            type="button"
+            class="dismiss"
+            onclick={() => (formatInstallCta = null)}
+            title="Dismiss">×</button
+          >
+        </div>
+      {/if}
       {#if doc.kind === "text"}
         {#key docUri}
           {#if docUri && /\.ics?$/i.test(docUri) && IcsViewer}
@@ -1381,5 +1445,42 @@
   .plugin-html-surface {
     overflow: auto;
     border-radius: 0.75rem;
+  }
+  .plugin-cta {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.6rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--link);
+    border-radius: 0.6rem;
+    background: color-mix(in srgb, var(--link) 12%, transparent);
+    color: var(--text-primary);
+    font-size: 0.86rem;
+  }
+  .plugin-cta strong {
+    color: var(--link);
+  }
+  .plugin-cta button {
+    padding: 0.35rem 0.7rem;
+    border: 1px solid var(--link);
+    border-radius: 0.4rem;
+    background: var(--link);
+    color: #fff;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .plugin-cta button:disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
+  .plugin-cta button.dismiss {
+    margin-left: auto;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 1.1rem;
+    line-height: 1;
   }
 </style>
