@@ -105,6 +105,12 @@ class PluginManager(private val context: Context) {
 
     private val pluginsDir = File(context.filesDir, "plugins")
     private val installed = mutableMapOf<String, InstalledPlugin>()
+    // Android cannot dlclose a loaded native library, so a native plugin that was
+    // loaded this process stays loaded even after removePlugin. Cache the loaded
+    // instance (version+checksum) so a reinstall of the SAME artifact reuses it
+    // instead of re-attempting System.load on an already-open path (which throws
+    // "already opened by ClassLoader X; can't open in ClassLoader Y").
+    private val warmLoaded = mutableMapOf<String, InstalledPlugin>()
 
     fun init() {
         pluginsDir.mkdirs()
@@ -212,6 +218,27 @@ class PluginManager(private val context: Context) {
         onProgress: (Float) -> Unit,
     ): Result<InstalledPlugin> {
         return try {
+            // Warm reuse: same artifact reinstalled after a remove in this process.
+            val warm = warmLoaded[manifest.id]
+            if (warm != null
+                && warm.manifest.version == manifest.version
+                && (manifest.checksum.isEmpty()
+                    || warm.manifest.checksum.equals(manifest.checksum, ignoreCase = true))
+            ) {
+                val stagingDir = File(pluginsDir, "${manifest.id}.staging")
+                stagingDir.deleteRecursively()
+                stagingDir.mkdirs()
+                unzip(zipFile, stagingDir)
+                val dir2 = File(pluginsDir, manifest.id)
+                dir2.deleteRecursively()
+                stagingDir.renameTo(dir2)
+                val reinstalled = warm.copy(manifest = manifest, installDir = dir2)
+                installed[manifest.id] = reinstalled
+                onProgress(1f)
+                Log.i(TAG, "Reused warm-loaded plugin (native stays loaded): ${manifest.id} v${manifest.version}")
+                return Result.success(reinstalled)
+            }
+
             val dir = File(pluginsDir, manifest.id)
             if (dir.exists()) {
                 val existing = installed[manifest.id]
@@ -257,6 +284,10 @@ class PluginManager(private val context: Context) {
 
             val installedPlugin = plugin.copy(manifest = manifest, health = PluginHealth.LOADED, installDir = finalDir)
             installed[manifest.id] = installedPlugin
+            if (plugin.mediaPlugin != null || plugin.documentPlugin != null) {
+                // Native plugins are the warm-reuse case; JS plugins cheap to reload.
+                warmLoaded[manifest.id] = installedPlugin
+            }
             onProgress(1f)
             Log.i(TAG, "Installed plugin: ${manifest.id} v${manifest.version}")
             Result.success(installedPlugin)
