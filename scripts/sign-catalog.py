@@ -76,7 +76,11 @@ def ensure_verify_key():
 
 
 def canonical_json(data):
-    return json.dumps(data, separators=(',', ':'), sort_keys=True)
+    # ensure_ascii=False: emit raw UTF-8 (matching org.json's quote on Android),
+    # so the app's canonicalJson reconstructs identical bytes and the Ed25519
+    # signature verifies. ensure_ascii=True would escape non-ASCII as \uXXXX and
+    # break verification.
+    return json.dumps(data, separators=(',', ':'), sort_keys=True, ensure_ascii=False)
 
 
 def sign_catalog(input_file=CATALOG_FILE, output_file=SIGNED_CATALOG_FILE, private_key_file=PRIVATE_KEY_FILE):
