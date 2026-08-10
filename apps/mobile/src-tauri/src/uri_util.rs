@@ -591,16 +591,16 @@ pub fn open_from_uri(
                 // Also register for streaming
                 let stream_url = build_stream_url(app, &uri);
                 if let Document::Pptx {
-                    stream_url: ref mut _su,
-                    ..
+                    slide_count, slides, byte_len, asset_path, ..
                 } = doc.clone()
                 {
-                    // Reconstruct with stream_url
+                    // Reconstruct with stream_url, keeping the native parsed slides
+                    // so the built-in viewer has a basic offline preview.
                     return Ok(Document::Pptx {
-                        slide_count: 0,
-                        slides: vec![],
-                        byte_len: 0,
-                        asset_path: asset_path.clone(),
+                        slide_count,
+                        slides,
+                        byte_len,
+                        asset_path,
                         stream_url,
                     });
                 }

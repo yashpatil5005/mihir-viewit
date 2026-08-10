@@ -115,15 +115,29 @@ pub fn path_to_file_url(path: &Path) -> Result<String, String> {
 pub fn open_pptx_materialized(
     app: &AppHandle,
     uri: &str,
-    _display_name: &str,
+    display_name: &str,
     ext: &str,
 ) -> Result<Document, String> {
     let (path, size) = materialize_uri_to_cache(app, uri, ext)?;
     let asset_path = path_to_file_url(&path)?;
+
+    // Basic offline preview: parse native text slides via the baked-in fmt-office
+    // so the built-in viewer has something to show even with no plugin/WASM. The
+    // faithful renderer (office-universal + pptx-vanilla) still re-renders from
+    // asset_path when installed.
+    let (slide_count, slides, parsed_len) = std::fs::read(&path)
+        .ok()
+        .and_then(|bytes| viewit_core::open(&bytes, "pptx", display_name).ok())
+        .and_then(|doc| match doc {
+            Document::Pptx { slide_count, slides, byte_len, .. } => Some((slide_count, slides, byte_len)),
+            _ => None,
+        })
+        .unwrap_or((0, Vec::new(), size));
+
     Ok(Document::Pptx {
-        slide_count: 0,
-        slides: vec![],
-        byte_len: size,
+        slide_count,
+        slides,
+        byte_len: if parsed_len > 0 { parsed_len } else { size },
         asset_path,
         stream_url: None,
     })
