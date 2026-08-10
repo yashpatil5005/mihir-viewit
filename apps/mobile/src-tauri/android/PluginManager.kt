@@ -56,6 +56,7 @@ class PluginManager(private val context: Context) {
                 abi = obj.optString("abi", ""),
                 abiVersion = obj.optInt("abiVersion", 1),
                 capabilities = caps,
+                base = obj.optString("base", "view"),
                 runtime = obj.optString("runtime", ""),
                 jsEntry = obj.optString("jsEntry", "web/index.js"),
                 cssEntry = obj.optString("cssEntry", ""),
@@ -676,6 +677,7 @@ class PluginManager(private val context: Context) {
             put("abi", manifest.abi)
             put("abiVersion", manifest.abiVersion)
             if (manifest.capabilities.isNotEmpty()) put("capabilities", JSONArray(manifest.capabilities))
+            if (manifest.base.isNotEmpty() && manifest.base != "view") put("base", manifest.base)
             if (manifest.runtime.isNotEmpty()) put("runtime", manifest.runtime)
             if (manifest.runtime == "js") put("jsEntry", manifest.jsEntry)
             if (manifest.runtime == "js" && manifest.cssEntry.isNotEmpty()) put("cssEntry", manifest.cssEntry)

@@ -18,6 +18,8 @@ export interface PluginInfo {
   sourceUrl?: string;
   /** Plugin runtime: 'native' | 'dex' | 'js'. JS plugins ship a WebView bundle. */
   runtime?: string;
+  /** Plugin base the add-on provides: 'view' | 'play' | 'edit' | 'tool'. See docs/PLUGIN-BASES.md. */
+  base?: string;
   jsEntry?: string;
   cssEntry?: string;
   /** Documented storage-permission scope (for extraction-capable plugins). */

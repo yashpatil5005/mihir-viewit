@@ -119,6 +119,7 @@ def universal_entries() -> list[dict]:
             "minAppVersion": manifest.get("minAppVersion", 1),
             "entryClass": manifest.get("entryClass", ""),
             "capabilities": manifest.get("capabilities", []),
+            "base": manifest.get("base", "view"),
             "supportedFormats": manifest.get("supportedFormats", []),
             "runtime": manifest.get("runtime", "native"),
             "abiVersion": manifest.get("abiVersion", 1),
