@@ -177,13 +177,16 @@ class PluginManager(private val context: Context) {
                 dir.deleteRecursively()
             }
 
-            val stagingDir = File(pluginsDir, "${manifest.id}.staging")
-            stagingDir.deleteRecursively()
-            stagingDir.mkdirs()
-
-            val zipFile = File(stagingDir, "${manifest.id}.zip")
-            downloadFile(manifest.downloadUrl, zipFile, onProgress)
-            installZipPayload(zipFile, manifest, onProgress)
+            // Download to a temp OUTSIDE the staging dir: installZipPayload wipes
+            // its own staging dir, which previously deleted the just-downloaded
+            // zip and made the subsequent unzip throw FileNotFoundException/ENOENT.
+            val zipFile = java.io.File.createTempFile("pkg-${manifest.id}-", ".zip", context.cacheDir)
+            try {
+                downloadFile(manifest.downloadUrl, zipFile, onProgress)
+                installZipPayload(zipFile, manifest, onProgress)
+            } finally {
+                zipFile.delete()
+            }
         } catch (e: Throwable) {
             Log.e(TAG, "Install failed: ${manifest.id}", e)
             File(pluginsDir, "${manifest.id}.staging").deleteRecursively()
