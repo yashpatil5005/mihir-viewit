@@ -8,13 +8,13 @@
 # Env:
 #   CLOUDFLARE_PAGES_PROJECT  (default: viewit-plugin-catalog)
 #   CLOUDFLARE_PAGES_BRANCH   (default: main)
-#   WRANGLER                  (default: npx wrangler)
+#   WRANGLER                  (default: npx wrangler@4.120.0, pinned — latest prereleases may reference unpublished Miniflare alphas)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PROJECT="${CLOUDFLARE_PAGES_PROJECT:-viewit-plugin-catalog}"
 BRANCH="${CLOUDFLARE_PAGES_BRANCH:-main}"
-WRANGLER="${WRANGLER:-npx wrangler}"
+WRANGLER="${WRANGLER:-npx wrangler@4.120.0}"
 STAGE="$ROOT/build/plugin-pages"
 
 echo "[publish] 1/3 package + sign"
