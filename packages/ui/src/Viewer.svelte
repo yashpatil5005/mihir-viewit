@@ -1210,12 +1210,12 @@
       {#if ["text", "markdown", "json"].includes(doc.kind)}
         <div class="editor-cta">
           <span>{editPlugin ? `Editor base: ${editPlugin.name}` : "Edit this document with a plugin"}</span>
-          <button type="button" onclick={() => useEditorBase ? (useEditorBase = false) : void activateEditor()}>
+          <button type="button" onclick={() => (useEditorBase = !useEditorBase)}>
             {useEditorBase ? "View document" : "Edit"}
           </button>
         </div>
       {/if}
-      {#if useEditorBase && editPlugin && ["text", "markdown", "json"].includes(doc.kind)}
+      {#if useEditorBase && ["text", "markdown", "json"].includes(doc.kind)}
         <EditorBaseHost
           text={doc.kind === "text"
             ? ((doc as any).content ?? "")
