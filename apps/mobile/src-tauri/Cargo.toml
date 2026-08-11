@@ -65,6 +65,10 @@ fmt-mobile = [
   # Basic offline office preview (docx/xlsx/pptx text+structure). Rich/faithful
   # rendering is provided by the downloadable office-universal plugin (enrichment).
   "fmt-office",
+  # Basic offline archive listing + font preview. Precise extraction/metadata are
+  # provided by the downloadable compression/font-universal plugins (enrichment).
+  "fmt-archive",
+  "fmt-font",
 ]
 # Full feature set (for desktop/comparison) - not used on mobile
 fmt-everything-lite = [
