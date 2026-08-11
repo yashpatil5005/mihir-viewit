@@ -712,6 +712,15 @@
     useEditorBase = false;
   }
 
+  async function activateEditor(): Promise<void> {
+    const d = doc as any;
+    const ext = extFromUri(docUri ?? "", pendingName ?? undefined)
+      || (d?.kind === "text" ? "txt" : d?.kind === "markdown" ? "md" : d?.kind === "json" ? "json" : "");
+    await resolveEditBase(ext);
+    if (editPlugin) useEditorBase = true;
+    else pluginStoreOpen = true;
+  }
+
   // Resolve play/edit bases reactively so every open path (VIEW intent, picker,
   // drop) discovers installed plugin bases, not only load().
   $effect(() => {
@@ -1194,10 +1203,10 @@
           >
         </div>
       {/if}
-      {#if editPlugin && ["text", "markdown", "json"].includes(doc.kind)}
+      {#if ["text", "markdown", "json"].includes(doc.kind)}
         <div class="editor-cta">
-          <span>Editor base: <strong>{editPlugin.name}</strong></span>
-          <button type="button" onclick={() => (useEditorBase = !useEditorBase)}>
+          <span>{editPlugin ? `Editor base: ${editPlugin.name}` : "Edit this document with a plugin"}</span>
+          <button type="button" onclick={() => useEditorBase ? (useEditorBase = false) : void activateEditor()}>
             {useEditorBase ? "View document" : "Edit"}
           </button>
         </div>
