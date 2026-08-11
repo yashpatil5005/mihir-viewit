@@ -20,6 +20,8 @@ export interface PluginInfo {
   runtime?: string;
   /** Plugin base the add-on provides: 'view' | 'play' | 'edit' | 'tool'. See docs/PLUGIN-BASES.md. */
   base?: string;
+  /** Fine-grained actions provided inside that base (e.g. play, edit, save, extract). */
+  capabilities?: string[];
   jsEntry?: string;
   cssEntry?: string;
   /** Documented storage-permission scope (for extraction-capable plugins). */
@@ -85,6 +87,11 @@ function normalizeCatalogPlugin(raw: any): PluginInfo | null {
     abi: raw.abi ? String(raw.abi) : undefined,
     entryClass: raw.entryClass ? String(raw.entryClass) : undefined,
     storageScope: raw.storageScope ? String(raw.storageScope) : undefined,
+    base: raw.base ? String(raw.base) : "view",
+    runtime: raw.runtime ? String(raw.runtime) : undefined,
+    jsEntry: raw.jsEntry ? String(raw.jsEntry) : undefined,
+    cssEntry: raw.cssEntry ? String(raw.cssEntry) : undefined,
+    capabilities: Array.isArray(raw.capabilities) ? raw.capabilities.map(String) : undefined,
   };
 }
 

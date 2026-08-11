@@ -628,6 +628,11 @@ class MainActivity : TauriActivity() {
               put("installedSizeBytes", m.installedSizeBytes)
               put("checksum", m.checksum)
               put("abi", m.abi)
+              put("base", m.base)
+              put("capabilities", JSONArray(m.capabilities))
+              put("runtime", m.runtime.ifBlank { "native" })
+              if (m.jsEntry.isNotBlank()) put("jsEntry", m.jsEntry)
+              if (m.cssEntry.isNotBlank()) put("cssEntry", m.cssEntry)
             })
           }
           arr.toString()
@@ -665,6 +670,11 @@ class MainActivity : TauriActivity() {
               put("installedSizeBytes", m.installedSizeBytes)
               put("checksum", m.checksum)
               put("abi", m.abi)
+              put("base", m.base)
+              put("capabilities", JSONArray(m.capabilities))
+              put("runtime", m.runtime.ifBlank { "native" })
+              if (m.jsEntry.isNotBlank()) put("jsEntry", m.jsEntry)
+              if (m.cssEntry.isNotBlank()) put("cssEntry", m.cssEntry)
             })
           }
           payload.put("plugins", arr)
