@@ -386,7 +386,6 @@
       const nextDoc = await openWithDefaultRuntime(uri, nameHint, extHint, pluginHint);
       if (seq !== loadSeq || pendingUri !== uri) return;
       doc = nextDoc;
-      void hintInstallIfMissing(extHint, uri);
       if ((nextDoc as any)?.kind === "media") {
         void resolvePlayBase((nextDoc as any)?.ext ?? extHint ?? "");
       }
@@ -648,28 +647,40 @@
     ps: "font-universal",
   };
 
-  async function hintInstallIfMissing(
-    extHint: string | undefined,
-    uri: string | null,
-  ): Promise<void> {
-    if (!extHint || !hasAndroidBridge()) {
+  // Reactive CTA: whenever the open document/URI changes, offer to install the
+  // matching plugin if it's absent (online). Derives the extension from the URI
+  // so it works on every open path (VIEW intent, picker, drop), not just load().
+  async function syncInstallCta(uri: string): Promise<void> {
+    if (!hasAndroidBridge() || typeof navigator === "undefined" || !navigator.onLine) {
       formatInstallCta = null;
       return;
     }
-    const ext = extHint.toLowerCase();
+    const ext = extFromUri(uri);
     const pluginId = FORMAT_PLUGIN[ext];
-    if (!pluginId || typeof navigator === "undefined" || !navigator.onLine) {
+    if (!pluginId) {
       formatInstallCta = null;
       return;
     }
-    const installed = await listInstalledPlugins();
-    const present = installed.some((p) => p.id === pluginId && pluginSupports(p, ext));
-    if (present) {
+    try {
+      const installed = await listInstalledPlugins();
+      const present = installed.some((p) => p.id === pluginId && pluginSupports(p, ext));
+      formatInstallCta = present
+        ? null
+        : { ext, pluginName: PLUGIN_LABEL[pluginId] ?? pluginId, uri };
+    } catch {
       formatInstallCta = null;
-      return;
     }
-    formatInstallCta = { ext, pluginName: PLUGIN_LABEL[pluginId] ?? pluginId, uri: uri ?? "" };
   }
+
+  $effect(() => {
+    const d = doc;
+    const uri = docUri;
+    if (!d || !uri) {
+      formatInstallCta = null;
+      return;
+    }
+    void syncInstallCta(uri);
+  });
 
   // One-tap: install the matching plugin from the catalog, then reopen the file so
   // the richer renderer (or the plugin's viewer) takes over.
