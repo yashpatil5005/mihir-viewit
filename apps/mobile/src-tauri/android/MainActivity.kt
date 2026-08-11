@@ -521,6 +521,24 @@ class MainActivity : TauriActivity() {
     }
 
     @JavascriptInterface
+    fun restartApp() {
+      // A freshly downloaded native-plugin update can't reload an already-open
+      // .so in-process; cold-restart so the new version is loaded on next run.
+      runOnUiThread {
+        try {
+          val i = packageManager.getLaunchIntentForPackage(packageName)
+          if (i != null) {
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            startActivity(i)
+          }
+        } catch (e: Exception) {
+          android.util.Log.e("ViewIt", "restartApp launch failed", e)
+        }
+        Runtime.getRuntime().exit(0)
+      }
+    }
+
+    @JavascriptInterface
     fun installPlugin(manifestJson: String, callbackId: String) {
       val pm = (application as? ViewItApp)?.pluginManager ?: return
       Thread {

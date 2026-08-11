@@ -6,7 +6,9 @@
     hasAndroidBridge,
     installPlugin,
     isInstallablePlugin,
+    isRestartToApplyError,
     removePlugin,
+    restartApp,
     saveCustomCatalogUrls,
     type PluginCatalogSource,
     type PluginInfo,
@@ -27,6 +29,7 @@
   let installing = $state<string | null>(null);
   let installProgress = $state(0);
   let errorMsg = $state("");
+  let restartRequired = $state(false);
   let showPrivacy = $state(false);
   let acceptedPrivacy = $state(false);
   let customCatalogUrl = $state("");
@@ -97,11 +100,17 @@
     errorMsg = "";
 
     try {
+      restartRequired = false;
       await installPlugin(plugin);
       await new Promise((r) => setTimeout(r, 3000));
       await refresh();
     } catch (e) {
-      errorMsg = `Install failed: ${e instanceof Error ? e.message : String(e)}`;
+      if (isRestartToApplyError(e)) {
+        restartRequired = true;
+        errorMsg = "Update downloaded. A restart is needed to apply it.";
+      } else {
+        errorMsg = `Install failed: ${e instanceof Error ? e.message : String(e)}`;
+      }
     } finally {
       installing = null;
     }
@@ -170,6 +179,11 @@
         <div class="loading">Loading plugins...</div>
       {:else if errorMsg}
         <div class="error">{errorMsg}</div>
+        {#if restartRequired}
+          <div class="restart-cta">
+            <button type="button" onclick={restartApp}>Restart app to apply</button>
+          </div>
+        {/if}
       {:else}
         <section>
           <h3>Plugins</h3>
@@ -207,6 +221,12 @@
                         · installed v{plugin.installedVersion}{/if}
                     </span>
                     <p class="description">{plugin.description}</p>
+                    {#if (plugin as unknown as { base?: string }).base && (plugin as unknown as { base?: string }).base !== "view"}
+                      <span class="base-badge">base: {(plugin as unknown as { base?: string }).base}</span>
+                    {/if}
+                    {#if plugin.capabilities && plugin.capabilities.length > 0}
+                      <span class="caps">{plugin.capabilities.join(" · ")}</span>
+                    {/if}
                     <span class="formats">{plugin.formats.join(", ")}</span>
                     <span class="size"
                       >{formatPluginSize(plugin.sizeBytes)} download{plugin.installedSizeBytes
@@ -318,6 +338,18 @@
     border-radius: 8px;
     margin-bottom: 1rem;
     font-size: 0.85rem;
+  }
+  .restart-cta {
+    margin-bottom: 1rem;
+  }
+  .restart-cta button {
+    padding: 0.5rem 0.9rem;
+    border: 1px solid var(--link);
+    border-radius: 0.5rem;
+    background: var(--link);
+    color: #fff;
+    cursor: pointer;
+    font-weight: 600;
   }
   .plugin-card {
     display: flex;
@@ -519,5 +551,19 @@
     color: white;
     font-weight: 700;
     cursor: pointer;
+  }
+  .base-badge {
+    display: inline-block;
+    padding: 0.1rem 0.4rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--link) 22%, transparent);
+    color: var(--link);
+    font-size: 0.72rem;
+    font-weight: 700;
+  }
+  .caps {
+    margin-left: 0.35rem;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
   }
 </style>

@@ -300,6 +300,17 @@ export async function loadJsPlugin(plugin: PluginInfo): Promise<Record<string, a
   return payload;
 }
 
+/** True when an install/upgrade error means a native update is staged and needs a cold restart. */
+export function isRestartToApplyError(err: unknown): boolean {
+  return /restart the app to apply/i.test(err instanceof Error ? err.message : String(err));
+}
+
+/** Ask Android to cold-restart the app (applies a staged native-plugin update). */
+export function restartApp(): void {
+  if (!hasAndroidBridge()) return;
+  (window as any).AndroidBridge.restartApp();
+}
+
 export async function installPlugin(plugin: PluginInfo): Promise<void> {
   if (!hasAndroidBridge()) return;
   if (!isInstallablePlugin(plugin)) {
