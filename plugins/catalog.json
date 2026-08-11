@@ -396,9 +396,9 @@
       "runtime": "js",
       "abi": "",
       "abiVersion": 1,
-      "sizeBytes": 2163,
-      "installedSizeBytes": 4252,
-      "checksum": "6b66160c1b8c7a2271ecb8e97669afa56517d3b4dd682fbcb3b0c8e54d0e10c1",
+      "sizeBytes": 2468,
+      "installedSizeBytes": 5314,
+      "checksum": "b07a93b34d8e7666654b96039c2db896cf5a264688df235090a8c7ee274e36a2",
       "downloadUrl": "https://omnia.mihirpatil.co/plugins/player-base-0.1.0.zip",
       "jsEntry": "index.js",
       "cssEntry": ""
@@ -431,7 +431,7 @@
       "abiVersion": 1,
       "sizeBytes": 1320,
       "installedSizeBytes": 2072,
-      "checksum": "74a91fda7a5e14981a7bec43775120200e9b8d249f9ea7d6ffa20b8c299b6312",
+      "checksum": "1473962ef1109561f4d48d184ece8976b11e015037ff365e6e0d699b6bcd5068",
       "downloadUrl": "https://omnia.mihirpatil.co/plugins/editor-base-0.1.0.zip",
       "jsEntry": "index.js",
       "cssEntry": ""
