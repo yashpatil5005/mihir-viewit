@@ -10,5 +10,10 @@
   "base": "play",
   "runtime": "js",
   "jsEntry": "index.js",
+  "downloadUrl": "https://omnia.mihirpatil.co/plugins/player-base-0.1.0.zip",
+  "sizeBytes": 0,
+  "installedSizeBytes": 0,
+  "checksum": "",
+  "abi": "",
   "abiVersion": 1
 }

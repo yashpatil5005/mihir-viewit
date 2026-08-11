@@ -341,14 +341,14 @@
         "runtime": "js",
         "abi": "",
         "abiVersion": 1,
-        "sizeBytes": 1096,
-        "installedSizeBytes": 1499,
-        "checksum": "86ebe32a77a52a289940ef853fba6a25cea4f6837cf1596d7d4465ca2a57705b",
+        "sizeBytes": 1168,
+        "installedSizeBytes": 1653,
+        "checksum": "5cc6de87b8e098ce5077d19942f28ee09dabb11538b65d1a4294650fa95c71d6",
         "downloadUrl": "https://omnia.mihirpatil.co/plugins/player-base-0.1.0.zip",
         "jsEntry": "index.js",
         "cssEntry": ""
       }
     ]
   },
-  "signature": "elsj3nzO3HlX+sKZRdTJTqlDDMcyts+HqaWBUIoDKDqRPhMhBFFYpeRwce6QavRvM2qOLbJCmLGEW1CJlh1DBw=="
+  "signature": "wgOHigC87+shS+NyHpHYBXlh12csldVLz0TXcGrxTzkw6pttJAktvq7vQUhseIwotQCbMwMDr0T2oIR8eWiCBA=="
 }
