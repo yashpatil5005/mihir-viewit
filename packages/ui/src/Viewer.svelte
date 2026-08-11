@@ -1206,30 +1206,25 @@
         </div>
       {/if}
       {#if ["text", "markdown", "json"].includes(doc.kind)}
-        <div class="editor-cta">
-          <span>{editPlugin ? `Editor base: ${editPlugin.name}` : "Edit this document with a plugin"}</span>
-          <button type="button" onclick={() => (useEditorBase = !useEditorBase)}>
-            {useEditorBase ? "View document" : "Edit"}
-          </button>
-        </div>
+        <details class="editor-details">
+          <summary>{editPlugin ? `Edit with ${editPlugin.name}` : "Edit with a plugin"}</summary>
+          <EditorBaseHost
+            text={doc.kind === "text"
+              ? ((doc as any).content ?? "")
+              : doc.kind === "json"
+                ? ((doc as any).pretty ?? "")
+                : ((doc as any).html ?? "")}
+            name={pendingName ?? docUri?.split("/").pop() ?? "document.txt"}
+            mime={doc.kind === "json"
+              ? "application/json"
+              : doc.kind === "markdown"
+                ? "text/markdown"
+                : "text/plain"}
+            plugin={editPlugin}
+          />
+        </details>
       {/if}
-      {#if useEditorBase && ["text", "markdown", "json"].includes(doc.kind)}
-        <EditorBaseHost
-          text={doc.kind === "text"
-            ? ((doc as any).content ?? "")
-            : doc.kind === "json"
-              ? ((doc as any).pretty ?? "")
-              : ((doc as any).html ?? "")}
-          name={pendingName ?? docUri?.split("/").pop() ?? "document.txt"}
-          mime={doc.kind === "json"
-            ? "application/json"
-            : doc.kind === "markdown"
-              ? "text/markdown"
-              : "text/plain"}
-          plugin={editPlugin}
-          onClose={() => (useEditorBase = false)}
-        />
-      {:else if doc.kind === "text"}
+      {#if doc.kind === "text"}
         {#key docUri}
           {#if docUri && /\.ics?$/i.test(docUri) && IcsViewer}
             <IcsViewer {...doc as any} />
