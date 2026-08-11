@@ -32,6 +32,14 @@ class MainActivity : TauriActivity() {
   private val pendingSaves = java.util.concurrent.ConcurrentHashMap<Int, PendingSave>()
   private var saveRequestCode = 9001
 
+  /** Editor base "Save as…" flow: text is written after SAF picks a destination. */
+  private data class PendingEditorSave(
+    val text: String,
+    val callbackId: String,
+  )
+  private val pendingEditorSaves = java.util.concurrent.ConcurrentHashMap<Int, PendingEditorSave>()
+  private var editorSaveRequestCode = 9201
+
   /** Archive "Extract all to folder" flow: SAF ACTION_OPEN_DOCUMENT_TREE. The
    *  archive is unpacked to a cache staging dir, then mirrored into the
    *  user-chosen tree via DocumentsContract on onActivityResult. */
@@ -52,6 +60,25 @@ class MainActivity : TauriActivity() {
   override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
     super.onActivityResult(requestCode, resultCode, data)
     val webView = bridgeWebView ?: return
+    pendingEditorSaves.remove(requestCode)?.let { pending ->
+      val payload = JSONObject().apply { put("id", pending.callbackId) }
+      if (resultCode != RESULT_OK || data?.data == null) {
+        payload.put("ok", false)
+        payload.put("error", "Save cancelled")
+      } else {
+        try {
+          val bytes = pending.text.toByteArray(Charsets.UTF_8)
+          contentResolver.openOutputStream(data.data!!)?.use { it.write(bytes) } ?: error("No writable stream")
+          payload.put("ok", true)
+          payload.put("size", bytes.size)
+        } catch (e: Throwable) {
+          payload.put("ok", false)
+          payload.put("error", e.message ?: e.javaClass.simpleName)
+        }
+      }
+      webView.post { webView.evaluateJavascript("window._editorSaveCallback && window._editorSaveCallback($payload)", null) }
+      return
+    }
     pendingExtracts.remove(requestCode)?.let { pending ->
       val payload = JSONObject().apply {
         put("id", pending.callbackId)
@@ -844,6 +871,31 @@ class MainActivity : TauriActivity() {
           put("op", "extract-all")
           put("error", e.message ?: e.javaClass.simpleName)
         })
+      }
+    }
+
+    @JavascriptInterface
+    fun saveEditedText(text: String, displayName: String, mime: String, callbackId: String) {
+      val code = editorSaveRequestCode++
+      pendingEditorSaves[code] = PendingEditorSave(text, callbackId)
+      runOnUiThread {
+        try {
+          val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = mime.ifBlank { "text/plain" }
+            putExtra(Intent.EXTRA_TITLE, displayName)
+            addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+          }
+          startActivityForResult(intent, code)
+        } catch (e: Throwable) {
+          pendingEditorSaves.remove(code)
+          val payload = JSONObject().apply {
+            put("id", callbackId)
+            put("ok", false)
+            put("error", e.message ?: e.javaClass.simpleName)
+          }
+          webView.evaluateJavascript("window._editorSaveCallback && window._editorSaveCallback($payload)", null)
+        }
       }
     }
 

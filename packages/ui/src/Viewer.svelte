@@ -23,6 +23,7 @@
   import ImageViewer from "./ImageViewer.svelte";
   import MediaViewer from "./MediaViewer.svelte";
   import PlayerBaseHost from "./PlayerBaseHost.svelte";
+  import EditorBaseHost from "./EditorBaseHost.svelte";
   import UnsupportedViewer from "./UnsupportedViewer.svelte";
   import PlaceholderViewer from "./PlaceholderViewer.svelte";
   import GridView from "./GridView.svelte";
@@ -389,6 +390,9 @@
       if ((nextDoc as any)?.kind === "media") {
         void resolvePlayBase((nextDoc as any)?.ext ?? extHint ?? "");
       }
+      if (["text", "markdown", "json"].includes((nextDoc as any)?.kind)) {
+        void resolveEditBase(extFromUri(uri, nameHint));
+      }
     } catch (e: any) {
       if (seq !== loadSeq || pendingUri !== uri) return;
       error = e?.toString?.() ?? String(e);
@@ -690,6 +694,26 @@
   // Player base (base=play): an installed js plugin can replace the built-in media player.
   let playPlugin = $state<PluginInfo | null>(null);
   let usePlayerBase = $state(false);
+  let editPlugin = $state<PluginInfo | null>(null);
+  let useEditorBase = $state(false);
+  async function resolveEditBase(editExt: string): Promise<void> {
+    const ext = editExt.toLowerCase();
+    if (!ext || !hasAndroidBridge()) {
+      editPlugin = null;
+      useEditorBase = false;
+      return;
+    }
+    const installed = await listInstalledPlugins();
+    editPlugin =
+      installed.find(
+        (p) =>
+          (p as unknown as { base?: string }).base === "edit" &&
+          isJsPlugin(p) &&
+          pluginSupports(p, ext),
+      ) ?? null;
+    useEditorBase = false;
+  }
+
   async function resolvePlayBase(mediaExt: string): Promise<void> {
     const ext = mediaExt.toLowerCase();
     if (!ext || !hasAndroidBridge()) {
@@ -1145,7 +1169,31 @@
           >
         </div>
       {/if}
-      {#if doc.kind === "text"}
+      {#if editPlugin && ["text", "markdown", "json"].includes(doc.kind)}
+        <div class="editor-cta">
+          <span>Editor base: <strong>{editPlugin.name}</strong></span>
+          <button type="button" onclick={() => (useEditorBase = !useEditorBase)}>
+            {useEditorBase ? "View document" : "Edit"}
+          </button>
+        </div>
+      {/if}
+      {#if useEditorBase && editPlugin && ["text", "markdown", "json"].includes(doc.kind)}
+        <EditorBaseHost
+          text={doc.kind === "text"
+            ? ((doc as any).content ?? "")
+            : doc.kind === "json"
+              ? ((doc as any).pretty ?? "")
+              : ((doc as any).html ?? "")}
+          name={pendingName ?? docUri?.split("/").pop() ?? "document.txt"}
+          mime={doc.kind === "json"
+            ? "application/json"
+            : doc.kind === "markdown"
+              ? "text/markdown"
+              : "text/plain"}
+          plugin={editPlugin}
+          onClose={() => (useEditorBase = false)}
+        />
+      {:else if doc.kind === "text"}
         {#key docUri}
           {#if docUri && /\.ics?$/i.test(docUri) && IcsViewer}
             <IcsViewer {...doc as any} />
@@ -1554,6 +1602,31 @@
     color: var(--link);
   }
   .media-cta button {
+    padding: 0.3rem 0.6rem;
+    border: 1px solid var(--link);
+    border-radius: 0.4rem;
+    background: var(--link);
+    color: #fff;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .editor-cta {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.5rem;
+    padding: 0.4rem 0.7rem;
+    border: 1px solid var(--link);
+    border-radius: 0.6rem;
+    background: color-mix(in srgb, var(--link) 10%, transparent);
+    font-size: 0.85rem;
+    color: var(--text-primary);
+  }
+  .editor-cta strong {
+    color: var(--link);
+  }
+  .editor-cta button {
     padding: 0.3rem 0.6rem;
     border: 1px solid var(--link);
     border-radius: 0.4rem;

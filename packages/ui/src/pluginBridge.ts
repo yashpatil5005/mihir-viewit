@@ -318,6 +318,29 @@ export function restartApp(): void {
   (window as any).AndroidBridge.restartApp();
 }
 
+export function saveEditedText(text: string, displayName: string, mime = "text/plain"): Promise<number> {
+  if (!hasAndroidBridge()) {
+    const blob = new Blob([text], { type: mime });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = displayName;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    return Promise.resolve(text.length);
+  }
+  return new Promise<number>((resolve, reject) => {
+    const id = `edit_save_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const prev = (window as any)._editorSaveCallback;
+    (window as any)._editorSaveCallback = (payload: { id: string; ok?: boolean; size?: number; error?: string }) => {
+      if (payload.id !== id) { prev?.(payload); return; }
+      (window as any)._editorSaveCallback = prev;
+      if (payload.ok) resolve(payload.size ?? text.length);
+      else reject(new Error(payload.error || "Save failed"));
+    };
+    (window as any).AndroidBridge.saveEditedText(text, displayName, mime, id);
+  });
+}
+
 export async function installPlugin(plugin: PluginInfo): Promise<void> {
   if (!hasAndroidBridge()) return;
   if (!isInstallablePlugin(plugin)) {
