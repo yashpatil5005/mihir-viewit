@@ -387,6 +387,10 @@
       const nextDoc = await openWithDefaultRuntime(uri, nameHint, extHint, pluginHint);
       if (seq !== loadSeq || pendingUri !== uri) return;
       doc = nextDoc;
+      const nextKind = (nextDoc as any)?.kind;
+      const nextExt = extHint || extFromUri(uri, nameHint) || (nextKind === "text" ? "txt" : nextKind === "markdown" ? "md" : nextKind === "json" ? "json" : "");
+      if (nextKind === "media") void resolvePlayBase((nextDoc as any)?.ext ?? nextExt);
+      if (["text", "markdown", "json"].includes(nextKind)) void resolveEditBase(nextExt);
     } catch (e: any) {
       if (seq !== loadSeq || pendingUri !== uri) return;
       error = e?.toString?.() ?? String(e);
