@@ -1,7 +1,7 @@
 // player-base (base=play): a functional custom media player that replaces the
 // built-in <video>/<audio> UI. Owns source resolution, playback controls and
 // resume-position persistence, so the base is genuinely "the plugin's job".
-export function createPlayer(host, { source = "", stream = "", kind = "video", name = "", persistKey = "" } = {}) {
+export function createPlayer(host, { source = "", stream = "", kind = "video", name = "", persistKey = "", tracks = [] } = {}) {
   const root = document.createElement("div");
   root.className = "playerbase-root";
   root.style.cssText =
@@ -13,6 +13,16 @@ export function createPlayer(host, { source = "", stream = "", kind = "video", n
     "flex:1;width:100%;max-height:100%;object-fit:contain;background:#000;";
   if (stream) media.src = stream;
   else if (source) media.src = source;
+  // Subtitles/captions are entirely plugin-owned: pass [{src,label,lang,default}].
+  for (const t of tracks) {
+    const track = document.createElement("track");
+    track.kind = t.kind || "subtitles";
+    track.src = t.src;
+    track.label = t.label || t.lang || "Subtitles";
+    track.srclang = t.lang || "en";
+    track.default = !!t.default;
+    media.appendChild(track);
+  }
 
   const bar = document.createElement("div");
   bar.style.cssText =
@@ -45,7 +55,19 @@ export function createPlayer(host, { source = "", stream = "", kind = "video", n
     rate.appendChild(o);
   });
 
-  bar.append(btn, cur, seek, dur, rate, label);
+  const pip = document.createElement("button");
+  pip.textContent = "PiP";
+  pip.title = "Picture in picture";
+  pip.style.cssText = "background:#111;color:#eee;border:1px solid #333;border-radius:4px;padding:4px;cursor:pointer;";
+  const full = document.createElement("button");
+  full.textContent = "⛶";
+  full.title = "Fullscreen";
+  full.style.cssText = pip.style.cssText;
+  pip.hidden = !("requestPictureInPicture" in media) || kind === "audio";
+  pip.addEventListener("click", () => media.requestPictureInPicture?.().catch(() => {}));
+  full.addEventListener("click", () => root.requestFullscreen?.().catch(() => {}));
+
+  bar.append(btn, cur, seek, dur, rate, pip, full, label);
   root.append(media, bar);
   host.replaceChildren(root);
 
@@ -96,6 +118,10 @@ export function createPlayer(host, { source = "", stream = "", kind = "video", n
     setRate(r) { media.playbackRate = r; rate.value = String(r); },
     setVolume(v) { media.volume = Math.max(0, Math.min(1, v)); },
     getMedia: () => media,
+    enterFullscreen: () => root.requestFullscreen?.(),
+    exitFullscreen: () => document.exitFullscreen?.(),
+    enterPictureInPicture: () => media.requestPictureInPicture?.(),
+    addTrack(t) { const el=document.createElement("track"); Object.assign(el,{kind:t.kind||"subtitles",src:t.src,label:t.label||"Subtitles",srclang:t.lang||"en",default:!!t.default}); media.appendChild(el); },
     onError(cb) { media.addEventListener("error", () => cb(media.error && media.error.message)); },
     destroy() {
       try { media.pause(); media.removeAttribute("src"); media.load?.(); } catch {}

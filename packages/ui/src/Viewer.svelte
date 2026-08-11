@@ -713,6 +713,7 @@
   $effect(() => {
     const d = doc as any;
     const uri = docUri;
+    const name = pendingName;
     if (!d || !uri) {
       playPlugin = null;
       usePlayerBase = false;
@@ -720,7 +721,7 @@
       useEditorBase = false;
       return;
     }
-    const ext = extFromUri(uri);
+    const ext = extFromUri(uri, name ?? undefined);
     if (d.kind === "media") void resolvePlayBase(d.ext ?? ext);
     else {
       playPlugin = null;
