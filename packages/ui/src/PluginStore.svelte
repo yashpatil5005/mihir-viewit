@@ -222,7 +222,9 @@
                     </span>
                     <p class="description">{plugin.description}</p>
                     {#if (plugin as unknown as { base?: string }).base && (plugin as unknown as { base?: string }).base !== "view"}
-                      <span class="base-badge">base: {(plugin as unknown as { base?: string }).base}</span>
+                      <span class="base-badge"
+                        >base: {(plugin as unknown as { base?: string }).base}</span
+                      >
                     {/if}
                     {#if plugin.capabilities && plugin.capabilities.length > 0}
                       <span class="caps">{plugin.capabilities.join(" · ")}</span>

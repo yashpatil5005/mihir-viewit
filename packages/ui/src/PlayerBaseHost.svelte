@@ -2,19 +2,19 @@
   import { onMount, onDestroy } from "svelte";
   import { loadJsPlugin, type PluginInfo } from "./pluginBridge";
 
-    let {
-      source = "",
-      stream = "",
-      kind = "video",
-      name = "",
-      plugin = null,
-    }: {
-      source?: string;
-      stream?: string;
-      kind?: "video" | "audio";
-      name?: string;
-      plugin?: PluginInfo | null;
-    } = $props();
+  let {
+    source = "",
+    stream = "",
+    kind = "video",
+    name = "",
+    plugin = null,
+  }: {
+    source?: string;
+    stream?: string;
+    kind?: "video" | "audio";
+    name?: string;
+    plugin?: PluginInfo | null;
+  } = $props();
 
   let hostEl: HTMLDivElement | null = $state(null);
   let status = $state<"loading" | "ready" | "error">("loading");
@@ -33,7 +33,13 @@
         throw new Error(`${plugin.name} has no createPlayer export`);
       }
       if (!hostEl) throw new Error("Player host not ready");
-        player = mod.createPlayer(hostEl, { source: source || undefined, stream: stream || undefined, kind, name, persistKey: name });
+      player = mod.createPlayer(hostEl, {
+        source: source || undefined,
+        stream: stream || undefined,
+        kind,
+        name,
+        persistKey: name,
+      });
       status = "ready";
     } catch (e) {
       status = "error";
