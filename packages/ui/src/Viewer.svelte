@@ -694,30 +694,32 @@
   let usePlayerBase = $state(false);
   let editPlugin = $state<PluginInfo | null>(null);
   let useEditorBase = $state(false);
-  async function resolveEditBase(editExt: string): Promise<void> {
+  async function resolveEditBase(editExt: string): Promise<PluginInfo | null> {
     const ext = editExt.toLowerCase();
     if (!ext || !hasAndroidBridge()) {
       editPlugin = null;
       useEditorBase = false;
-      return;
+      return null;
     }
     const installed = await listInstalledPlugins();
-    editPlugin =
+    const found =
       installed.find(
         (p) =>
           (p as unknown as { base?: string }).base === "edit" &&
           isJsPlugin(p) &&
           pluginSupports(p, ext),
       ) ?? null;
+    editPlugin = found;
     useEditorBase = false;
+    return found;
   }
 
   async function activateEditor(): Promise<void> {
     const d = doc as any;
     const ext = extFromUri(docUri ?? "", pendingName ?? undefined)
       || (d?.kind === "text" ? "txt" : d?.kind === "markdown" ? "md" : d?.kind === "json" ? "json" : "");
-    await resolveEditBase(ext);
-    if (editPlugin) useEditorBase = true;
+    const found = await resolveEditBase(ext);
+    if (found) useEditorBase = true;
     else pluginStoreOpen = true;
   }
 
