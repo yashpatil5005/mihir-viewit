@@ -698,7 +698,6 @@
     const ext = editExt.toLowerCase();
     if (!ext || !hasAndroidBridge()) {
       editPlugin = null;
-      useEditorBase = false;
       return null;
     }
     const installed = await listInstalledPlugins();
