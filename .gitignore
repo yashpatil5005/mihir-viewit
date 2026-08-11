@@ -122,3 +122,6 @@ plugins/*.zip
 plugins/player-base/dist/
 plugins/player-base/zipout/
 plugins/player-base/node_modules/
+plugins/editor-base/dist/
+plugins/editor-base/zipout/
+plugins/editor-base/node_modules/

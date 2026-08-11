@@ -1,0 +1,19 @@
+{
+  "id": "editor-base",
+  "name": "Editor Base",
+  "version": "0.1.0",
+  "description": "Inline text/markdown editor (base=edit). Editing and save are the plugin's responsibility (round-trip the file).",
+  "minAppVersion": 1,
+  "entryClass": "",
+  "supportedFormats": ["md","markdown","mdown","txt","text","json","yaml","yml","srt"],
+  "capabilities": ["edit","save"],
+  "base": "edit",
+  "runtime": "js",
+  "jsEntry": "index.js",
+  "downloadUrl": "https://omnia.mihirpatil.co/plugins/editor-base-0.1.0.zip",
+  "sizeBytes": 0,
+  "installedSizeBytes": 0,
+  "checksum": "",
+  "abi": "",
+  "abiVersion": 1
+}

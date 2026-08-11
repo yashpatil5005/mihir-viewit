@@ -346,6 +346,39 @@
       "downloadUrl": "https://omnia.mihirpatil.co/plugins/player-base-0.1.0.zip",
       "jsEntry": "index.js",
       "cssEntry": ""
+    },
+    {
+      "id": "editor-base",
+      "name": "Editor Base",
+      "version": "0.1.0",
+      "description": "Inline text/markdown editor (base=edit). Editing and save are the plugin's responsibility (round-trip the file).",
+      "minAppVersion": 1,
+      "entryClass": "",
+      "capabilities": [
+        "edit",
+        "save"
+      ],
+      "base": "edit",
+      "supportedFormats": [
+        "md",
+        "markdown",
+        "mdown",
+        "txt",
+        "text",
+        "json",
+        "yaml",
+        "yml",
+        "srt"
+      ],
+      "runtime": "js",
+      "abi": "",
+      "abiVersion": 1,
+      "sizeBytes": 1320,
+      "installedSizeBytes": 2072,
+      "checksum": "74a91fda7a5e14981a7bec43775120200e9b8d249f9ea7d6ffa20b8c299b6312",
+      "downloadUrl": "https://omnia.mihirpatil.co/plugins/editor-base-0.1.0.zip",
+      "jsEntry": "index.js",
+      "cssEntry": ""
     }
   ]
 }
