@@ -707,7 +707,6 @@
     );
     const found = editors.find((p) => pluginSupports(p, ext)) ?? editors[0] ?? null;
     editPlugin = found;
-    useEditorBase = false;
     return found;
   }
 
