@@ -231,7 +231,7 @@
   let officeRendererLabel: string = $state("");
   let loadSeq = 0;
 
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import {
     openFile,
     openFileFromPicker,
@@ -702,13 +702,10 @@
       return null;
     }
     const installed = await listInstalledPlugins();
-    const found =
-      installed.find(
-        (p) =>
-          (p as unknown as { base?: string }).base === "edit" &&
-          isJsPlugin(p) &&
-          pluginSupports(p, ext),
-      ) ?? null;
+    const editors = installed.filter(
+      (p) => (p as unknown as { base?: string }).base === "edit" && isJsPlugin(p),
+    );
+    const found = editors.find((p) => pluginSupports(p, ext)) ?? editors[0] ?? null;
     editPlugin = found;
     useEditorBase = false;
     return found;
@@ -719,8 +716,13 @@
     const ext = extFromUri(docUri ?? "", pendingName ?? undefined)
       || (d?.kind === "text" ? "txt" : d?.kind === "markdown" ? "md" : d?.kind === "json" ? "json" : "");
     const found = await resolveEditBase(ext);
-    if (found) useEditorBase = true;
-    else pluginStoreOpen = true;
+    if (found) {
+      editPlugin = found;
+      await tick();
+      useEditorBase = true;
+    } else {
+      pluginStoreOpen = true;
+    }
   }
 
   // Resolve play/edit bases reactively so every open path (VIEW intent, picker,
