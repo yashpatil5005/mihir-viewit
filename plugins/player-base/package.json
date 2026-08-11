@@ -1,0 +1,10 @@
+{
+  "name": "@viewit/plugin-player-base",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/entry.js --bundle --format=iife --global-name=ViewItPlugin__player_base --minify --outfile=dist/index.js"
+  },
+  "devDependencies": { "esbuild": "^0.23.0" }
+}

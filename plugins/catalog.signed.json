@@ -74,6 +74,7 @@
           "text-extraction",
           "structured-output"
         ],
+        "base": "view",
         "supportedFormats": [
           "docx",
           "docm",
@@ -117,6 +118,7 @@
           "text-extraction",
           "structured-output"
         ],
+        "base": "view",
         "supportedFormats": [
           "docx",
           "docm",
@@ -160,6 +162,7 @@
           "archive-preview",
           "archive-extract"
         ],
+        "base": "view",
         "supportedFormats": [
           "zip",
           "7z",
@@ -205,6 +208,7 @@
           "archive-preview",
           "archive-extract"
         ],
+        "base": "view",
         "supportedFormats": [
           "zip",
           "7z",
@@ -248,6 +252,7 @@
         "capabilities": [
           "document-render"
         ],
+        "base": "view",
         "supportedFormats": [
           "ttf",
           "otf",
@@ -280,6 +285,7 @@
         "capabilities": [
           "document-render"
         ],
+        "base": "view",
         "supportedFormats": [
           "ttf",
           "otf",
@@ -301,8 +307,48 @@
         "sizeBytes": 202686,
         "installedSizeBytes": 389540,
         "checksum": "dcf032fbf6f316815c1ecf587d6167eec426233e3c493cc22c0ed22d8d994cdf"
+      },
+      {
+        "id": "player-base",
+        "name": "Player Base",
+        "version": "0.1.0",
+        "description": "Custom media player (base=play). Swaps the built-in web player with a custom UI/engine for video/audio.",
+        "minAppVersion": 1,
+        "entryClass": "",
+        "capabilities": [
+          "play"
+        ],
+        "base": "play",
+        "supportedFormats": [
+          "mp4",
+          "webm",
+          "mkv",
+          "mov",
+          "avi",
+          "m4v",
+          "3gp",
+          "mpg",
+          "mpeg",
+          "wmv",
+          "mp3",
+          "m4a",
+          "aac",
+          "flac",
+          "ogg",
+          "wav",
+          "opus"
+        ],
+        "runtime": "js",
+        "abi": "",
+        "abiVersion": 1,
+        "sizeBytes": 1096,
+        "installedSizeBytes": 1499,
+        "checksum": "86ebe32a77a52a289940ef853fba6a25cea4f6837cf1596d7d4465ca2a57705b",
+        "downloadUrl": "https://omnia.mihirpatil.co/plugins/player-base-0.1.0.zip",
+        "jsEntry": "index.js",
+        "cssEntry": ""
       }
     ]
   },
-  "signature": "HQMP4SQCPQEwVbybisfDZP04GDLoEmg/RpNoEd3gFJEnjCmek4KytUSRMho6HTxc6AMBDpTEB0oIJKos2H6AAg=="
+  "signature": "elsj3nzO3HlX+sKZRdTJTqlDDMcyts+HqaWBUIoDKDqRPhMhBFFYpeRwce6QavRvM2qOLbJCmLGEW1CJlh1DBw=="
 }

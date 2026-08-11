@@ -119,3 +119,6 @@ plugins/pptx-vanilla/node_modules/
 plugins/pptx-vanilla/dist/
 plugins/pptx-vanilla/zipout/
 plugins/*.zip
+plugins/player-base/dist/
+plugins/player-base/zipout/
+plugins/player-base/node_modules/

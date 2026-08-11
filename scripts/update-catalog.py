@@ -146,10 +146,39 @@ def universal_entries() -> list[dict]:
     return out
 
 
+def player_base_entries() -> list[dict]:
+    """Single js entry for the player-base plugin (base=play)."""
+    manifest_path = ROOT / "plugins" / "player-base" / "plugin.json"
+    zip_path = ROOT / "plugins" / f"player-base-{json.loads(manifest_path.read_text())['version']}.zip"
+    if not manifest_path.exists() or not zip_path.exists():
+        return []
+    manifest = json.loads(manifest_path.read_text())
+    return [{
+        "id": manifest["id"],
+        "name": manifest["name"],
+        "version": manifest["version"],
+        "description": manifest["description"],
+        "minAppVersion": manifest.get("minAppVersion", 1),
+        "entryClass": manifest.get("entryClass", ""),
+        "capabilities": manifest.get("capabilities", []),
+        "base": manifest.get("base", "view"),
+        "supportedFormats": manifest.get("supportedFormats", []),
+        "runtime": "js",
+        "abi": "",
+        "abiVersion": manifest.get("abiVersion", 1),
+        "sizeBytes": zip_path.stat().st_size,
+        "installedSizeBytes": installed_size(zip_path),
+        "checksum": sha256(zip_path),
+        "downloadUrl": f"https://omnia.mihirpatil.co/plugins/player-base-{manifest['version']}.zip",
+        "jsEntry": manifest.get("jsEntry", "web/index.js"),
+        "cssEntry": manifest.get("cssEntry", ""),
+    }]
+
+
 def build_entries(existing: list[dict]) -> list[dict]:
-    rebuilt = {"office-ooxml", "pptx-vanilla", *UNIVERSAL_PLUGINS}
+    rebuilt = {"office-ooxml", "pptx-vanilla", "player-base", *UNIVERSAL_PLUGINS}
     kept = [e for e in existing if e.get("id") not in rebuilt]
-    return kept + office_ooxml_entries() + pptx_vanilla_entries() + universal_entries()
+    return kept + office_ooxml_entries() + pptx_vanilla_entries() + universal_entries() + player_base_entries()
 
 
 def main() -> int:

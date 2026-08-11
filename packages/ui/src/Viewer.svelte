@@ -22,6 +22,7 @@
   import TextViewer from "./TextViewer.svelte";
   import ImageViewer from "./ImageViewer.svelte";
   import MediaViewer from "./MediaViewer.svelte";
+  import PlayerBaseHost from "./PlayerBaseHost.svelte";
   import UnsupportedViewer from "./UnsupportedViewer.svelte";
   import PlaceholderViewer from "./PlaceholderViewer.svelte";
   import GridView from "./GridView.svelte";
@@ -386,6 +387,9 @@
       if (seq !== loadSeq || pendingUri !== uri) return;
       doc = nextDoc;
       void hintInstallIfMissing(extHint, uri);
+      if ((nextDoc as any)?.kind === "media") {
+        void resolvePlayBase((nextDoc as any)?.ext ?? extHint ?? "");
+      }
     } catch (e: any) {
       if (seq !== loadSeq || pendingUri !== uri) return;
       error = e?.toString?.() ?? String(e);
@@ -671,6 +675,27 @@
   // the richer renderer (or the plugin's viewer) takes over.
   let formatInstallCta = $state<{ ext: string; pluginName: string; uri: string } | null>(null);
   let formatInstalling = $state(false);
+
+  // Player base (base=play): an installed js plugin can replace the built-in media player.
+  let playPlugin = $state<PluginInfo | null>(null);
+  let usePlayerBase = $state(false);
+  async function resolvePlayBase(mediaExt: string): Promise<void> {
+    const ext = mediaExt.toLowerCase();
+    if (!ext || !hasAndroidBridge()) {
+      playPlugin = null;
+      usePlayerBase = false;
+      return;
+    }
+    const installed = await listInstalledPlugins();
+    playPlugin =
+      installed.find(
+        (p) =>
+          (p as unknown as { base?: string }).base === "play" &&
+          isJsPlugin(p) &&
+          pluginSupports(p, ext),
+      ) ?? null;
+    usePlayerBase = false;
+  }
 
   async function confirmFormatInstall(): Promise<void> {
     const cta = formatInstallCta;
@@ -1147,7 +1172,24 @@
         {/key}
       {:else if doc.kind === "media"}
         {#key docUri}
-          <MediaViewer uri={docUri ?? ""} {...doc as any} />
+          {#if playPlugin}
+            <div class="media-cta">
+              <span>Player base: <strong>{playPlugin.name}</strong></span>
+              <button type="button" onclick={() => (usePlayerBase = !usePlayerBase)}
+                >{usePlayerBase ? "Use built-in player" : "Use custom player"}</button
+              >
+            </div>
+          {/if}
+          {#if usePlayerBase && playPlugin}
+            <PlayerBaseHost
+              source={docUri ?? ""}
+              kind={((doc as any)?.media_kind ?? "video") === "audio" ? "audio" : "video"}
+              name={(doc as any)?.name ?? ""}
+              plugin={playPlugin}
+            />
+          {:else}
+            <MediaViewer uri={docUri ?? ""} {...doc as any} />
+          {/if}
         {/key}
       {:else if doc.kind === "pdf" && PdfViewer}
         {#key docUri}
@@ -1482,5 +1524,30 @@
     color: var(--text-secondary);
     font-size: 1.1rem;
     line-height: 1;
+  }
+  .media-cta {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.6rem;
+    padding: 0.4rem 0.7rem;
+    border: 1px solid var(--link);
+    border-radius: 0.6rem;
+    background: color-mix(in srgb, var(--link) 10%, transparent);
+    font-size: 0.85rem;
+    color: var(--text-primary);
+  }
+  .media-cta strong {
+    color: var(--link);
+  }
+  .media-cta button {
+    padding: 0.3rem 0.6rem;
+    border: 1px solid var(--link);
+    border-radius: 0.4rem;
+    background: var(--link);
+    color: #fff;
+    cursor: pointer;
+    font-weight: 600;
   }
 </style>

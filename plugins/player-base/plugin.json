@@ -1,0 +1,14 @@
+{
+  "id": "player-base",
+  "name": "Player Base",
+  "version": "0.1.0",
+  "description": "Custom media player (base=play). Swaps the built-in web player with a custom UI/engine for video/audio.",
+  "minAppVersion": 1,
+  "entryClass": "",
+  "supportedFormats": ["mp4","webm","mkv","mov","avi","m4v","3gp","mpg","mpeg","wmv","mp3","m4a","aac","flac","ogg","wav","opus"],
+  "capabilities": ["play"],
+  "base": "play",
+  "runtime": "js",
+  "jsEntry": "index.js",
+  "abiVersion": 1
+}
