@@ -69,6 +69,8 @@ fmt-mobile = [
   # provided by the downloadable compression/font-universal plugins (enrichment).
   "fmt-archive",
   "fmt-font",
+  # Basic offline Apple iWork (pages/numbers/key) preview.
+  "fmt-iwork",
 ]
 # Full feature set (for desktop/comparison) - not used on mobile
 fmt-everything-lite = [
