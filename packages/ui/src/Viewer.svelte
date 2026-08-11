@@ -721,7 +721,8 @@
       useEditorBase = false;
       return;
     }
-    const ext = extFromUri(uri, name ?? undefined);
+    const derivedExt = extFromUri(uri, name ?? undefined);
+    const ext = derivedExt || (d.kind === "text" ? "txt" : d.kind === "markdown" ? "md" : d.kind === "json" ? "json" : "");
     if (d.kind === "media") void resolvePlayBase(d.ext ?? ext);
     else {
       playPlugin = null;
