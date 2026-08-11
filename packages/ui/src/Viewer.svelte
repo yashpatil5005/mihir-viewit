@@ -1194,6 +1194,7 @@
           {#if usePlayerBase && playPlugin}
             <PlayerBaseHost
               source={docUri ?? ""}
+              stream={(doc as any)?.stream_url ?? ""}
               kind={((doc as any)?.media_kind ?? "video") === "audio" ? "audio" : "video"}
               name={(doc as any)?.name ?? ""}
               plugin={playPlugin}
