@@ -340,9 +340,9 @@
       "runtime": "js",
       "abi": "",
       "abiVersion": 1,
-      "sizeBytes": 1168,
-      "installedSizeBytes": 1653,
-      "checksum": "5cc6de87b8e098ce5077d19942f28ee09dabb11538b65d1a4294650fa95c71d6",
+      "sizeBytes": 2163,
+      "installedSizeBytes": 4252,
+      "checksum": "6b66160c1b8c7a2271ecb8e97669afa56517d3b4dd682fbcb3b0c8e54d0e10c1",
       "downloadUrl": "https://omnia.mihirpatil.co/plugins/player-base-0.1.0.zip",
       "jsEntry": "index.js",
       "cssEntry": ""
