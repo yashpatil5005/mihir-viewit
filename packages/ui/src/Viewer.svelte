@@ -388,7 +388,16 @@
       if (seq !== loadSeq || pendingUri !== uri) return;
       doc = nextDoc;
       const nextKind = (nextDoc as any)?.kind;
-      const nextExt = extHint || extFromUri(uri, nameHint) || (nextKind === "text" ? "txt" : nextKind === "markdown" ? "md" : nextKind === "json" ? "json" : "");
+      const nextExt =
+        extHint ||
+        extFromUri(uri, nameHint) ||
+        (nextKind === "text"
+          ? "txt"
+          : nextKind === "markdown"
+            ? "md"
+            : nextKind === "json"
+              ? "json"
+              : "");
       if (nextKind === "media") void resolvePlayBase((nextDoc as any)?.ext ?? nextExt);
       if (["text", "markdown", "json"].includes(nextKind)) void resolveEditBase(nextExt);
     } catch (e: any) {
@@ -711,8 +720,15 @@
 
   async function activateEditor(): Promise<void> {
     const d = doc as any;
-    const ext = extFromUri(docUri ?? "", pendingName ?? undefined)
-      || (d?.kind === "text" ? "txt" : d?.kind === "markdown" ? "md" : d?.kind === "json" ? "json" : "");
+    const ext =
+      extFromUri(docUri ?? "", pendingName ?? undefined) ||
+      (d?.kind === "text"
+        ? "txt"
+        : d?.kind === "markdown"
+          ? "md"
+          : d?.kind === "json"
+            ? "json"
+            : "");
     const found = await resolveEditBase(ext);
     if (found) {
       editPlugin = found;
@@ -737,7 +753,9 @@
       return;
     }
     const derivedExt = extFromUri(uri, name ?? undefined);
-    const ext = derivedExt || (d.kind === "text" ? "txt" : d.kind === "markdown" ? "md" : d.kind === "json" ? "json" : "");
+    const ext =
+      derivedExt ||
+      (d.kind === "text" ? "txt" : d.kind === "markdown" ? "md" : d.kind === "json" ? "json" : "");
     if (d.kind === "media") void resolvePlayBase(d.ext ?? ext);
     else {
       playPlugin = null;
@@ -1641,29 +1659,21 @@
     cursor: pointer;
     font-weight: 600;
   }
-  .editor-cta {
-    display: flex;
-    align-items: center;
-    gap: 0.65rem;
-    flex-wrap: wrap;
-    margin-bottom: 0.5rem;
-    padding: 0.4rem 0.7rem;
+  .editor-details {
+    margin-bottom: 0.55rem;
     border: 1px solid var(--link);
     border-radius: 0.6rem;
+    padding: 0.4rem 0.7rem;
     background: color-mix(in srgb, var(--link) 10%, transparent);
-    font-size: 0.85rem;
     color: var(--text-primary);
   }
-  .editor-cta strong {
-    color: var(--link);
-  }
-  .editor-cta button {
-    padding: 0.3rem 0.6rem;
-    border: 1px solid var(--link);
-    border-radius: 0.4rem;
-    background: var(--link);
-    color: #fff;
+  .editor-details summary {
     cursor: pointer;
-    font-weight: 600;
+    color: var(--link);
+    font-size: 0.85rem;
+    font-weight: 700;
+  }
+  .editor-details[open] summary {
+    margin-bottom: 0.6rem;
   }
 </style>
