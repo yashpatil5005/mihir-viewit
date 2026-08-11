@@ -387,12 +387,6 @@
       const nextDoc = await openWithDefaultRuntime(uri, nameHint, extHint, pluginHint);
       if (seq !== loadSeq || pendingUri !== uri) return;
       doc = nextDoc;
-      if ((nextDoc as any)?.kind === "media") {
-        void resolvePlayBase((nextDoc as any)?.ext ?? extHint ?? "");
-      }
-      if (["text", "markdown", "json"].includes((nextDoc as any)?.kind)) {
-        void resolveEditBase(extFromUri(uri, nameHint));
-      }
     } catch (e: any) {
       if (seq !== loadSeq || pendingUri !== uri) return;
       error = e?.toString?.() ?? String(e);
@@ -713,6 +707,31 @@
       ) ?? null;
     useEditorBase = false;
   }
+
+  // Resolve play/edit bases reactively so every open path (VIEW intent, picker,
+  // drop) discovers installed plugin bases, not only load().
+  $effect(() => {
+    const d = doc as any;
+    const uri = docUri;
+    if (!d || !uri) {
+      playPlugin = null;
+      usePlayerBase = false;
+      editPlugin = null;
+      useEditorBase = false;
+      return;
+    }
+    const ext = extFromUri(uri);
+    if (d.kind === "media") void resolvePlayBase(d.ext ?? ext);
+    else {
+      playPlugin = null;
+      usePlayerBase = false;
+    }
+    if (["text", "markdown", "json"].includes(d.kind)) void resolveEditBase(ext);
+    else {
+      editPlugin = null;
+      useEditorBase = false;
+    }
+  });
 
   async function resolvePlayBase(mediaExt: string): Promise<void> {
     const ext = mediaExt.toLowerCase();
