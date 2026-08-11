@@ -308,6 +308,62 @@
       "checksum": "dcf032fbf6f316815c1ecf587d6167eec426233e3c493cc22c0ed22d8d994cdf"
     },
     {
+      "id": "iwork-universal",
+      "name": "iWork Universal",
+      "version": "0.1.0",
+      "description": "Enhanced offline Apple iWork renderer for Pages, Numbers, and Keynote.",
+      "minAppVersion": 1,
+      "entryClass": "ai.viewit.plugins.iworkuniversal.IworkUniversalPlugin",
+      "capabilities": [
+        "view",
+        "metadata",
+        "preview-images"
+      ],
+      "base": "view",
+      "supportedFormats": [
+        "pages",
+        "numbers",
+        "key"
+      ],
+      "runtime": "native",
+      "abiVersion": 1,
+      "downloadUrl": "https://omnia.mihirpatil.co/plugins/iwork-universal-0.1.0-arm64-v8a.zip",
+      "jsEntry": "",
+      "pptxVanilla": false,
+      "abi": "arm64-v8a",
+      "sizeBytes": 223864,
+      "installedSizeBytes": 404361,
+      "checksum": "d3b0d77f4db9ab4445b0dcb5b027b69e664ef2baf60694265a224b20773fccae"
+    },
+    {
+      "id": "iwork-universal",
+      "name": "iWork Universal",
+      "version": "0.1.0",
+      "description": "Enhanced offline Apple iWork renderer for Pages, Numbers, and Keynote.",
+      "minAppVersion": 1,
+      "entryClass": "ai.viewit.plugins.iworkuniversal.IworkUniversalPlugin",
+      "capabilities": [
+        "view",
+        "metadata",
+        "preview-images"
+      ],
+      "base": "view",
+      "supportedFormats": [
+        "pages",
+        "numbers",
+        "key"
+      ],
+      "runtime": "native",
+      "abiVersion": 1,
+      "downloadUrl": "https://omnia.mihirpatil.co/plugins/iwork-universal-0.1.0-x86_64.zip",
+      "jsEntry": "",
+      "pptxVanilla": false,
+      "abi": "x86_64",
+      "sizeBytes": 235248,
+      "installedSizeBytes": 447001,
+      "checksum": "85ca3f1577ffb3e706289d501b28e43ee6f676837550b2d880b1b4ee0a480838"
+    },
+    {
       "id": "player-base",
       "name": "Player Base",
       "version": "0.1.0",

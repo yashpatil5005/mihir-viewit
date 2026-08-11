@@ -105,6 +105,9 @@ package_plugin font-universal fontuniversal \
 package_plugin compression-universal compressionuniversal \
   "$ROOT/apps/mobile/plugins/compression-universal/src/main/java/ai/viewit/plugins/compressionuniversal" \
   viewit_plugin_compression_universal 0
+package_plugin iwork-universal iworkuniversal \
+  "$ROOT/apps/mobile/plugins/iwork-universal/src/main/java/ai/viewit/plugins/iworkuniversal" \
+  viewit_plugin_iwork_universal 0
 
 # Standalone pptx-vanilla zip (js, per its plugin.json).
 PVV="$ROOT/plugins/pptx-vanilla"; rm -rf "$PVV/zipout" && mkdir -p "$PVV/zipout"

@@ -94,7 +94,7 @@ def pptx_vanilla_entries() -> list[dict]:
     }]
 
 
-UNIVERSAL_PLUGINS = ("office-universal", "compression-universal", "font-universal")
+UNIVERSAL_PLUGINS = ("office-universal", "compression-universal", "font-universal", "iwork-universal")
 
 
 def universal_entries() -> list[dict]:
