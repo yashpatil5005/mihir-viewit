@@ -41,8 +41,10 @@ for entry in cat["plugins"]:
             p = cand / name
             if p.exists(): found = p; break
         if found is None:
-            # last-resort: search common output paths
             for p in (root/"apps"/"mobile"/"plugins").glob("*/build/output/*.zip"):
+                if p.name == name: found = p; break
+        if found is None:
+            for p in (root/"plugins").glob("*/build/*.zip"):
                 if p.name == name: found = p; break
         if found: shutil.copy2(found, stage / name)
         else: print("  [publish] WARN missing zip entry:", entry["id"], name)
@@ -53,4 +55,4 @@ echo "[publish] 3/3 deploy $STAGE -> Pages project '$PROJECT'"
 $WRANGLER pages deploy "$STAGE" --project-name "$PROJECT" --branch "$BRANCH"
 
 echo ""
-echo "[publish] done. Check: $ROOT/scripts/check-catalog.sh https://omia.mihirpatil.co"
+echo "[publish] done. Check: $ROOT/scripts/check-catalog.sh https://omnia.mihirpatil.co"

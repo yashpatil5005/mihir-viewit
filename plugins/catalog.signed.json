@@ -34,7 +34,7 @@
           "m2ts",
           "mts"
         ],
-        "downloadUrl": "https://omnia.mihirpatil.co/ffmpeg-transcoder/build/ffmpeg-transcoder-1.0.0.zip",
+        "downloadUrl": "https://omnia.mihirpatil.co/plugins/ffmpeg-transcoder-1.0.0.zip",
         "checksum": "4ad102c37775aa7311cb70e900d9bc67f940d0546fdf4c574934dc3f41e2c5c5",
         "minAppVersion": 1
       },
@@ -439,5 +439,5 @@
       }
     ]
   },
-  "signature": "cTEpWFshwyXPX1N/4jD43WwjIVoy5OffLE/CqZqKSejk5HwhOLZQ+HbEGPxEs/zCmvLe/OFHb3xjpQOqqhc4AA=="
+  "signature": "U0oPJR+7JPHjzRSDPV7U5nUpN3I0baXlsTSew6AU1NkEuN/GKA3/bLo6eZPXxJJeQ/8DXVDnRZ3eMepTXAfCAQ=="
 }
