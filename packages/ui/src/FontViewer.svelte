@@ -4,6 +4,7 @@
     weight = 400,
     is_italic = false,
     format = "font",
+    font_format = null,
     byte_len = 0,
     font_data = null,
   }: {
@@ -11,6 +12,7 @@
     weight?: number;
     is_italic?: boolean;
     format?: string;
+    font_format?: string | null;
     byte_len?: number;
     font_data?: string | null;
   } = $props();
@@ -27,15 +29,29 @@
     900: "Black",
   };
 
+  // Map the concrete container (detected in fmt-font from magic bytes) to a
+  // valid @font-face MIME and CSS format() token. The old `format` prop held
+  // the generic `Format::Font` enum ("font"), which produced `format('font')` —
+  // an unrecognized token, so the browser dropped the src and fell back to the
+  // default app font (metadata was parsed but the glyph preview was fake).
+  const FONT_FACE: Record<string, { mime: string; css: string }> = {
+    "true-type": { mime: "font/ttf", css: "truetype" },
+    "open-type": { mime: "font/otf", css: "opentype" },
+    woff: { mime: "font/woff", css: "woff" },
+    woff2: { mime: "font/woff2", css: "woff2" },
+    collection: { mime: "font/collection", css: "collection" },
+  };
+
   let fontFamily = $state("ViewItFont");
 
   $effect(() => {
-    if (font_data) {
+    const valid = (font_format && FONT_FACE[font_format]) || null;
+    if (font_data && valid) {
       const style = document.createElement("style");
       style.textContent = `
         @font-face {
           font-family: '${fontFamily}';
-          src: url(data:font/${format};base64,${font_data}) format('${format}');
+          src: url(data:${valid.mime};base64,${font_data}) format('${valid.css}');
           font-weight: ${weight};
           font-style: ${is_italic ? "italic" : "normal"};
         }

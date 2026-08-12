@@ -64,7 +64,28 @@ pub fn parse(bytes: &[u8], format: Format, _name: &str) -> Result<Document, Erro
         format,
         byte_len: bytes.len(),
         font_data: Some(font_data),
+        font_format: font_format(bytes),
     })
+}
+
+/// Detect the concrete font container from its magic bytes, so the viewer can
+/// build a valid `@font-face` (correct MIME + CSS `format()` token).
+/// Returns `None` when the container is unknowable (caller still got a parsed
+/// face via the sfnt path or WOFF reconstruction).
+fn font_format(bytes: &[u8]) -> Option<String> {
+    if bytes.len() < 4 {
+        return None;
+    }
+    match &bytes[..4] {
+        b"wOFF" => Some("woff".into()),
+        b"wOF2" => Some("woff2".into()),
+        b"ttcf" => Some("collection".into()),
+        b"OTTO" => Some("open-type".into()),
+        b"true" => Some("true-type".into()),
+        // 0x00010000 (Big Endian TrueType) — the common sfnt magic.
+        _ if bytes[..4] == [0x00, 0x01, 0x00, 0x00] => Some("true-type".into()),
+        _ => None,
+    }
 }
 
 fn align4(n: usize) -> usize {
@@ -191,5 +212,22 @@ mod tests {
         woff.extend_from_slice(&[0u8; 28]); // rest of header
         let err = parse(&woff, Format::Font, "x.woff").unwrap_err();
         assert!(err.to_string().contains("no tables"), "got: {err}");
+    }
+
+    #[test]
+    fn detects_real_container_for_valid_font_face() {
+        // The glyph preview depends on a *valid* @font-face; the container
+        // must be surfaced (never the generic "font" enum that broke loading).
+        assert_eq!(font_format(b"wOFF...."), Some("woff".into()));
+        assert_eq!(font_format(b"wOF2...."), Some("woff2".into()));
+        assert_eq!(font_format(b"ttcf...."), Some("collection".into()));
+        assert_eq!(font_format(b"OTTO...."), Some("open-type".into()));
+        assert_eq!(font_format(b"true...."), Some("true-type".into()));
+        assert_eq!(
+            font_format(&[0x00, 0x01, 0x00, 0x00, 0x00]),
+            Some("true-type".into())
+        );
+        assert_eq!(font_format(b"nope"), None);
+        assert_eq!(font_format(b""), None);
     }
 }

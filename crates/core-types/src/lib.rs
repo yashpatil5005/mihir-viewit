@@ -257,6 +257,12 @@ pub enum Document {
         byte_len: usize,
         /// Base64-encoded font data for @font-face loading
         font_data: Option<String>,
+        /// Concrete container type detected from bytes: `true-type`, `open-type`,
+        /// `woff`, or `collection`. The `format` enum above is always `Font`;
+        /// this is what a viewer needs to build a *valid* `@font-face` (MIME +
+        /// CSS format token). Absent when unknowable/unset.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        font_format: Option<String>,
     },
 }
 
