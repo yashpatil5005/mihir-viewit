@@ -46,6 +46,7 @@ fn extract_odp_slides(xml: &str) -> Vec<PptxSlide> {
     let mut buf = Vec::new();
     let mut slides: Vec<PptxSlide> = Vec::new();
     let mut in_page = false;
+    let mut in_notes = false;
     let mut in_text_p = false;
     let mut current_text: Vec<String> = Vec::new();
     let mut page_texts: Vec<String> = Vec::new();
@@ -60,7 +61,11 @@ fn extract_odp_slides(xml: &str) -> Vec<PptxSlide> {
                     in_page = true;
                     page_texts.clear();
                 }
-                if tag == b"p" && in_page {
+                // Skip speaker notes — they're not visible slide content.
+                if tag == b"notes" && in_page {
+                    in_notes = true;
+                }
+                if tag == b"p" && in_page && !in_notes {
                     in_text_p = true;
                     current_text.clear();
                 }
@@ -76,11 +81,13 @@ fn extract_odp_slides(xml: &str) -> Vec<PptxSlide> {
                 let tag = name.local_name();
                 let tag = tag.as_ref();
                 if tag == b"p" && in_text_p {
-                    in_text_p = false;
-                    let text = current_text.concat();
+                    in_text_p = false;                    let text = current_text.concat();
                     if !text.trim().is_empty() {
                         page_texts.push(text);
                     }
+                }
+                if tag == b"notes" && in_notes {
+                    in_notes = false;
                 }
                 if tag == b"page" && in_page {
                     in_page = false;
