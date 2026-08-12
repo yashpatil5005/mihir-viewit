@@ -2,12 +2,19 @@
   import { onMount, onDestroy } from "svelte";
   import { pdfPage, debugLog } from "@viewit/platform";
 
-  // Polyfill Promise.withResolvers for older WebView versions (ES2024 feature)
-  // pdfjs-dist v4 uses this internally, so we must polyfill before importing it.
-  if (typeof Promise.withResolvers !== "function") {
-    Promise.withResolvers = function <T>() {
+  type PromiseResolvers = {
+    withResolvers?<T>(): {
+      promise: Promise<T>;
+      resolve: (value: T | PromiseLike<T>) => void;
+      reject: (reason?: unknown) => void;
+    };
+  };
+  // Polyfill Promise.withResolvers for older WebView versions (ES2024 feature).
+  const PromiseCtor = Promise as PromiseConstructor & PromiseResolvers;
+  if (typeof PromiseCtor.withResolvers !== "function") {
+    PromiseCtor.withResolvers = function <T>() {
       let resolve!: (value: T | PromiseLike<T>) => void;
-      let reject!: (reason?: any) => void;
+      let reject!: (reason?: unknown) => void;
       const promise = new Promise<T>((res, rej) => {
         resolve = res;
         reject = rej;
@@ -80,6 +87,10 @@
     if (_n && _cp) kickOffPdf();
   });
 
+  function bytesArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+    return Uint8Array.from(bytes).buffer;
+  }
+
   async function renderNativePdfJsFromStream(url: string) {
     pdfjsStatus = "loading";
     pdfjsError = "";
@@ -93,7 +104,7 @@
       const uint8 = cachePath
         ? await readMaterializedBytes(cachePath)
         : await readUriBytes(source_uri);
-      const blob = new Blob([uint8], { type: "application/pdf" });
+      const blob = new Blob([bytesArrayBuffer(uint8)], { type: "application/pdf" });
       pdfBlobUrl = URL.createObjectURL(blob);
       debugLog(`[pdf] blob url created from bytes, size=${uint8.length}`);
 
@@ -115,7 +126,7 @@
       debugLog(`[pdf] readMaterializedBytes calling…`);
       const uint8 = await readMaterializedBytes(path);
       debugLog(`[pdf] got ${uint8.length} bytes`);
-      const blob = new Blob([uint8], { type: "application/pdf" });
+      const blob = new Blob([bytesArrayBuffer(uint8)], { type: "application/pdf" });
       pdfBlobUrl = URL.createObjectURL(blob);
       debugLog(`[pdf] blob url created, size=${blob.size}`);
 

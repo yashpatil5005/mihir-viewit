@@ -105,6 +105,10 @@
     return false;
   }
 
+  function bytesArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+    return Uint8Array.from(bytes).buffer;
+  }
+
   async function tryBlobUrl(): Promise<boolean> {
     const { debugLog: log } = await import("@viewit/platform");
     try {
@@ -113,7 +117,7 @@
       const uint8 = await readMaterializedBytes(asset_path);
       log(`[media] got ${uint8.length} bytes`);
       const mime = mimeForExt(ext);
-      const blob = new Blob([uint8], { type: mime });
+      const blob = new Blob([bytesArrayBuffer(uint8)], { type: mime });
       blobUrl = URL.createObjectURL(blob);
       src = blobUrl;
       currentStrategy = "blob";
@@ -134,7 +138,7 @@
       const { readUriBytes, readMaterializedBytes } = await import("@viewit/platform");
       const bytes = await (asset_path ? readMaterializedBytes(asset_path) : readUriBytes(uri));
       const wav = aiffToWav(bytes);
-      blobUrl = URL.createObjectURL(new Blob([wav], { type: "audio/wav" }));
+      blobUrl = URL.createObjectURL(new Blob([bytesArrayBuffer(wav)], { type: "audio/wav" }));
       src = blobUrl;
       currentStrategy = "aiff-wav";
       log(`[media] AIFF decoded to WAV bytes=${wav.length}`);

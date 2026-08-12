@@ -1,9 +1,16 @@
 <script lang="ts">
-  // Polyfill Promise.withResolvers for older WebView versions (ES2024 feature)
-  if (typeof Promise.withResolvers !== "function") {
-    Promise.withResolvers = function <T>() {
+  type PromiseResolvers = {
+    withResolvers?<T>(): {
+      promise: Promise<T>;
+      resolve: (value: T | PromiseLike<T>) => void;
+      reject: (reason?: unknown) => void;
+    };
+  };
+  const PromiseCtor = Promise as PromiseConstructor & PromiseResolvers;
+  if (typeof PromiseCtor.withResolvers !== "function") {
+    PromiseCtor.withResolvers = function <T>() {
       let resolve!: (value: T | PromiseLike<T>) => void;
-      let reject!: (reason?: any) => void;
+      let reject!: (reason?: unknown) => void;
       const promise = new Promise<T>((res, rej) => {
         resolve = res;
         reject = rej;
@@ -1412,9 +1419,12 @@
         {#key docUri}
           <UnsupportedViewer
             uri={docUri ?? undefined}
-            document={doc}
+            document={doc as any}
             onPluginInstalled={() => {
-              if (docUri) load(docUri);
+              if (docUri) {
+                pendingUri = docUri;
+                void load();
+              }
             }}
           />
         {/key}
@@ -1424,7 +1434,7 @@
         {/key}
       {:else if doc.kind === "placeholder"}
         {#key docUri}
-          <PlaceholderViewer document={doc} onInstall={() => (pluginStoreOpen = true)} />
+          <PlaceholderViewer document={doc as any} onInstall={() => (pluginStoreOpen = true)} />
         {/key}
       {:else}
         <p class="error">Unknown document kind: <code>{(doc as any).kind}</code></p>

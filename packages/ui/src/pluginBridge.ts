@@ -408,6 +408,7 @@ export interface ArchiveBridgeResult {
   entries?: ArchiveEntry[];
   base64?: string;
   size?: number;
+  count?: number;
   dir?: string;
   result?: Record<string, unknown>;
   format?: string;
