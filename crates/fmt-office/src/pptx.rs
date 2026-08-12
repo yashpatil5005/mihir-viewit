@@ -304,6 +304,7 @@ fn parse_slide_elements(
     let mut current: Option<ElementBuilder> = None;
     let mut run_accum: Option<RunAccum> = None;
     let mut in_text = false;
+    let mut in_rpr = false;
 
     loop {
         match reader.read_event() {
@@ -337,6 +338,7 @@ fn parse_slide_elements(
                 }
             }
             Ok(Event::Start(e)) | Ok(Event::Empty(e)) if e.name().as_ref() == b"a:rPr" => {
+                in_rpr = true;
                 let font_size = x_attr(&e, b"sz")
                     .and_then(|v| v.parse::<f64>().ok())
                     .map(|v| v / 100.0);
@@ -374,6 +376,15 @@ fn parse_slide_elements(
                     item.rel_id = x_attr(&e, b"r:embed").unwrap_or_default();
                 }
             }
+            Ok(Event::Empty(e)) if in_rpr && e.name().as_ref() == b"a:srgbClr" => {
+                if let Some(val) = x_attr(&e, b"val") {
+                    if let Some(acc) = &mut run_accum {
+                        if acc.color.is_none() {
+                            acc.color = Some(format!("#{}", val));
+                        }
+                    }
+                }
+            }
             Ok(Event::Start(e))
                 if e.name().as_ref() == b"a:buChar" || e.name().as_ref() == b"a:buNone" =>
             {
@@ -400,6 +411,7 @@ fn parse_slide_elements(
                 }
             }
             Ok(Event::End(e)) if e.name().as_ref() == b"a:t" => in_text = false,
+            Ok(Event::End(e)) if e.name().as_ref() == b"a:rPr" => in_rpr = false,
             Ok(Event::End(e)) if e.name().as_ref() == b"a:r" => {
                 if let Some(acc) = run_accum.take() {
                     if let Some(item) = &mut current {

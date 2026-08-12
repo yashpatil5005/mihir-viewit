@@ -19,30 +19,52 @@ pub fn parse_docx(bytes: &[u8]) -> Result<Document, Error> {
         }
     };
 
+    // Read document relationships to resolve image rIds → media filenames.
+    let rels = docx_rels(bytes).unwrap_or_default();
+
     let mut blocks: Vec<DocxBlock> = Vec::new();
     for content in &docx.document.body.content {
         match content {
             docx_rust::document::BodyContent::Paragraph(p) => {
+                // Check for embedded images in runs (w:drawing → a:blip r:embed).
+                let mut img_added = false;
+                for pc in &p.content {
+                    if let docx_rust::document::ParagraphContent::Run(r) = pc {
+                        for rc in &r.content {
+                            if let docx_rust::document::RunContent::Drawing(d) = rc {
+                                if let Some(name) = drawing_media_name(d, &rels) {
+                                    blocks.push(DocxBlock::Image {
+                                        name,
+                                        src: None,
+                                    });
+                                    img_added = true;
+                                }
+                            }
+                        }
+                    }
+                }
                 let text = p.text();
-                if text.trim().is_empty() {
+                if text.trim().is_empty() && !img_added {
                     continue;
                 }
-                let heading = p
-                    .property
-                    .as_ref()
-                    .and_then(|prop| prop.style_id.as_ref())
-                    .and_then(|sid| heading_from_style(&sid.value));
-                let is_list = p
-                    .property
-                    .as_ref()
-                    .and_then(|prop| prop.numbering.as_ref())
-                    .and_then(|n| n.id.as_ref())
-                    .map(|id| id.value != 0)
-                    .unwrap_or(false);
-                if is_list {
-                    blocks.push(DocxBlock::ListItem { text, level: 0 });
-                } else {
-                    blocks.push(DocxBlock::Paragraph { text, heading });
+                if !text.trim().is_empty() {
+                    let heading = p
+                        .property
+                        .as_ref()
+                        .and_then(|prop| prop.style_id.as_ref())
+                        .and_then(|sid| heading_from_style(&sid.value));
+                    let is_list = p
+                        .property
+                        .as_ref()
+                        .and_then(|prop| prop.numbering.as_ref())
+                        .and_then(|n| n.id.as_ref())
+                        .map(|id| id.value != 0)
+                        .unwrap_or(false);
+                    if is_list {
+                        blocks.push(DocxBlock::ListItem { text, level: 0 });
+                    } else {
+                        blocks.push(DocxBlock::Paragraph { text, heading });
+                    }
                 }
             }
             docx_rust::document::BodyContent::Table(t) => {
@@ -244,6 +266,76 @@ fn heading_from_style(style: &str) -> Option<u8> {
         .strip_prefix("Heading")
         .or_else(|| style.strip_prefix("heading"))
         .and_then(|level| level.trim().parse::<u8>().ok())
+}
+
+/// Read `word/_rels/document.xml.rels` and map rId → Target (e.g.
+/// "rId4" → "media/image1.png").
+fn docx_rels(bytes: &[u8]) -> Option<std::collections::HashMap<String, String>> {
+    use quick_xml::events::Event;
+    use quick_xml::Reader;
+    use std::io::{Cursor, Read};
+
+    let cursor = Cursor::new(bytes.to_vec());
+    let mut archive = zip::ZipArchive::new(cursor).ok()?;
+    let mut rels_xml = String::new();
+    archive
+        .by_name("word/_rels/document.xml.rels")
+        .ok()?
+        .read_to_string(&mut rels_xml)
+        .ok()?;
+
+    let mut reader = Reader::from_str(&rels_xml);
+    let mut buf = Vec::new();
+    let mut map = std::collections::HashMap::new();
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Empty(e)) | Ok(Event::Start(e)) => {
+                if e.name().as_ref() == b"Relationship" {
+                    let mut id = String::new();
+                    let mut target = String::new();
+                    for attr in e.attributes().flatten() {
+                        match attr.key.as_ref() {
+                            b"Id" => id = String::from_utf8_lossy(attr.value.as_ref()).to_string(),
+                            b"Target" => {
+                                target = String::from_utf8_lossy(attr.value.as_ref()).to_string()
+                            }
+                            _ => {}
+                        }
+                    }
+                    if !id.is_empty() && !target.is_empty() {
+                        map.insert(id, target);
+                    }
+                }
+            }
+            Ok(Event::Eof) => break,
+            _ => {}
+        }
+        buf.clear();
+    }
+    Some(map)
+}
+
+/// Extract the media filename from a `w:drawing` element via the blip's
+/// `r:embed` relationship ID, resolved through the document rels map.
+fn drawing_media_name(
+    drawing: &docx_rust::document::Drawing,
+    rels: &std::collections::HashMap<String, String>,
+) -> Option<String> {
+    let graphic = if let Some(inline) = &drawing.inline {
+        inline.graphic.as_ref()
+    } else if let Some(anchor) = &drawing.anchor {
+        anchor.graphic.as_ref()
+    } else {
+        None
+    }?;
+    let pic = graphic.data.children.first()?;
+    let embed = &pic.fill.blip.embed;
+    if embed.is_empty() {
+        return None;
+    }
+    let target = rels.get(embed.as_ref())?;
+    let name = target.rsplit('/').next().unwrap_or(target);
+    Some(name.to_string())
 }
 
 #[cfg(test)]
