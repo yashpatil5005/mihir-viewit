@@ -1,14 +1,19 @@
 {
   "id": "font-universal",
   "name": "Font Universal Plugin",
-  "version": "0.1.0",
-  "description": "Font metadata viewer for TTF, OTF, WOFF, WOFF2, TTC, and other font formats",
+  "version": "0.1.1",
+  "description": "Font metadata viewer for TTF, OTF, WOFF, and TTC.",
   "minAppVersion": 1,
   "entryClass": "ai.viewit.plugins.fontuniversal.FontUniversalPlugin",
   "supportedFormats": [
-    "ttf", "otf", "woff", "woff2", "pfb", "cff", "dfont", "sfd", "ps", "ttc"
+    "ttf",
+    "otf",
+    "woff",
+    "ttc"
   ],
-  "capabilities": ["document-render"],
+  "capabilities": [
+    "document-render"
+  ],
   "downloadUrl": "",
   "sizeBytes": 0,
   "installedSizeBytes": 0,

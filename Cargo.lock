@@ -5595,6 +5595,7 @@ name = "viewit-fmt-font"
 version = "0.1.0-scaffold"
 dependencies = [
  "base64 0.22.1",
+ "flate2",
  "thiserror 2.0.18",
  "ttf-parser",
  "viewit-core-types",

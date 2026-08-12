@@ -454,7 +454,8 @@ fn sniff_ext(ext: &str) -> Format {
         "7z" => Format::Archive7z,
         "rar" => Format::ArchiveRar,
         "docx" | "docm" | "dotx" | "dotm" => Format::Docx,
-        "xlsx" | "xlsm" | "xlsb" => Format::Xlsx,
+        "xlsx" | "xlsm" => Format::Xlsx,
+        "xlsb" => Format::Xlsb,
         "xls" => Format::Xls,
         "pptx" | "pptm" | "potx" => Format::Pptx,
         "odt" | "ott" => Format::Odt,
@@ -613,6 +614,7 @@ pub fn dispatch(format: Format, bytes: &[u8], ext: &str, name: &str) -> Result<D
         Format::Docx
         | Format::Xlsx
         | Format::Xls
+        | Format::Xlsb
         | Format::Pptx
         | Format::Odt
         | Format::Ods

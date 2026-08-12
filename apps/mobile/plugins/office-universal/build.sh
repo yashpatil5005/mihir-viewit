@@ -75,9 +75,10 @@ fi
 
 # Create ZIP packages (one per ABI, entries relative to the package root).
 # Remove stale zips first: `zip -r` appends, so a prior package/ prefix would leak in.
+PLUGIN_VERSION="$(python3 -c "import json;print(json.load(open('${PLUGIN_DIR}/plugin.json'))['version'])")"
 for ABI in "${ABIS[@]}"; do
-    rm -f "${OUTPUT_DIR}/office-universal-0.1.0-${ABI}.zip"
-    (cd "${PACKAGE_DIR}" && zip -r "${OUTPUT_DIR}/office-universal-0.1.0-${ABI}.zip" "lib/${ABI}" "plugin.json" "dex")
+    rm -f "${OUTPUT_DIR}/office-universal-${PLUGIN_VERSION}-${ABI}.zip"
+    (cd "${PACKAGE_DIR}" && zip -r "${OUTPUT_DIR}/office-universal-${PLUGIN_VERSION}-${ABI}.zip" "lib/${ABI}" "plugin.json" "dex")
 done
 
 echo "Build complete! Output in ${OUTPUT_DIR}"

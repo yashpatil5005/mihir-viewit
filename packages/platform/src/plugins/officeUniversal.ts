@@ -15,7 +15,9 @@ const OFFICE_EXTS = new Set([
   "odt",
   "ott",
   "ods",
+  "ots",
   "odp",
+  "otp",
   "doc",
   "ppt",
 ]);

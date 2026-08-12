@@ -106,8 +106,9 @@ fn sniff_zip_format(bytes: &[u8], ext: &str) -> Format {
     if has_content_types {
         match ext {
             "docx" | "docm" | "dotx" | "dotm" => return Format::Docx,
-            "xlsx" | "xlsm" | "xlsb" => return Format::Xlsx,
+            "xlsx" | "xlsm" => return Format::Xlsx,
             "xls" => return Format::Xls,
+            "xlsb" => return Format::Xlsb,
             "pptx" | "pptm" | "potx" => return Format::Pptx,
             _ => {}
         }
@@ -159,15 +160,17 @@ fn sniff_ole2_format(ext: &str) -> Format {
         "doc" => Format::Doc,
         "ppt" => Format::Ppt,
         "xls" => Format::Xls,
-        _ => Format::Doc, // Default to Doc for unknown OLE2
+        "xlsb" => Format::Xlsb, // Excel Binary Workbook — OLE2/BIFF12, not .doc
+        _ => Format::Doc,       // Default to Doc for unknown OLE2
     }
 }
 
 fn sniff_ext(ext: &str) -> Format {
     match ext {
         "docx" | "docm" | "dotx" | "dotm" => Format::Docx,
-        "xlsx" | "xlsm" | "xlsb" => Format::Xlsx,
+        "xlsx" | "xlsm" => Format::Xlsx,
         "xls" => Format::Xls,
+        "xlsb" => Format::Xlsb,
         "pptx" | "pptm" | "potx" => Format::Pptx,
         "odt" | "ott" => Format::Odt,
         "ods" | "ots" => Format::Ods,
@@ -188,7 +191,9 @@ fn dispatch(format: Format, bytes: &[u8], _ext: &str, name: &str) -> Result<Docu
     let bytes = bytes.as_slice();
 
     match format {
-        Format::Xlsx | Format::Xls => parse_xlsx_xls_ods(bytes, format),
+        Format::Xlsx => crate::xlsx::parse_xlsx(bytes),
+        Format::Xlsb => crate::xlsx::parse_xlsb(bytes),
+        Format::Xls => crate::xlsx::parse_xls_binary(bytes),
         Format::Ods => ods::parse_ods(bytes, format, name),
         Format::Docx => docx::parse_docx(bytes),
         Format::Pptx => pptx::parse_pptx(bytes, format, name),
@@ -233,57 +238,6 @@ fn try_decrypt_if_encrypted(bytes: &[u8]) -> Result<Option<Vec<u8>>, Error> {
     Err(Error::Parse(
         "Encrypted Office file — office-crypto feature not enabled in this build".into(),
     ))
-}
-
-/// XLSX / XLS / ODS unified parsing
-fn parse_xlsx_xls_ods(bytes: &[u8], format: Format) -> Result<Document, Error> {
-    use calamine::Reader;
-    use viewit_core_types::XlsxSheet;
-
-    let cursor = Cursor::new(bytes.to_vec());
-
-    let mut sheets: Vec<XlsxSheet> = Vec::new();
-
-    match format {
-        Format::Xlsx => {
-            // Enriched XLSX: calamine data + merges / frozen panes / column
-            // widths / formulas from the worksheet parts (see xlsx.rs).
-            return crate::xlsx::parse_xlsx(bytes);
-        }
-        Format::Xls => {
-            let mut workbook = calamine::Xls::<Cursor<Vec<u8>>>::new(cursor)
-                .map_err(|e| Error::Parse(format!("calamine xls: {}", e)))?;
-            let sheets_meta = workbook.worksheets();
-            for (name, range) in sheets_meta.into_iter().take(8) {
-                let mut rows_iter = range.rows();
-                let header: Vec<String> = rows_iter
-                    .next()
-                    .map(|r| r.iter().map(|c| c.to_string()).collect())
-                    .unwrap_or_default();
-                let preview_rows: Vec<Vec<String>> = rows_iter
-                    .take(200)
-                    .map(|r| r.iter().map(|c| c.to_string()).collect())
-                    .collect();
-                sheets.push(XlsxSheet {
-                    name,
-                    header,
-                    preview_rows,
-                    total_rows_hint: Some(range.height()),
-                    total_cols_hint: Some(range.width()),
-                    preview_formulas: None,
-                    merged_cells: None,
-                    frozen_panes: None,
-                    column_widths: None,
-                });
-            }
-        }
-        _ => return Err(Error::UnsupportedFormat(format)),
-    }
-
-    Ok(Document::Xlsx {
-        sheets,
-        byte_len: bytes.len(),
-    })
 }
 
 // WASM exports are in wasm_entry.rs
@@ -431,6 +385,44 @@ mod tests {
         // This will fail because it's not a valid OLE2 file, just the magic bytes
         // The test just ensures the entry point is callable
         assert!(result.is_err() || result.is_ok());
+    }
+
+    #[test]
+    fn sniffs_ole2_xlsb_to_xlsb_not_doc() {
+        let xlsb_magic = vec![0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
+        // A real .xlsb is an OLE2 compound file; it must never be sniffed as
+        // legacy .doc (which produced a garbled byte-dump preview before the fix).
+        assert_eq!(
+            super::sniff_format(&xlsb_magic, "xlsb"),
+            Format::Xlsb,
+            "xlsb must sniff to Xlsb, not Doc"
+        );
+        assert_eq!(
+            super::sniff_format(&xlsb_magic, "xls"),
+            Format::Xls,
+            "xls must sniff to Xls"
+        );
+        assert_eq!(
+            super::sniff_format(&xlsb_magic, "doc"),
+            Format::Doc,
+            "doc still Doc"
+        );
+        assert_eq!(
+            super::sniff_format(&xlsb_magic, "ppt"),
+            Format::Ppt,
+            "ppt still Ppt"
+        );
+    }
+
+    #[test]
+    fn sniffs_zip_xlsm_to_xlsx() {
+        let bytes = minimal_xlsx();
+        assert_eq!(
+            super::sniff_format(&bytes, "xlsm"),
+            Format::Xlsx,
+            "xlsm shares OOXML structure with xlsx"
+        );
+        assert_eq!(super::sniff_format(&bytes, "xlsx"), Format::Xlsx);
     }
 
     fn legacy_ppt_text() -> Vec<u8> {

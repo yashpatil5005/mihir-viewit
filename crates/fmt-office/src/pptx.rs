@@ -24,7 +24,8 @@ pub fn parse_pptx(bytes: &[u8], _format: Format, _name: &str) -> Result<Document
         f.read_to_string(&mut presentation_xml).ok();
     }
     let slide_count = count_slides_in_presentation(&presentation_xml);
-    let (slide_w, slide_h) = parse_presentation_size(bytes).unwrap_or((DEFAULT_SLIDE_W, DEFAULT_SLIDE_H));
+    let (slide_w, slide_h) =
+        parse_presentation_size(bytes).unwrap_or((DEFAULT_SLIDE_W, DEFAULT_SLIDE_H));
 
     let mut slides: Vec<PptxSlide> = Vec::with_capacity(slide_count.min(200));
     for i in 1..=slide_count.min(200) {
@@ -171,12 +172,15 @@ fn parse_presentation_size(bytes: &[u8]) -> Option<(u64, u64)> {
     reader.config_mut().trim_text(true);
     loop {
         match reader.read_event() {
-            Ok(quick_xml::events::Event::Start(e))
-            | Ok(quick_xml::events::Event::Empty(e))
+            Ok(quick_xml::events::Event::Start(e)) | Ok(quick_xml::events::Event::Empty(e))
                 if e.name().as_ref() == b"p:sldSz" =>
             {
-                let w = x_attr(&e, b"cx").and_then(|v| v.parse().ok()).unwrap_or(DEFAULT_SLIDE_W);
-                let h = x_attr(&e, b"cy").and_then(|v| v.parse().ok()).unwrap_or(DEFAULT_SLIDE_H);
+                let w = x_attr(&e, b"cx")
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(DEFAULT_SLIDE_W);
+                let h = x_attr(&e, b"cy")
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(DEFAULT_SLIDE_H);
                 return Some((w, h));
             }
             Ok(quick_xml::events::Event::Eof) => break,
@@ -187,7 +191,10 @@ fn parse_presentation_size(bytes: &[u8]) -> Option<(u64, u64)> {
     None
 }
 
-fn slide_relationships(bytes: &[u8], index: usize) -> Result<std::collections::HashMap<String, String>, Error> {
+fn slide_relationships(
+    bytes: &[u8],
+    index: usize,
+) -> Result<std::collections::HashMap<String, String>, Error> {
     let path = format!("ppt/slides/_rels/slide{index}.xml.rels");
     let rels_xml = zip_entry_string(bytes, &path)?;
     let mut rels = std::collections::HashMap::new();
@@ -195,8 +202,7 @@ fn slide_relationships(bytes: &[u8], index: usize) -> Result<std::collections::H
     reader.config_mut().trim_text(true);
     loop {
         match reader.read_event() {
-            Ok(quick_xml::events::Event::Start(e))
-            | Ok(quick_xml::events::Event::Empty(e))
+            Ok(quick_xml::events::Event::Start(e)) | Ok(quick_xml::events::Event::Empty(e))
                 if e.name().as_ref() == b"Relationship" =>
             {
                 if let (Some(id), Some(target)) = (x_attr(&e, b"Id"), x_attr(&e, b"Target")) {
@@ -302,10 +308,16 @@ fn parse_slide_elements(
     loop {
         match reader.read_event() {
             Ok(Event::Start(e)) if e.name().as_ref() == b"p:sp" => {
-                current = Some(ElementBuilder { kind: "text", ..Default::default() });
+                current = Some(ElementBuilder {
+                    kind: "text",
+                    ..Default::default()
+                });
             }
             Ok(Event::Start(e)) if e.name().as_ref() == b"p:pic" => {
-                current = Some(ElementBuilder { kind: "image", ..Default::default() });
+                current = Some(ElementBuilder {
+                    kind: "image",
+                    ..Default::default()
+                });
             }
             Ok(Event::Start(e)) | Ok(Event::Empty(e)) if e.name().as_ref() == b"p:cNvPr" => {
                 if let Some(item) = &mut current {
@@ -325,7 +337,9 @@ fn parse_slide_elements(
                 }
             }
             Ok(Event::Start(e)) | Ok(Event::Empty(e)) if e.name().as_ref() == b"a:rPr" => {
-                let font_size = x_attr(&e, b"sz").and_then(|v| v.parse::<f64>().ok()).map(|v| v / 100.0);
+                let font_size = x_attr(&e, b"sz")
+                    .and_then(|v| v.parse::<f64>().ok())
+                    .map(|v| v / 100.0);
                 if let Some(item) = &mut current {
                     if item.font_size.is_none() {
                         item.font_size = font_size;
@@ -335,13 +349,22 @@ fn parse_slide_elements(
                     if acc.font_size.is_none() {
                         acc.font_size = font_size;
                     }
-                    if e.attributes().flatten().any(|a| a.key.as_ref() == b"b" && a.value.as_ref() == b"1") {
+                    if e.attributes()
+                        .flatten()
+                        .any(|a| a.key.as_ref() == b"b" && a.value.as_ref() == b"1")
+                    {
                         acc.bold = true;
                     }
-                    if e.attributes().flatten().any(|a| a.key.as_ref() == b"i" && a.value.as_ref() == b"1") {
+                    if e.attributes()
+                        .flatten()
+                        .any(|a| a.key.as_ref() == b"i" && a.value.as_ref() == b"1")
+                    {
                         acc.italic = true;
                     }
-                    if e.attributes().flatten().any(|a| a.key.as_ref() == b"u" && a.value.as_ref() == b"sng") {
+                    if e.attributes()
+                        .flatten()
+                        .any(|a| a.key.as_ref() == b"u" && a.value.as_ref() == b"sng")
+                    {
                         acc.underline = true;
                     }
                 }
@@ -545,7 +568,13 @@ fn normalize_pptx_target(target: &str) -> String {
 }
 
 fn image_mime(path: &str) -> &'static str {
-    match path.rsplit('.').next().unwrap_or_default().to_ascii_lowercase().as_str() {
+    match path
+        .rsplit('.')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+        .as_str()
+    {
         "jpg" | "jpeg" => "image/jpeg",
         "gif" => "image/gif",
         "webp" => "image/webp",
@@ -565,7 +594,8 @@ fn x_attr(e: &quick_xml::events::BytesStart<'_>, key: &[u8]) -> Option<String> {
 }
 
 fn zip_entry_string(bytes: &[u8], name: &str) -> Result<String, Error> {
-    let mut archive = ZipArchive::new(Cursor::new(bytes)).map_err(|e| Error::Parse(format!("zip open: {e}")))?;
+    let mut archive =
+        ZipArchive::new(Cursor::new(bytes)).map_err(|e| Error::Parse(format!("zip open: {e}")))?;
     let mut xml = String::new();
     archive
         .by_name(name)
@@ -576,7 +606,8 @@ fn zip_entry_string(bytes: &[u8], name: &str) -> Result<String, Error> {
 }
 
 fn zip_entry_bytes(bytes: &[u8], name: &str) -> Result<Vec<u8>, Error> {
-    let mut archive = ZipArchive::new(Cursor::new(bytes)).map_err(|e| Error::Parse(format!("zip open: {e}")))?;
+    let mut archive =
+        ZipArchive::new(Cursor::new(bytes)).map_err(|e| Error::Parse(format!("zip open: {e}")))?;
     let mut data = Vec::new();
     archive
         .by_name(name)

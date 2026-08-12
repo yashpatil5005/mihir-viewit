@@ -61,9 +61,10 @@ else
     echo "WARNING: d8 not found, skipping classes.dex generation"
 fi
 
+PLUGIN_VERSION="$(python3 -c "import json;print(json.load(open('${PLUGIN_DIR}/plugin.json'))['version'])")"
 for ABI in "${ABIS[@]}"; do
-    rm -f "${OUTPUT_DIR}/font-universal-0.1.0-${ABI}.zip"
-    (cd "${PACKAGE_DIR}" && zip -r "${OUTPUT_DIR}/font-universal-0.1.0-${ABI}.zip" "lib/${ABI}" "plugin.json" "dex")
+    rm -f "${OUTPUT_DIR}/font-universal-${PLUGIN_VERSION}-${ABI}.zip"
+    (cd "${PACKAGE_DIR}" && zip -r "${OUTPUT_DIR}/font-universal-${PLUGIN_VERSION}-${ABI}.zip" "lib/${ABI}" "plugin.json" "dex")
 done
 
 echo "Build complete! Output in ${OUTPUT_DIR}"

@@ -92,7 +92,10 @@
   ]);
   // Fonts ship as the built-in font-universal native plugin on Android (kept
   // out of the base Rust lib to save APK budget). Desktop/web parse fonts
-  // natively, so this only triggers when the AndroidBridge is present.
+  // natively, so this only triggers when the AndroidBridge is present. The
+  // broad set keeps every font extension recognizable so unsupported ones
+  // (woff2/pfb/cff/dfont/sfd/ps) fall to the base viewer honestly; only
+  // ttf/otf/woff/ttc route to font-universal.
   const FONT_EXTS = new Set([
     "ttf",
     "otf",
@@ -653,16 +656,14 @@
     lz4: "compression-universal",
     lzma: "compression-universal",
     tlz: "compression-universal",
+    // Only formats the font-universal parser actually decodes are routed there.
+    // woff2/pfb/cff/dfont/sfd/ps remain recognizable as fonts but fall back to
+    // the base viewer (placeholder → open-with-external) instead of a dangling
+    // plugin claim.
     ttf: "font-universal",
     otf: "font-universal",
     woff: "font-universal",
-    woff2: "font-universal",
     ttc: "font-universal",
-    pfb: "font-universal",
-    cff: "font-universal",
-    dfont: "font-universal",
-    sfd: "font-universal",
-    ps: "font-universal",
   };
 
   // Reactive CTA: whenever the open document/URI changes, offer to install the

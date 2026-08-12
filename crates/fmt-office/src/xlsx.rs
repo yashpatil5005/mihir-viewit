@@ -203,7 +203,8 @@ fn parse_workbook_sheets(xml: &str) -> Result<Vec<(String, String)>, Error> {
         match reader.read_event() {
             Ok(Event::Start(e)) | Ok(Event::Empty(e)) if e.name() == QName(b"sheet") => {
                 let name = attr_value(&e, b"name").unwrap_or_default();
-                let rel_id = attr_value(&e, b"r:id").ok_or_else(|| Error::Parse("sheet missing r:id".into()))?;
+                let rel_id = attr_value(&e, b"r:id")
+                    .ok_or_else(|| Error::Parse("sheet missing r:id".into()))?;
                 sheets.push((name, rel_id));
             }
             Ok(Event::Eof) => break,
@@ -224,7 +225,8 @@ fn parse_relationships(xml: &str) -> Result<HashMap<String, String>, Error> {
     loop {
         match reader.read_event() {
             Ok(Event::Start(e)) | Ok(Event::Empty(e)) if e.name().as_ref() == b"Relationship" => {
-                if let (Some(id), Some(target)) = (attr_value(&e, b"Id"), attr_value(&e, b"Target")) {
+                if let (Some(id), Some(target)) = (attr_value(&e, b"Id"), attr_value(&e, b"Target"))
+                {
                     rels.insert(id, target);
                 }
             }
@@ -274,8 +276,12 @@ fn parse_sheet_frozen_pane(xml: &str) -> Option<XlsxFrozenPanes> {
         match reader.read_event() {
             Ok(Event::Empty(e)) if e.name() == QName(b"pane") => {
                 found = true;
-                x_split = attr_value(&e, b"xSplit").and_then(|v| v.parse().ok()).unwrap_or(0);
-                y_split = attr_value(&e, b"ySplit").and_then(|v| v.parse().ok()).unwrap_or(0);
+                x_split = attr_value(&e, b"xSplit")
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(0);
+                y_split = attr_value(&e, b"ySplit")
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(0);
                 active_pane = attr_value(&e, b"activePane").unwrap_or_default();
             }
             Ok(Event::Eof) => break,
@@ -284,7 +290,11 @@ fn parse_sheet_frozen_pane(xml: &str) -> Option<XlsxFrozenPanes> {
         }
     }
     if found && (x_split > 0 || y_split > 0) {
-        Some(XlsxFrozenPanes { x_split, y_split, active_pane })
+        Some(XlsxFrozenPanes {
+            x_split,
+            y_split,
+            active_pane,
+        })
     } else {
         None
     }
@@ -301,11 +311,16 @@ fn parse_sheet_col_widths(xml: &str) -> Vec<Option<f64>> {
     loop {
         match reader.read_event() {
             Ok(Event::Empty(e)) if e.name() == QName(b"col") => {
-                let Some(width) = attr_value(&e, b"width").and_then(|v| v.parse::<f64>().ok()) else {
+                let Some(width) = attr_value(&e, b"width").and_then(|v| v.parse::<f64>().ok())
+                else {
                     continue;
                 };
-                let min = attr_value(&e, b"min").and_then(|v| v.parse::<usize>().ok()).unwrap_or(0);
-                let max = attr_value(&e, b"max").and_then(|v| v.parse::<usize>().ok()).unwrap_or(min);
+                let min = attr_value(&e, b"min")
+                    .and_then(|v| v.parse::<usize>().ok())
+                    .unwrap_or(0);
+                let max = attr_value(&e, b"max")
+                    .and_then(|v| v.parse::<usize>().ok())
+                    .unwrap_or(min);
                 let min = min.saturating_sub(1);
                 let max = max.saturating_sub(1);
                 for i in min..=max.min(1024 * 4) {
@@ -386,7 +401,10 @@ fn align_formulas(
                 .map(|c| {
                     let expr = column_letter(c);
                     let row_no = pr + 2; // header is row 1
-                    formulas.get(&format!("{expr}{row_no}")).cloned().unwrap_or_default()
+                    formulas
+                        .get(&format!("{expr}{row_no}"))
+                        .cloned()
+                        .unwrap_or_default()
                 })
                 .collect()
         })
@@ -447,7 +465,8 @@ mod tests {
         let mut buf = Vec::new();
         {
             let mut zip = zip::ZipWriter::new(Cursor::new(&mut buf));
-            let opts = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+            let opts = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated);
             zip.start_file("[Content_Types].xml", opts).unwrap();
             zip.write_all(content_types.as_bytes()).unwrap();
             zip.start_file("_rels/.rels", opts).unwrap();

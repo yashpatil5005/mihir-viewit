@@ -32,17 +32,33 @@ Status legend for current engine: **FULL** = real layout/content rendered on-dev
 |---|---|---|---|---|
 | `.docx`, `.docm` | extension + ZIP+XML | DocxViewer (text+structure) | `office-universal` (Enhanced Office OOXML + docx-preview) | **FULL** — images+hyperlinks+headings+lists+tables rendered |
 | `.dotx`, `.dotm` | extension + ZIP+XML | DocxViewer | `office-universal` | **FULL** (template) — same OOXML text engine as docx |
-| `.xlsx`, `.xlsm`, `.xlsb`, `.xls` | extension + magic | XlsxViewer (text+structure) | `office-universal` (calamine) | **FULL** — multi-sheet, formulas, 13/13 rows etc. on fixture |
+| `.xlsx`, `.xlsm`, `.xlsb`, `.xls` | extension + magic | XlsxViewer (text+structure) | `office-universal` (calamine: Xlsx/Xlsb/Xls) | **FULL** — multi-sheet, formulas, 13/13 rows etc. on fixture. `.xlsb` (Excel Binary Workbook, BIFF12/OLE2) sniffed to its own `Xlsb` format and parsed via calamine `Xlsb` — never misrouted to legacy `.doc`. |
 | `.pptx`, `.pptm`, `.potx` | extension + ZIP+XML | PptxViewer (text extraction) | `pptx-vanilla` (JS, WebView HTML slides) | **FULL** slides — body shows "Rendered by PPTX Vanilla Viewer · view-only (no PowerPoint animations, no editing)"; no PowerPoint animations/editing |
 | `.odt`, `.ott` | extension + ZIP+XML | PlaceholderViewer | `office-universal` | **FULL** — words/blocks/tables count on fixture (458 words, 33 blocks, 2 tables) |
 | `.ods`, `.ots` | extension + ZIP+XML | PlaceholderViewer | `office-universal` | **FULL** — sheets, rows/cols, 24 formulas on fixture |
 | `.odp`, `.otp` | extension + ZIP+XML | PlaceholderViewer | (routed to pptx-vanilla) | **GAP** — on-device body: "Invalid PPTX: presentation.xml not found" + "No slides". ODF presentation (content.xml) not parsed. Needs ODP path in office-universal |
 | `.doc` | extension + magic | UnsupportedViewer/partial | `office-universal` (text extract) | **PARTIAL** — text-only preview; layout/images not preserved (known issue, see below) |
-| `.ppt` | extension + magic | UnsupportedViewer | — | **GAP** — on-device body: "This presentation is password protected." Legacy binary slide content not rendered; message is misleading, should say unsupported + open-external |
+| `.ppt` | extension + magic | UnsupportedViewer | — | **PARTIAL** — legacy binary slide text extracted (see `legacy_binary.rs`); layout not preserved. Not a false "password protected" claim — encrypted/unsupported OLE2 surfaces a clear error + open-external |
 | `.rtf` | extension + magic | TextViewer | — | Plain-text fallback — on-device smoke PASS (marker text extracted) |
 | `.epub`, `.mobi`, `.azw3`, `.fb2` | extension | EpubViewer | — | Basic reflow; no DRM |
 | `.heic`, `.heif`, `.avif` | extension + MIME | ImageViewer (platform) | — | Depends on Android platform decoder |
 | `.psd`, `.dng`, `.cr2`, `.cr3`, `.nef`, `.arw` | extension + MIME | ImageViewer (raw fallback) | — | WebView may not render; platform-dependent |
+
+### Font Universal — 2026-08-12
+
+`font-universal` (native plugin) advertises **only what it actually parses** —
+no dangling entries. Core `fmt-font` uses `ttf-parser`:
+
+| Extension | Status | Notes |
+|---|---|---|
+| `.ttf`, `.otf` | **FULL** | parsed directly (TrueType / CFF-OpenType outlines) |
+| `.ttc` | **FULL** | TrueType collection — first face parsed and shown |
+| `.woff` | **FULL** | zlib-inflated into an in-memory sfnt, then parsed (WOFF tables are deflated) |
+| `.woff2` | not advertised | needs glyf/loca transform reconstruction; no offline crate. Recognized as a font, falls to base viewer → open-with-external |
+| `.pfb`, `.cff`, `.dfont`, `.sfd`, `.ps` | not advertised | PostScript / FontForge / macOS data-fork formats `ttf-parser` cannot read; routed to open-with-external rather than a broken preview |
+
+Verified real fixtures: DejaVu (ttf), C059 (otf), KaTeX (woff), Noto CJK (ttc) all
+parse with correct family names.
 
 ### Compression Universal — 2026-08-05
 

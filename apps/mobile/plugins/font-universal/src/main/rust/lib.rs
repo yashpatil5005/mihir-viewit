@@ -60,9 +60,10 @@ pub extern "system" fn Java_ai_viewit_plugins_fontuniversal_FontUniversalPlugin_
         .get_string(&ext)
         .expect("Couldn't get java string!")
         .into();
+    // Honest set: only formats the parser can actually decode.
     let can_handle = matches!(
         ext.to_lowercase().as_str(),
-        "ttf" | "otf" | "woff" | "woff2" | "ttc" | "pfb" | "cff" | "dfont" | "sfd" | "ps"
+        "ttf" | "otf" | "woff" | "ttc"
     );
     can_handle as jboolean
 }
@@ -146,9 +147,7 @@ pub extern "system" fn Java_ai_viewit_plugins_fontuniversal_FontUniversalPlugin_
     env: JNIEnv,
     _class: JClass,
 ) -> jstring {
-    let formats = vec![
-        "ttf", "otf", "woff", "woff2", "ttc", "pfb", "cff", "dfont", "sfd", "ps",
-    ];
+    let formats = vec!["ttf", "otf", "woff", "ttc"];
     let json = serde_json::to_string(&formats).unwrap_or_else(|_| "[]".to_string());
     env.new_string(json)
         .expect("Couldn't create java string!")

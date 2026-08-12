@@ -47,6 +47,7 @@ pub enum Format {
     Docx,
     Xlsx,
     Xls,
+    Xlsb,
     Pptx,
     Odt,
     Ods,
