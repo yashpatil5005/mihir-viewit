@@ -102,8 +102,10 @@ fn extract_odp_slides(xml: &str) -> Vec<PptxSlide> {
                         title,
                         body,
                         elements: Vec::new(),
-                        width: None,
-                        height: None,
+                        // ODP default: 25.4cm x 19.05cm (10" x 7.5" in EMUs)
+                        // matching the common 4:3 presentation size.
+                        width: Some(9_144_000),
+                        height: Some(6_858_000),
                         background: None,
                     });
                 }
