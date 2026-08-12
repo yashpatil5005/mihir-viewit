@@ -245,7 +245,7 @@
       {
         "id": "font-universal",
         "name": "Font Universal Plugin",
-        "version": "0.1.1",
+        "version": "0.1.2",
         "description": "Font metadata viewer for TTF, OTF, WOFF, and TTC.",
         "minAppVersion": 1,
         "entryClass": "ai.viewit.plugins.fontuniversal.FontUniversalPlugin",
@@ -261,18 +261,18 @@
         ],
         "runtime": "native",
         "abiVersion": 1,
-        "downloadUrl": "https://omnia.mihirpatil.co/plugins/font-universal-0.1.1-arm64-v8a.zip",
+        "downloadUrl": "https://omnia.mihirpatil.co/plugins/font-universal-0.1.2-arm64-v8a.zip",
         "jsEntry": "",
         "pptxVanilla": false,
         "abi": "arm64-v8a",
-        "sizeBytes": 214599,
-        "installedSizeBytes": 389984,
-        "checksum": "9bb4d151625f85a08c0d27f6c0a9b862699c3faa493a6d545bdd08989428f651"
+        "sizeBytes": 214696,
+        "installedSizeBytes": 390032,
+        "checksum": "ed4a8e0d61640729e329ddf6f6b9e353d8eb68d2e2da2ffc2776bd46736ce73d"
       },
       {
         "id": "font-universal",
         "name": "Font Universal Plugin",
-        "version": "0.1.1",
+        "version": "0.1.2",
         "description": "Font metadata viewer for TTF, OTF, WOFF, and TTC.",
         "minAppVersion": 1,
         "entryClass": "ai.viewit.plugins.fontuniversal.FontUniversalPlugin",
@@ -288,13 +288,13 @@
         ],
         "runtime": "native",
         "abiVersion": 1,
-        "downloadUrl": "https://omnia.mihirpatil.co/plugins/font-universal-0.1.1-x86_64.zip",
+        "downloadUrl": "https://omnia.mihirpatil.co/plugins/font-universal-0.1.2-x86_64.zip",
         "jsEntry": "",
         "pptxVanilla": false,
         "abi": "x86_64",
-        "sizeBytes": 224895,
-        "installedSizeBytes": 433136,
-        "checksum": "185daf45ecc4997c89c11e606c95222a499df19399cad2cd2aafd0f1e6fa3f47"
+        "sizeBytes": 224995,
+        "installedSizeBytes": 433248,
+        "checksum": "de32db316ddcaaaa0fa673c9aab7b1ccb430a226b3c1e3ebfbaa14872526ac4b"
       },
       {
         "id": "iwork-universal",
@@ -427,5 +427,5 @@
       }
     ]
   },
-  "signature": "+9yfi2JbHP2/tSyOAbetKpXJOqc82P9NU5h76USIjupZuYdD3zezf3r673DJeul+J+h+udVBzXWCCzbMT8U0Cg=="
+  "signature": "BqR0C2Kwrv3+FGp61JhrOnDIRgAlv2cRTr8Gly9U0/9FCVsbwBS6jnSpG+jHmNxuAOqYmO0UCtP3yr+qkcUHAA=="
 }
