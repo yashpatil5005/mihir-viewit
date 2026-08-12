@@ -1,0 +1,44 @@
+name: quality
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm ci
+      - name: Rust library tests
+        run: npm run test:rust
+      - name: TypeScript tests
+        run: npm run test:ts
+      - name: Svelte typecheck
+        run: cd packages/ui && npx svelte-check --tsconfig ./tsconfig.json
+      - name: Frontend build
+        run: npm run build --workspace apps/mobile
+      - name: Catalog JSON parses
+        run: python3 -c "import json; d=json.load(open('plugins/catalog.json')); assert d.get('plugins')"
+      - name: Verify signed catalog
+        run: python3 scripts/sign-catalog.py verify --input plugins/catalog.signed.json
+
+  deployed-catalog:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pynacl
+      - name: Health-check deployed plugins
+        run: bash scripts/check-catalog.sh https://omnia.mihirpatil.co

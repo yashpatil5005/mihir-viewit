@@ -26,7 +26,7 @@ echo ""
 #    Releases still require a clean worktree, but local iteration can opt in
 #    via VIEWIT_ALLOW_DIRTY=1 so cargo/frontend/plugin checks run without
 #    forcing a commit first. CI runs unset this env var to keep the guard.
-echo "[1/7] Git worktree clean..."
+echo "[1/10] Git worktree clean..."
 if git diff --quiet && git diff --cached --quiet; then
   echo -e "${GREEN}PASS${NC}  Git worktree clean"
   PASSED=$((PASSED+1))
@@ -52,8 +52,41 @@ else
 fi
 mark "git worktree check"
 
-# 1. Base app frontend build
-echo "[2/7] Frontend build..."
+# 1. Rust workspace library tests
+echo "[2/10] Rust tests..."
+if npm run test:rust >/tmp/viewit-rust-tests.log 2>&1; then
+  echo -e "${GREEN}PASS${NC}  Rust tests"
+  PASSED=$((PASSED+1))
+else
+  echo -e "${RED}FAIL${NC}  Rust tests (see /tmp/viewit-rust-tests.log)"
+  FAILED=$((FAILED+1))
+fi
+mark "rust tests"
+
+# 2. TypeScript tests
+echo "[3/10] TypeScript tests..."
+if npm run test:ts >/tmp/viewit-ts-tests.log 2>&1; then
+  echo -e "${GREEN}PASS${NC}  TypeScript tests"
+  PASSED=$((PASSED+1))
+else
+  echo -e "${RED}FAIL${NC}  TypeScript tests (see /tmp/viewit-ts-tests.log)"
+  FAILED=$((FAILED+1))
+fi
+mark "ts tests"
+
+# 3. Svelte typecheck
+echo "[4/10] Svelte check..."
+if (cd packages/ui && npx svelte-check --tsconfig ./tsconfig.json) >/tmp/viewit-svelte-check.log 2>&1; then
+  echo -e "${GREEN}PASS${NC}  Svelte check (0 errors / 0 warnings)"
+  PASSED=$((PASSED+1))
+else
+  echo -e "${RED}FAIL${NC}  Svelte check (see /tmp/viewit-svelte-check.log)"
+  FAILED=$((FAILED+1))
+fi
+mark "svelte check"
+
+# 4. Base app frontend build
+echo "[5/10] Frontend build..."
 if (cd apps/mobile && npm run build >/tmp/viewit-build.log 2>&1); then
   echo -e "${GREEN}PASS${NC}  Frontend build"
   PASSED=$((PASSED+1))
@@ -64,7 +97,7 @@ fi
 mark "frontend build"
 
 # 2. Plugin crate tests
-echo "[3/7] Plugin crate tests..."
+echo "[6/10] Plugin crate tests..."
 if (cd plugins/office-ooxml && cargo test >/tmp/viewit-plugin-test.log 2>&1); then
   echo -e "${GREEN}PASS${NC}  Plugin crate tests"
   PASSED=$((PASSED+1))
@@ -75,7 +108,7 @@ fi
 mark "plugin crate tests"
 
 # 3. Plugin ZIP exists and is valid
-echo "[4/7] Plugin ZIP build..."
+echo "[7/10] Plugin ZIP build..."
 PLUGIN_VERSION=$(python3 -c "import json; print(json.load(open('plugins/office-ooxml/plugin.json'))['version'])")
 if [[ -f plugins/office-ooxml-$PLUGIN_VERSION-arm64-v8a.zip ]] && [[ -f plugins/office-ooxml-$PLUGIN_VERSION-x86_64.zip ]]; then
   echo -e "${GREEN}PASS${NC}  Plugin ZIP build"
@@ -87,7 +120,7 @@ fi
 mark "plugin zip check"
 
 # 4. Catalog checksum matches ZIP
-echo "[5/7] Catalog checksum verification..."
+echo "[8/10] Catalog checksum verification..."
 if [[ -f plugins/catalog.json ]]; then
   python3 - <<'PY'
 import hashlib, json, sys
@@ -125,7 +158,7 @@ fi
 mark "catalog checksum"
 
 # 5. Size budget
-echo "[6/7] Size budget..."
+echo "[9/10] Size budget..."
 if [[ -f scripts/size-budget.ts ]] && [[ -f scripts/size-budget.json ]]; then
   if (node --experimental-strip-types scripts/size-budget.ts 2>/dev/null || timeout 90 npx tsx scripts/size-budget.ts) >/tmp/viewit-size.log 2>&1; then
     echo -e "${GREEN}PASS${NC}  Size budget"
@@ -141,7 +174,7 @@ fi
 mark "size budget"
 
 # 6. Dependency separation: ooxmlsdk NOT in base Cargo.lock
-echo "[7/7] Dependency separation (ooxmlsdk not in base)..."
+echo "[10/10] Dependency separation (ooxmlsdk not in base)..."
 BASE_LOCK="apps/mobile/src-tauri/Cargo.lock"
 ROOT_LOCK="Cargo.lock"
 OOXMLSDK_IN_BASE=false
