@@ -331,9 +331,9 @@
       "jsEntry": "",
       "pptxVanilla": false,
       "abi": "arm64-v8a",
-      "sizeBytes": 223864,
-      "installedSizeBytes": 404361,
-      "checksum": "d3b0d77f4db9ab4445b0dcb5b027b69e664ef2baf60694265a224b20773fccae"
+      "sizeBytes": 227167,
+      "installedSizeBytes": 409785,
+      "checksum": "20eff4a53a66aa60472cb85ee5dcf07f64dabb5d0001fd1186f3ed9a1fc1cecc"
     },
     {
       "id": "iwork-universal",
@@ -359,9 +359,9 @@
       "jsEntry": "",
       "pptxVanilla": false,
       "abi": "x86_64",
-      "sizeBytes": 235248,
-      "installedSizeBytes": 447001,
-      "checksum": "85ca3f1577ffb3e706289d501b28e43ee6f676837550b2d880b1b4ee0a480838"
+      "sizeBytes": 238769,
+      "installedSizeBytes": 453401,
+      "checksum": "5dfc7c0ac6e5f41cd4d990dae751026afacfec31545a18e2e0cf29f7945804f8"
     },
     {
       "id": "player-base",
