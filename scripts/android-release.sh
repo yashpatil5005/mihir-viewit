@@ -69,6 +69,16 @@ else
 fi
 mark "frontend build"
 
+APP_VERSION=$(python3 -c "import json;print(json.load(open('$MOBILE/src-tauri/tauri.conf.json'))['version'])")
+IFS=. read -r VMAJOR VMINOR VPATCH <<< "${APP_VERSION%%-*}"
+VERSION_CODE=$((10#$VMAJOR * 1000000 + 10#$VMINOR * 1000 + 10#$VPATCH))
+cat > "$GEN/app/tauri.properties" <<EOF
+tauri.android.versionName=$APP_VERSION
+tauri.android.versionCode=$VERSION_CODE
+EOF
+echo "[android] version $APP_VERSION ($VERSION_CODE)"
+mark "android version"
+
 BUILD_PROFILE="${BUILD_PROFILE:-lite}"
 if [[ "$BUILD_PROFILE" == "full" ]]; then
   CARGO_FEATURES="fmt-everything,tauri/custom-protocol"
