@@ -35,7 +35,9 @@ pub fn parse_docx(bytes: &[u8]) -> Result<Document, Error> {
                 let is_list = p
                     .property
                     .as_ref()
-                    .map(|prop| prop.numbering.is_some())
+                    .and_then(|prop| prop.numbering.as_ref())
+                    .and_then(|n| n.id.as_ref())
+                    .map(|id| id.value != 0)
                     .unwrap_or(false);
                 if is_list {
                     blocks.push(DocxBlock::ListItem { text, level: 0 });
@@ -65,7 +67,7 @@ pub fn parse_docx(bytes: &[u8]) -> Result<Document, Error> {
                 }
                 blocks.push(DocxBlock::Table { rows });
             }
-            _ => {}
+            _ => {  }
         }
     }
 
@@ -107,6 +109,7 @@ fn parse_docx_document_xml(xml: &str, byte_len: usize) -> Result<Document, Error
     let mut paragraph_text = String::new();
     let mut paragraph_heading: Option<u8> = None;
     let mut paragraph_is_list = false;
+    let mut in_num_pr = false;
     let mut cell_text = String::new();
     let mut current_row: Vec<String> = Vec::new();
     let mut table_rows: Vec<Vec<String>> = Vec::new();
@@ -128,7 +131,7 @@ fn parse_docx_document_xml(xml: &str, byte_len: usize) -> Result<Document, Error
                         cell_text.clear();
                     }
                     b"w:p" => {
-                        in_paragraph = true;
+                        in_paragraph = true; 
                         paragraph_text.clear();
                         paragraph_heading = None;
                         paragraph_is_list = false;
@@ -143,8 +146,24 @@ fn parse_docx_document_xml(xml: &str, byte_len: usize) -> Result<Document, Error
                             }
                         }
                     }
-                    b"w:numPr" if in_paragraph => paragraph_is_list = true,
-                    _ => {}
+                    b"w:numPr" if in_paragraph => {
+                        in_num_pr = true;
+                        // Default: assume list unless numId=0 (no list) is found inside.
+                        paragraph_is_list = true;
+                    }
+                    b"w:numId" if in_num_pr => {
+                        for attr in e.attributes().flatten() {
+                            if attr.key.as_ref() == b"w:val" {
+                                let val = String::from_utf8_lossy(attr.value.as_ref());
+                                if val.trim() == "0" {
+                                    // numId=0 explicitly disables list formatting
+                                    // (often inherited from a style). This is NOT a list item.
+                                    paragraph_is_list = false;
+                                }
+                            }
+                        }
+                    }
+                    _ => {  }
                 }
             }
             Ok(Event::Text(e)) if in_text => {
@@ -159,6 +178,7 @@ fn parse_docx_document_xml(xml: &str, byte_len: usize) -> Result<Document, Error
                 let name = e.name().as_ref().to_vec();
                 match name.as_slice() {
                     b"w:t" => in_text = false,
+                    b"w:numPr" => in_num_pr = false,
                     b"w:p" => {
                         if !in_table {
                             let text = paragraph_text.trim().to_string();
@@ -190,12 +210,25 @@ fn parse_docx_document_xml(xml: &str, byte_len: usize) -> Result<Document, Error
                         }
                         in_table = false;
                     }
-                    _ => {}
+                    _ => {  }
                 }
             }
             Ok(Event::Eof) => break,
+            Ok(Event::Empty(e)) => {
+                // Self-closing tags (e.g. <w:numId w:val="0"/>).
+                if e.name().as_ref() == b"w:numId" && in_num_pr {
+                    for attr in e.attributes().flatten() {
+                        if attr.key.as_ref() == b"w:val" {
+                            let val = String::from_utf8_lossy(attr.value.as_ref());
+                            if val.trim() == "0" {
+                                paragraph_is_list = false;
+                            }
+                        }
+                    }
+                }
+            }
             Err(e) => return Err(Error::Parse(format!("docx xml: {}", e))),
-            _ => {}
+            _ => {  }
         }
         buf.clear();
     }

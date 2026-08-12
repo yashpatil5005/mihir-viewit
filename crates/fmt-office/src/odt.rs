@@ -41,7 +41,7 @@ fn extract_odt_blocks(xml: &str) -> Vec<DocxBlock> {
     use quick_xml::Reader;
 
     let mut reader = Reader::from_str(xml);
-    reader.config_mut().trim_text(true);
+    reader.config_mut().trim_text(false);
     let mut buf = Vec::new();
     let mut blocks: Vec<DocxBlock> = Vec::new();
     let mut in_paragraph = false;

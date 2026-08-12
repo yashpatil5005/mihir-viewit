@@ -262,7 +262,7 @@ fn parse_ods_sheets(xml: &str) -> Vec<XlsxSheet> {
     use quick_xml::Reader;
 
     let mut reader = Reader::from_str(xml);
-    reader.config_mut().trim_text(true);
+    reader.config_mut().trim_text(false);
     let mut buf = Vec::new();
     let mut sheets: Vec<XlsxSheet> = Vec::new();
     let mut acc: Option<SheetAcc> = None;

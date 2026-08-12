@@ -42,7 +42,7 @@ fn extract_odp_slides(xml: &str) -> Vec<PptxSlide> {
     use quick_xml::Reader;
 
     let mut reader = Reader::from_str(xml);
-    reader.config_mut().trim_text(true);
+    reader.config_mut().trim_text(false);
     let mut buf = Vec::new();
     let mut slides: Vec<PptxSlide> = Vec::new();
     let mut in_page = false;
