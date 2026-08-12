@@ -119,7 +119,12 @@ fn sfnt_from_woff(woff: &[u8]) -> Result<Vec<u8>, Error> {
 
     entries.sort_by_key(|(t, _)| t.clone());
 
-    let n = entries.len() as u16;
+    // A WOFF with zero tables is malformed; must not compute shift from 0
+    // (would underflow 15 - leading_zeros(0) and panic in debug builds).
+    let n = u16::try_from(entries.len()).map_err(|_| Error::Parse("woff has too many tables".into()))?;
+    if n == 0 {
+        return Err(Error::Parse("woff has no tables".into()));
+    }
     let max_pow2 = 1u16 << (15 - (n.leading_zeros() as u16));
     let entry_selector = (f64::from(n)).log2().floor() as u16;
     let search_range = max_pow2 * 16;
@@ -171,5 +176,20 @@ mod tests {
         assert!(parse(pfb, Format::Font, "x.pfb").is_err());
         let sfd = b"SplineFontDB: 3.0";
         assert!(parse(sfd, Format::Font, "x.sfd").is_err());
+    }
+
+    #[test]
+    fn zero_table_woff_is_a_clean_error_not_a_panic() {
+        // wOFF header with numTables=0: the decoder must return an error, not
+        // underflow the binary-search shift (previous debug-build panic).
+        let mut woff = Vec::new();
+        woff.extend_from_slice(b"wOFF"); // signature
+        woff.extend_from_slice(&[0x00, 0x01, 0x00, 0x00]); // flavor
+        woff.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]); // length
+        woff.extend_from_slice(&[0x00, 0x00]); // numTables = 0
+        woff.extend_from_slice(&[0x00, 0x00, 0x00, 0x00, 0x00, 0x00]); // reserved + totalSfntSize (partial)
+        woff.extend_from_slice(&[0u8; 28]); // rest of header
+        let err = parse(&woff, Format::Font, "x.woff").unwrap_err();
+        assert!(err.to_string().contains("no tables"), "got: {err}");
     }
 }

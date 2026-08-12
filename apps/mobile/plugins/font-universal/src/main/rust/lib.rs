@@ -30,10 +30,12 @@ pub extern "system" fn Java_ai_viewit_plugins_fontuniversal_FontUniversalPlugin_
         .into();
     let can_handle = matches!(
         mime.as_str(),
+        // Honest MIME set: only formats the parser actually decodes
+        // (ttf/otf/sfnt/collection map to ttf/otf/ttc; woff needs a sfnt
+        // wrapper). woff2 is deliberately absent — the parser rejects it.
         "font/ttf"
             | "font/otf"
             | "font/woff"
-            | "font/woff2"
             | "font/sfnt"
             | "font/collection"
             | "application/x-font-ttf"
@@ -41,7 +43,6 @@ pub extern "system" fn Java_ai_viewit_plugins_fontuniversal_FontUniversalPlugin_
             | "application/font-sfnt"
             | "application/vnd.ms-opentype"
             | "application/font-woff"
-            | "application/font-woff2"
             | "application/x-font-truetype"
             | "application/x-font-opentype"
             | "application/x-font-woff"

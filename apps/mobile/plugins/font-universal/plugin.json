@@ -1,7 +1,7 @@
 {
   "id": "font-universal",
   "name": "Font Universal Plugin",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Font metadata viewer for TTF, OTF, WOFF, and TTC.",
   "minAppVersion": 1,
   "entryClass": "ai.viewit.plugins.fontuniversal.FontUniversalPlugin",
