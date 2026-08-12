@@ -4,6 +4,28 @@ All notable changes to ViewIt are tracked here, grouped by release. This file
 follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 semantic versioning (see `.git` history / tags for exact cut points).
 
+## [0.2.0] - 2026-08-12
+
+### Added
+- Android **Play App Bundle (AAB)** build + upload-key signing
+  (`android-release.sh` `:app:bundleArm64Release` + `jarsigner`); artifacts
+  `dist/viewit-android-arm64-release.aab` (6,302,910 B) and
+  `dist/viewit-android-arm64-release.apk` (13,287,831 B).
+- Production **upload keystore** generation (`~/.android/viewit-upload.jks`,
+  RSA 3072, alias `viewit-upload`, credentials in `~/.android/viewit-upload.env`).
+- Release documentation: `docs/PUBLISH-TO-PLAY.md` (exact Play Console steps),
+  AAB/upload-key sections folded into `docs/ANDROID-RELEASE-CHECKLIST.md`.
+- GitHub release `v0.2.0` attaching the AAB + APK.
+
+### Fixed
+- AAB signing previously attempted with `apksigner` (APK-only); corrected to
+  `jarsigner` SHA-256 Sun RSA (AABs are Zip/JAR based).
+
+### Notes (0.2.0)
+- App version `0.2.0` → Android `versionCode` 2000, `versionName` 0.2.0.
+- APK v2/v3 signed, 16 KB aligned; catalog/plugin distribution unchanged
+  (all 12 plugin entries resolve at `omnia.mihirpatil.co/plugins/`).
+
 ## [Unreleased]
 
 ### Fixed

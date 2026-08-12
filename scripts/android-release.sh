@@ -152,10 +152,10 @@ GRADLE_EXTRA=""
 # CI: hermetic single-run JVM. Local: reuse the gradle daemon (much faster
 # repeated builds, and it's what makes warm runs seconds instead of minutes).
 [[ "${CI:-0}" == "1" ]] && GRADLE_EXTRA="--no-daemon"
-(cd "$GEN" && ./gradlew :app:assembleArm64Release \
+(cd "$GEN" && ./gradlew :app:assembleArm64Release :app:bundleArm64Release \
   -PabiList=arm64-v8a \
   -x rustBuildArm64Release -x rustBuildUniversalRelease $GRADLE_EXTRA)
-mark "gradle assembleArm64Release"
+mark "gradle assembleArm64Release + bundleArm64Release"
 
 APK_UNSIGNED="$GEN/app/build/outputs/apk/arm64/release/app-arm64-release-unsigned.apk"
 APK_WITH_LIB="$ROOT/dist/viewit-android-arm64-release-with-lib.apk"
@@ -203,6 +203,22 @@ cp "$RUST_LIB" "$TMP_LIB_DIR/lib/arm64-v8a/libviewit_mobile_lib.so"
 mark "zip/zipalign/apksigner"
 
 "$ROOT/scripts/verify-android-16kb.sh" "$APK_SIGNED"
+
+# App Bundle for Google Play upload (Play App Signing re-signs the APKs it
+# generates from this AAB, so the AAB is signed with the same upload key).
+AAB_UNSIGNED="$GEN/app/build/outputs/bundle/arm64/release/app-arm64-release.aab"
+[[ -f "$AAB_UNSIGNED" ]] || AAB_UNSIGNED="$GEN/app/build/outputs/bundle/arm64Release/app-arm64-release.aab"
+AAB_SIGNED="$ROOT/dist/viewit-android-arm64-release.aab"
+if [[ -f "$AAB_UNSIGNED" ]]; then
+  # AABs are Zip/JAR-based, so jarsigner signs them (apksigner is APK-only).
+  jarsigner -sigalg SHA256withRSA -digestalg SHA-256 \
+    -keystore "$KEYSTORE" -storepass "$KS_PASS" -keypass "$KEY_PASS" \
+    -signedjar "$AAB_SIGNED" "$AAB_UNSIGNED" "$KEY_ALIAS"
+  mark "aab jarsigner"
+  echo "Play App Bundle (upload): $AAB_SIGNED"
+else
+  echo "[android] warn: bundle not found at $AAB_UNSIGNED (APK-only build)" >&2
+fi
 
 MAX_APK_BYTES="${MAX_APK_BYTES:-15000000}"
 APK_BYTES=$(stat -c '%s' "$APK_SIGNED")
