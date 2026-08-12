@@ -188,11 +188,10 @@
                             class:pptx-bold={run.bold}
                             class:pptx-italic={run.italic}
                             class:pptx-underline={run.underline}
-                            style={run.font_size
-                              ? `font-size:${run.font_size / 12}vw`
-                              : run.color
-                                ? `color:${run.color}`
-                                : undefined}>{run.text}</span
+                            style={[
+                              run.font_size ? `font-size:${run.font_size / 12}vw` : '',
+                              run.color ? `color:${run.color}` : '',
+                            ].filter(Boolean).join('; ')}>{run.text}</span
                           >
                         {/each}
                       </p>
