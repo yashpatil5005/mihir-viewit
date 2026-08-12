@@ -24,7 +24,7 @@ pub fn parse(bytes: &[u8], format: Format, _name: &str) -> Result<Document, Erro
     let mut archive = ZipArchive::new(cursor).map_err(|e| Error::Parse(format!("zip: {}", e)))?;
 
     let mut text_parts: Vec<(String, String)> = Vec::new();
-    let mut preview_image: Option<(String, Vec<u8>)> = None;
+    let mut preview_images: Vec<(String, Vec<u8>)> = Vec::new();
     let mut preview_pdf: Option<String> = None;
 
     for i in 0..archive.len() {
@@ -42,9 +42,7 @@ pub fn parse(bytes: &[u8], format: Format, _name: &str) -> Result<Document, Erro
             continue;
         }
         if is_preview_image(&entry_name) {
-            if preview_image.is_none() {
-                preview_image = Some((entry_name, buf));
-            }
+            preview_images.push((entry_name, buf));
             continue;
         }
         if is_preview_pdf(&entry_name) {
@@ -61,38 +59,33 @@ pub fn parse(bytes: &[u8], format: Format, _name: &str) -> Result<Document, Erro
         }
     }
 
+    preview_images.sort_by(|a, b| a.0.cmp(&b.0));
+    preview_images.truncate(100);
+
     Ok(match format {
         Format::IworkPages => Document::Docx {
-            blocks: iwork_pages_blocks(&text_parts, preview_image.as_ref(), preview_pdf.as_deref()),
+            blocks: iwork_pages_blocks(&text_parts, &preview_images, preview_pdf.as_deref()),
             byte_len: bytes.len(),
         },
         Format::IworkNumbers => Document::Xlsx {
-            sheets: iwork_numbers_sheets(&text_parts, preview_image.as_ref()),
+            sheets: iwork_numbers_sheets(&text_parts, &preview_images),
             byte_len: bytes.len(),
         },
-        Format::IworkKey => Document::Pptx {
-            slide_count: 1,
-            slides: vec![PptxSlide {
-                title: "Apple Keynote preview".into(),
-                body: iwork_text_body(
-                    format,
-                    &text_parts,
-                    preview_image.as_ref().is_some() || preview_pdf.is_some(),
-                ),
-                elements: iwork_key_elements(preview_image.as_ref()),
-                width: None,
-                height: None,
-                background: None,
-            }],
-            byte_len: bytes.len(),
-            asset_path: String::new(),
-            stream_url: None,
-        },
+        Format::IworkKey => {
+            let slides = iwork_key_slides(&text_parts, &preview_images, preview_pdf.is_some());
+            Document::Pptx {
+                slide_count: slides.len(),
+                slides,
+                byte_len: bytes.len(),
+                asset_path: String::new(),
+                stream_url: None,
+            }
+        }
         _ => Document::Text {
             content: iwork_text_body(
                 format,
                 &text_parts,
-                preview_image.as_ref().is_some() || preview_pdf.is_some(),
+                !preview_images.is_empty() || preview_pdf.is_some(),
             ),
             encoding: "utf-8".into(),
             byte_len: bytes.len(),
@@ -104,14 +97,14 @@ pub fn parse(bytes: &[u8], format: Format, _name: &str) -> Result<Document, Erro
 
 fn iwork_pages_blocks(
     text_parts: &[(String, String)],
-    preview_image: Option<&(String, Vec<u8>)>,
+    preview_images: &[(String, Vec<u8>)],
     preview_pdf: Option<&str>,
 ) -> Vec<DocxBlock> {
     let mut blocks = vec![DocxBlock::Paragraph {
-        text: partial_notice(preview_image.is_some() || preview_pdf.is_some()),
+        text: partial_notice(!preview_images.is_empty() || preview_pdf.is_some()),
         heading: Some(1),
     }];
-    if let Some((name, bytes)) = preview_image {
+    for (name, bytes) in preview_images.iter().take(12) {
         blocks.push(DocxBlock::Image {
             name: name.clone(),
             src: Some(data_url_for_image(name, bytes)),
@@ -148,10 +141,10 @@ fn iwork_pages_blocks(
 
 fn iwork_numbers_sheets(
     text_parts: &[(String, String)],
-    preview_image: Option<&(String, Vec<u8>)>,
+    preview_images: &[(String, Vec<u8>)],
 ) -> Vec<XlsxSheet> {
     let mut rows = Vec::new();
-    if let Some((name, _)) = preview_image {
+    for (name, _) in preview_images.iter().take(12) {
         rows.push(vec!["QuickLook preview image".into(), name.clone()]);
     }
     for (name, text) in text_parts.iter().filter(|(name, _)| !is_metadata(name)) {
@@ -174,7 +167,7 @@ fn iwork_numbers_sheets(
     let total_cols = rows.iter().map(Vec::len).max().unwrap_or(1).max(2);
     vec![XlsxSheet {
         name: "iWork preview".into(),
-        header: vec![partial_notice(preview_image.is_some()), "".into()],
+        header: vec![partial_notice(!preview_images.is_empty()), "".into()],
         preview_rows: rows,
         total_rows_hint: Some(total_rows),
         total_cols_hint: Some(total_cols),
@@ -206,10 +199,28 @@ fn iwork_text_body(format: Format, text_parts: &[(String, String)], has_preview:
     }
 }
 
-fn iwork_key_elements(preview_image: Option<&(String, Vec<u8>)>) -> Vec<PptxElement> {
-    preview_image
-        .map(|(name, bytes)| {
-            vec![PptxElement {
+fn iwork_key_slides(
+    text_parts: &[(String, String)],
+    preview_images: &[(String, Vec<u8>)],
+    has_pdf: bool,
+) -> Vec<PptxSlide> {
+    if preview_images.is_empty() {
+        return vec![PptxSlide {
+            title: "Apple Keynote preview".into(),
+            body: iwork_text_body(Format::IworkKey, text_parts, has_pdf),
+            elements: Vec::new(),
+            width: None,
+            height: None,
+            background: None,
+        }];
+    }
+    preview_images
+        .iter()
+        .enumerate()
+        .map(|(index, (name, bytes))| PptxSlide {
+            title: format!("Keynote preview {}", index + 1),
+            body: name.clone(),
+            elements: vec![PptxElement {
                 kind: "image".into(),
                 x: 0,
                 y: 0,
@@ -219,9 +230,12 @@ fn iwork_key_elements(preview_image: Option<&(String, Vec<u8>)>) -> Vec<PptxElem
                 text: None,
                 font_size: None,
                 paragraphs: None,
-            }]
+            }],
+            width: Some(9144000),
+            height: Some(5143500),
+            background: None,
         })
-        .unwrap_or_default()
+        .collect()
 }
 
 fn partial_notice(has_preview: bool) -> String {
@@ -402,6 +416,19 @@ mod tests {
         assert!(
             matches!(doc, Document::Pptx { slides, .. } if slides[0].elements.iter().any(|e| e.kind == "image" && e.src.as_deref().unwrap_or_default().starts_with("data:image/jpeg;base64,")))
         );
+    }
+
+    #[test]
+    fn key_maps_multiple_preview_images_to_slides() {
+        let mut buf = Vec::new();
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buf));
+        for name in ["QuickLook/Preview-1.jpg", "QuickLook/Preview-2.jpg"] {
+            zip.start_file(name, zip::write::SimpleFileOptions::default()).unwrap();
+            zip.write_all(b"fake-jpeg").unwrap();
+        }
+        zip.finish().unwrap();
+        let doc = parse(&buf, Format::IworkKey, "real.key").unwrap();
+        assert!(matches!(doc, Document::Pptx { slide_count: 2, slides, .. } if slides.len() == 2));
     }
 
     #[test]
