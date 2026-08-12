@@ -154,12 +154,23 @@ APK_SIGNED="$ROOT/dist/viewit-android-arm64-release.apk"
 APK_LEGACY="$ROOT/dist/viewit-android-universal-debug.apk"
 mkdir -p "$ROOT/dist"
 
-KEYSTORE="${ANDROID_DEBUG_KEYSTORE:-$HOME/.android/debug.keystore}"
-if [[ ! -f "$KEYSTORE" ]]; then
-  mkdir -p "$(dirname "$KEYSTORE")"
-  keytool -genkeypair -v -keystore "$KEYSTORE" -storepass android -alias androiddebugkey \
-    -keypass android -keyalg RSA -keysize 2048 -validity 10000 \
-    -dname "CN=Android Debug,O=Android,C=US"
+if [[ "${VIEWIT_PRODUCTION_SIGNING:-0}" == "1" ]]; then
+  KEYSTORE="${ANDROID_SIGNING_KEYSTORE:?ANDROID_SIGNING_KEYSTORE required}"
+  KS_PASS="${ANDROID_SIGNING_STORE_PASS:?ANDROID_SIGNING_STORE_PASS required}"
+  KEY_PASS="${ANDROID_SIGNING_KEY_PASS:?ANDROID_SIGNING_KEY_PASS required}"
+  KEY_ALIAS="${ANDROID_SIGNING_KEY_ALIAS:?ANDROID_SIGNING_KEY_ALIAS required}"
+  [[ -f "$KEYSTORE" ]] || { echo "[android] production keystore not found: $KEYSTORE" >&2; exit 1; }
+else
+  KEYSTORE="${ANDROID_DEBUG_KEYSTORE:-$HOME/.android/debug.keystore}"
+  KS_PASS=android
+  KEY_PASS=android
+  KEY_ALIAS=androiddebugkey
+  if [[ ! -f "$KEYSTORE" ]]; then
+    mkdir -p "$(dirname "$KEYSTORE")"
+    keytool -genkeypair -v -keystore "$KEYSTORE" -storepass "$KS_PASS" -alias "$KEY_ALIAS" \
+      -keypass "$KEY_PASS" -keyalg RSA -keysize 2048 -validity 10000 \
+      -dname "CN=Android Debug,O=Android,C=US"
+  fi
 fi
 
 cp "$APK_UNSIGNED" "$APK_WITH_LIB"
@@ -176,7 +187,8 @@ cp "$RUST_LIB" "$TMP_LIB_DIR/lib/arm64-v8a/libviewit_mobile_lib.so"
   && zip -9 -q "$APK_WITH_LIB" lib/arm64-v8a/libviewit_plugin_office_universal.so lib/arm64-v8a/libviewit_plugin_compression_universal.so lib/arm64-v8a/libviewit_plugin_font_universal.so 2>/dev/null \
   || zip -0 -q "$APK_WITH_LIB" lib/arm64-v8a/libviewit_mobile_lib.so)
 "$BUILD_TOOLS/zipalign" -P 16 -f 4 "$APK_WITH_LIB" "$APK_ALIGNED"
-"$BUILD_TOOLS/apksigner" sign --ks "$KEYSTORE" --ks-pass pass:android --key-pass pass:android \
+"$BUILD_TOOLS/apksigner" sign --ks "$KEYSTORE" --ks-key-alias "$KEY_ALIAS" \
+  --ks-pass "pass:$KS_PASS" --key-pass "pass:$KEY_PASS" \
   --out "$APK_SIGNED" "$APK_ALIGNED"
 mark "zip/zipalign/apksigner"
 
