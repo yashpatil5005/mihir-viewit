@@ -109,12 +109,25 @@ mark "plugin crate tests"
 
 # 3. Plugin ZIP exists and is valid
 echo "[7/10] Plugin ZIP build..."
-PLUGIN_VERSION=$(python3 -c "import json; print(json.load(open('plugins/office-ooxml/plugin.json'))['version'])")
-if [[ -f plugins/office-ooxml-$PLUGIN_VERSION-arm64-v8a.zip ]] && [[ -f plugins/office-ooxml-$PLUGIN_VERSION-x86_64.zip ]]; then
-  echo -e "${GREEN}PASS${NC}  Plugin ZIP build"
+PLUGIN_ARTIFACTS=(
+  apps/mobile/plugins/office-universal/build/output/office-universal-0.1.0-arm64-v8a.zip
+  apps/mobile/plugins/compression-universal/build/output/compression-universal-0.1.0-arm64-v8a.zip
+  apps/mobile/plugins/font-universal/build/output/font-universal-0.1.0-arm64-v8a.zip
+  apps/mobile/plugins/iwork-universal/build/output/iwork-universal-0.1.0-arm64-v8a.zip
+  plugins/pptx-vanilla-1.0.1.zip
+  plugins/player-base-0.1.0.zip
+  plugins/editor-base-0.1.0.zip
+)
+MISSING_ARTIFACTS=()
+for artifact in "${PLUGIN_ARTIFACTS[@]}"; do
+  [[ -f "$artifact" ]] || MISSING_ARTIFACTS+=("$artifact")
+done
+if [[ ${#MISSING_ARTIFACTS[@]} -eq 0 ]]; then
+  echo -e "${GREEN}PASS${NC}  Plugin ZIP build (${#PLUGIN_ARTIFACTS[@]} required artifacts)"
   PASSED=$((PASSED+1))
 else
-  echo -e "${RED}FAIL${NC}  Plugin ZIP build (run scripts/prepare-release.sh first; ZIPs are ignored local artifacts)"
+  echo -e "${RED}FAIL${NC}  Plugin ZIP build (run scripts/package-plugins.sh first)"
+  printf '  missing: %s\n' "${MISSING_ARTIFACTS[@]}"
   FAILED=$((FAILED+1))
 fi
 mark "plugin zip check"
