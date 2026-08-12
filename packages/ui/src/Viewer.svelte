@@ -606,10 +606,12 @@
   // that ships the bundle as its jsEntry. Keep `p` loosely typed; listPlugins exposes
   // `jsEntry` on the manifest even for native plugins when it is set.
   function hasPptxJsRenderer(p: PluginInfo): boolean {
-    return (
-      (isJsPlugin(p) || Boolean((p as unknown as { jsEntry?: string }).jsEntry)) &&
-      pluginSupports(p, "pptx")
-    );
+    // Only pure runtime=js plugins render in the WebView via a JS bundle.
+    // A native plugin (office-universal) may carry a jsEntry, but its bundle
+    // is loaded from the native install dir which the JS bridge may not serve;
+    // the native plugin already produced the Document — the built-in PptxViewer
+    // renders it.
+    return isJsPlugin(p) && pluginSupports(p, "pptx");
   }
 
   // Office/archive/font formats each have an optional faithful downloadable
