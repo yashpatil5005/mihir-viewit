@@ -64,7 +64,7 @@
     {
       "id": "office-universal",
       "name": "Office Universal Plugin",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "description": "Unified parser for all Office formats: OOXML (docx/xlsx/pptx + templates), Legacy Binary (doc/ppt), OpenDocument (odt/ods/odp + templates)",
       "minAppVersion": 1,
       "entryClass": "ai.viewit.plugins.officeuniversal.OfficeUniversalPlugin",
@@ -97,18 +97,18 @@
       ],
       "runtime": "native",
       "abiVersion": 1,
-      "downloadUrl": "https://omnia.mihirpatil.co/plugins/office-universal-0.1.1-arm64-v8a.zip",
+      "downloadUrl": "https://omnia.mihirpatil.co/plugins/office-universal-0.1.2-arm64-v8a.zip",
       "jsEntry": "index.js",
       "pptxVanilla": true,
       "abi": "arm64-v8a",
-      "sizeBytes": 2660041,
-      "installedSizeBytes": 8193088,
-      "checksum": "db8677981044815f249d6e7837948cba4ce72347097bfc1b35f86462766a0230"
+      "sizeBytes": 2658954,
+      "installedSizeBytes": 8194416,
+      "checksum": "21cf528399faccb25c66be925acc3ab89d6e0a444aba5eb85a810b2b61b1234f"
     },
     {
       "id": "office-universal",
       "name": "Office Universal Plugin",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "description": "Unified parser for all Office formats: OOXML (docx/xlsx/pptx + templates), Legacy Binary (doc/ppt), OpenDocument (odt/ods/odp + templates)",
       "minAppVersion": 1,
       "entryClass": "ai.viewit.plugins.officeuniversal.OfficeUniversalPlugin",
@@ -141,13 +141,13 @@
       ],
       "runtime": "native",
       "abiVersion": 1,
-      "downloadUrl": "https://omnia.mihirpatil.co/plugins/office-universal-0.1.1-x86_64.zip",
+      "downloadUrl": "https://omnia.mihirpatil.co/plugins/office-universal-0.1.2-x86_64.zip",
       "jsEntry": "index.js",
       "pptxVanilla": true,
       "abi": "x86_64",
-      "sizeBytes": 2691661,
-      "installedSizeBytes": 8676024,
-      "checksum": "250af6ef0e70f7b157821e06f78db0638b37fb478ce31d05315320ea7fa26ceb"
+      "sizeBytes": 2692186,
+      "installedSizeBytes": 8677144,
+      "checksum": "cc702e5c5b665ccd5ff68266ce9e7fdf08252a8c55c657399f3a1bf0583aa05a"
     },
     {
       "id": "compression-universal",
