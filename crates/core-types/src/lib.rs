@@ -287,13 +287,19 @@ pub enum DocxBlock {
     Paragraph {
         text: String,
         heading: Option<u8>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        inlines: Option<Vec<DocxInline>>,
     },
     ListItem {
         text: String,
         level: u8,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        inlines: Option<Vec<DocxInline>>,
     },
     Table {
         rows: Vec<Vec<String>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        rich_rows: Option<Vec<Vec<DocxCell>>>,
     },
     Image {
         name: String,
@@ -304,6 +310,39 @@ pub enum DocxBlock {
         text: String,
         href: String,
     },
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DocxCell {
+    #[serde(default)]
+    pub inlines: Vec<DocxInline>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DocxInline {
+    #[serde(default)]
+    pub text: String,
+    #[serde(default)]
+    pub bold: bool,
+    #[serde(default)]
+    pub italic: bool,
+    #[serde(default)]
+    pub underline: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font_size: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub href: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<DocxInlineImage>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocxInlineImage {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub src: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -351,6 +390,12 @@ pub struct PptxElement {
     /// present, viewers render these instead of the flat `text`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub paragraphs: Option<Vec<PptxParagraph>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fill_color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub border_color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub border_width: Option<f64>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -359,6 +404,8 @@ pub struct PptxParagraph {
     pub runs: Vec<PptxRun>,
     #[serde(default)]
     pub bullet: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alignment: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -374,6 +421,8 @@ pub struct PptxRun {
     pub font_size: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font_family: Option<String>,
 }
 
 /// Frozen-pane info read from a worksheet's `<pane>` element.
@@ -397,6 +446,22 @@ pub struct XlsxCellStyle {
     pub italic: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub border_color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub border_top: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub border_right: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub border_bottom: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub border_left: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub number_format: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub horizontal_alignment: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vertical_alignment: Option<String>,
+    #[serde(default)]
+    pub wrap_text: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -428,6 +493,8 @@ pub struct XlsxSheet {
     /// header at index 0. Missing/default cells are `None`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cell_styles: Option<Vec<Vec<Option<XlsxCellStyle>>>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub row_heights: Option<Vec<Option<f64>>>,
 }
 
 /// Errors that any fmt-* crate may return. Uniform so the frontend can rely

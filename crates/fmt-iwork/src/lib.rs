@@ -103,6 +103,7 @@ fn iwork_pages_blocks(
     let mut blocks = vec![DocxBlock::Paragraph {
         text: partial_notice(!preview_images.is_empty() || preview_pdf.is_some()),
         heading: Some(1),
+        inlines: None,
     }];
     for (name, bytes) in preview_images.iter().take(12) {
         blocks.push(DocxBlock::Image {
@@ -116,17 +117,20 @@ fn iwork_pages_blocks(
                 "Embedded iWork PDF preview found at {name}, but embedded PDF rendering from inside the package is not wired yet."
             ),
             heading: None,
+            inlines: None,
         });
     }
     for (name, text) in text_parts.iter().filter(|(name, _)| !is_metadata(name)) {
         blocks.push(DocxBlock::Paragraph {
             text: name.clone(),
             heading: Some(2),
+            inlines: None,
         });
         for paragraph in text.split('\n').map(str::trim).filter(|s| !s.is_empty()) {
             blocks.push(DocxBlock::Paragraph {
                 text: paragraph.to_string(),
                 heading: None,
+                inlines: None,
             });
         }
     }
@@ -134,6 +138,7 @@ fn iwork_pages_blocks(
         blocks.push(DocxBlock::Paragraph {
             text: no_extractable_text(Format::IworkPages),
             heading: None,
+            inlines: None,
         });
     }
     blocks
@@ -176,6 +181,7 @@ fn iwork_numbers_sheets(
         frozen_panes: None,
         column_widths: None,
         cell_styles: None,
+        row_heights: None,
     }]
 }
 
@@ -231,6 +237,9 @@ fn iwork_key_slides(
                 text: None,
                 font_size: None,
                 paragraphs: None,
+                fill_color: None,
+                border_color: None,
+                border_width: None,
             }],
             width: Some(9144000),
             height: Some(5143500),
@@ -424,7 +433,8 @@ mod tests {
         let mut buf = Vec::new();
         let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buf));
         for name in ["QuickLook/Preview-1.jpg", "QuickLook/Preview-2.jpg"] {
-            zip.start_file(name, zip::write::SimpleFileOptions::default()).unwrap();
+            zip.start_file(name, zip::write::SimpleFileOptions::default())
+                .unwrap();
             zip.write_all(b"fake-jpeg").unwrap();
         }
         zip.finish().unwrap();

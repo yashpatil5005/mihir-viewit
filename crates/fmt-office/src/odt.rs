@@ -118,6 +118,7 @@ fn extract_odt_blocks(xml: &str) -> Vec<DocxBlock> {
                     blocks.push(DocxBlock::ListItem {
                         text: String::new(),
                         level: list_level.saturating_sub(1),
+                        inlines: None,
                     });
                 }
                 if tag_ref == b"draw:image" && in_office_text {
@@ -153,6 +154,7 @@ fn extract_odt_blocks(xml: &str) -> Vec<DocxBlock> {
                             blocks.push(DocxBlock::Paragraph {
                                 text,
                                 heading: heading_level,
+                                inlines: None,
                             });
                         }
                     }
@@ -167,6 +169,7 @@ fn extract_odt_blocks(xml: &str) -> Vec<DocxBlock> {
                             blocks.push(DocxBlock::ListItem {
                                 text,
                                 level: list_level.saturating_sub(1),
+                                inlines: None,
                             });
                         }
                     }
@@ -186,6 +189,7 @@ fn extract_odt_blocks(xml: &str) -> Vec<DocxBlock> {
                     if !table_rows.is_empty() {
                         blocks.push(DocxBlock::Table {
                             rows: table_rows.clone(),
+                            rich_rows: None,
                         });
                     }
                     in_table = false;
@@ -256,7 +260,7 @@ mod tests {
         ));
         assert!(matches!(blocks[2], DocxBlock::ListItem { .. }));
         assert!(
-            matches!(&blocks[3], DocxBlock::Table { rows } if rows == &vec![vec!["A1".to_string(), "B1".to_string()]])
+            matches!(&blocks[3], DocxBlock::Table { rows, .. } if rows == &vec![vec!["A1".to_string(), "B1".to_string()]])
         );
         assert!(matches!(&blocks[4], DocxBlock::Image { name, .. } if name == "Pictures/pic.png"));
     }

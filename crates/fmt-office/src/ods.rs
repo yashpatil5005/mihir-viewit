@@ -255,6 +255,7 @@ fn push_sheet(a: SheetAcc, sheets: &mut Vec<XlsxSheet>) {
         frozen_panes: None,
         column_widths: None,
         cell_styles: None,
+        row_heights: None,
     });
 }
 
@@ -456,6 +457,7 @@ fn parse_ods_calamine(bytes: &[u8], _format: Format, _name: &str) -> Result<Docu
             frozen_panes: None,
             column_widths: None,
             cell_styles: None,
+            row_heights: None,
         });
     }
 

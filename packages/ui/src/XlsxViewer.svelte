@@ -15,13 +15,24 @@
       frozen_panes?: { x_split: number; y_split: number; active_pane: string };
       preview_formulas?: string[][];
       column_widths?: (number | null | undefined)[];
-      cell_styles?: Array<Array<{
-        fill_color?: string;
-        font_color?: string;
-        bold?: boolean;
-        italic?: boolean;
-        border_color?: string;
-      } | null>>;
+      cell_styles?: Array<
+        Array<{
+          fill_color?: string;
+          font_color?: string;
+          bold?: boolean;
+          italic?: boolean;
+          border_color?: string;
+          border_top?: string;
+          border_right?: string;
+          border_bottom?: string;
+          border_left?: string;
+          number_format?: string;
+          horizontal_alignment?: string;
+          vertical_alignment?: string;
+          wrap_text?: boolean;
+        } | null>
+      >;
+      row_heights?: (number | null | undefined)[];
     }>,
   );
   let pluginHtml = $derived((docProp.html ?? "") as string);
@@ -129,7 +140,10 @@
         const bRow = r - 2;
         if (bRow < 0) continue;
         for (let c = c1; c <= c2; c++) {
-          if (r === r1 && c === c1) map[`${bRow}:${c}`] = { colspan, rowspan };
+          if (r1 === 1) {
+            if (r === 2 && c === c1) map[`${bRow}:${c}`] = { colspan, rowspan: r2 - 1 };
+            else if (r > 2 || c > c1) map[`${bRow}:${c}`] = { skip: true };
+          } else if (r === r1 && c === c1) map[`${bRow}:${c}`] = { colspan, rowspan };
           else map[`${bRow}:${c}`] = { skip: true };
         }
       }
@@ -138,17 +152,30 @@
   });
 
   // Header-row merges (r1 === 1): the anchor spans header columns.
-  let headerMergeSpan = $derived.by((): Record<number, number> => {
-    const spans: Record<number, number> = {};
-    if (!sheet?.merged_cells) return spans;
-    for (const ref of sheet.merged_cells) {
-      const { r1, r2, c1, c2 } = refToRect(ref);
-      if (r1 === 1 && r2 === 1) {
-        for (let c = c1; c <= c2; c++) spans[c] = c2 - c1 + 1;
+  let headerMergeMap = $derived.by(
+    (): Record<number, { colspan: number; rowspan: number } | { skip: true }> => {
+      const merges: Record<number, { colspan: number; rowspan: number } | { skip: true }> = {};
+      if (!sheet?.merged_cells) return merges;
+      for (const ref of sheet.merged_cells) {
+        const { r1, r2, c1, c2 } = refToRect(ref);
+        if (r1 === 1) {
+          merges[c1] = { colspan: c2 - c1 + 1, rowspan: 1 };
+          for (let c = c1 + 1; c <= c2; c++) merges[c] = { skip: true };
+        }
       }
-    }
-    return spans;
-  });
+      return merges;
+    },
+  );
+
+  function headerMerge(col: number): { colspan: number; rowspan: number } | undefined {
+    const merge = headerMergeMap[col];
+    return merge && !("skip" in merge) ? merge : undefined;
+  }
+
+  function headerCovered(col: number): boolean {
+    const merge = headerMergeMap[col];
+    return Boolean(merge && "skip" in merge);
+  }
 
   let columnWidths = $derived((sheet?.column_widths ?? []) as (number | null | undefined)[]);
   let frozenCols = $derived(Math.max(0, sheet?.frozen_panes?.x_split ?? 0));
@@ -190,7 +217,52 @@
       style.bold ? "font-weight:700" : "",
       style.italic ? "font-style:italic" : "",
       style.border_color ? `border-color:${style.border_color}` : "",
-    ].filter(Boolean).join(";");
+      style.border_top ? `border-top:${style.border_top}` : "",
+      style.border_right ? `border-right:${style.border_right}` : "",
+      style.border_bottom ? `border-bottom:${style.border_bottom}` : "",
+      style.border_left ? `border-left:${style.border_left}` : "",
+      style.horizontal_alignment
+        ? `text-align:${cssHorizontalAlignment(style.horizontal_alignment)}`
+        : "",
+      style.vertical_alignment
+        ? `vertical-align:${cssVerticalAlignment(style.vertical_alignment)}`
+        : "",
+      style.wrap_text ? "white-space:normal;overflow-wrap:anywhere" : "",
+    ]
+      .filter(Boolean)
+      .join(";");
+  }
+
+  function cssHorizontalAlignment(alignment: string): string {
+    return (
+      (
+        {
+          left: "left",
+          center: "center",
+          centerContinuous: "center",
+          right: "right",
+          fill: "left",
+          justify: "justify",
+          distributed: "justify",
+        } as Record<string, string>
+      )[alignment] ?? ""
+    );
+  }
+
+  function cssVerticalAlignment(alignment: string): string {
+    if (alignment === "center" || alignment === "distributed" || alignment === "justify") {
+      return "middle";
+    }
+    return ({ top: "top", bottom: "bottom" } as Record<string, string>)[alignment] ?? "";
+  }
+
+  function numberFormat(row: number, col: number): string | undefined {
+    return sheet?.cell_styles?.[row]?.[col]?.number_format;
+  }
+
+  function rowStyle(row: number): string {
+    const height = sheet?.row_heights?.[row];
+    return height && height > 0 ? `height:${height * (96 / 72)}px;` : "";
   }
 </script>
 
@@ -246,20 +318,24 @@
                 >
               {/each}
             </tr>
-            <tr>
+            <tr style={rowStyle(0)}>
               <th class="row-label header-row">1</th>
               {#each headerCells as h, i}
-                <th
-                  colspan={headerMergeSpan[i] ?? 1}
-                  class:frozen-c={i < frozenCols}
-                  style={colStyle(i) + frozenLeft(i) + cellStyle(0, i)}>{@html cellMatches(h)}</th
-                >
+                {#if !headerCovered(i)}
+                  <th
+                    colspan={headerMerge(i)?.colspan ?? 1}
+                    rowspan={headerMerge(i)?.rowspan ?? 1}
+                    class:frozen-c={i < frozenCols}
+                    data-number-format={numberFormat(0, i)}
+                    style={colStyle(i) + frozenLeft(i) + cellStyle(0, i)}>{@html cellMatches(h)}</th
+                  >
+                {/if}
               {/each}
             </tr>
           </thead>
           <tbody>
             {#each visibleRows as row, rowIndex}
-              <tr>
+              <tr style={rowStyle(rowIndex + 1)}>
                 <th class="row-label">{rowIndex + 2}</th>
                 {#each row as cell, c}
                   {@const fmt = formulaGrid[rowIndex][c]}
@@ -270,6 +346,7 @@
                       class:formula={(cell ?? "").startsWith("=") ||
                         (!(cell ?? "").trim() && !!fmt)}
                       class:frozen-c={c < frozenCols}
+                      data-number-format={numberFormat(rowIndex + 1, c)}
                       style={colStyle(c) + frozenLeft(c) + cellStyle(rowIndex + 1, c)}
                       title={fmt ? fmt + "\n" + (cell ?? "") : cell}
                     >

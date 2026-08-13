@@ -2,7 +2,19 @@
   // Phase 3.1 — DOCX viewer. Renders blocks: paragraphs (heading-aware),
   // list items, tables, image placeholders.
   import SearchBar from "./SearchBar.svelte";
-  import { findAllMatches, escapeHtml } from "./search";
+  import { findAllMatches } from "./search";
+
+  type InlineImage = { name?: string; src?: string };
+  type Inline = {
+    text?: string;
+    bold?: boolean;
+    italic?: boolean;
+    underline?: boolean;
+    color?: string;
+    font_size?: number;
+    href?: string;
+    image?: InlineImage;
+  };
 
   let { document: docProp = {} }: { document?: any } = $props();
 
@@ -15,13 +27,22 @@
   let outline = $derived(
     blocks
       .map((block, index) => ({ ...block, index }))
+      .map((block) => ({
+        ...block,
+        text: block.text ?? inlineText(block.inlines ?? []),
+      }))
       .filter((block) => block.kind === "paragraph" && block.heading && block.text),
   );
   let stats = $derived.by(() => {
     const text = blocks
       .map((block) => {
         if (block.kind === "table") return (block.rows ?? []).flat().join(" ");
-        return block.text ?? "";
+        if (block.kind === "table" && block.rich_rows)
+          return (block.rich_rows ?? [])
+            .flat()
+            .map((cell: { inlines?: Inline[] }) => inlineText(cell.inlines ?? []))
+            .join(" ");
+        return block.text ?? inlineText(block.inlines ?? []);
       })
       .join(" ");
     const words = text.trim() ? text.trim().split(/\s+/).length : 0;
@@ -29,19 +50,48 @@
     return { words, tables, blocks: blocks.length };
   });
 
-  function highlight(s: string): string {
-    if (!query) return escapeHtml(s);
+  function highlightedParts(s: string): Array<{ text: string; match: boolean }> {
+    if (!query) return [{ text: s, match: false }];
     const matches = findAllMatches(s, query, caseSensitive);
-    if (matches.length === 0) return escapeHtml(s);
-    let out = "";
+    if (matches.length === 0) return [{ text: s, match: false }];
+    const parts: Array<{ text: string; match: boolean }> = [];
     let cursor = 0;
     for (const m of matches) {
-      out += escapeHtml(s.slice(cursor, m.index));
-      out += "<mark>" + escapeHtml(s.slice(m.index, m.index + m.length)) + "</mark>";
+      if (m.index > cursor) parts.push({ text: s.slice(cursor, m.index), match: false });
+      parts.push({ text: s.slice(m.index, m.index + m.length), match: true });
       cursor = m.index + m.length;
     }
-    out += escapeHtml(s.slice(cursor));
-    return out;
+    if (cursor < s.length) parts.push({ text: s.slice(cursor), match: false });
+    return parts;
+  }
+
+  function inlineText(inlines: Inline[]): string {
+    return inlines.map((inline) => inline.text ?? "").join("");
+  }
+
+  function safeHref(href: string | undefined): string | undefined {
+    if (!href) return undefined;
+    const trimmed = href.trim();
+    if (trimmed.startsWith("#")) return trimmed;
+    try {
+      const url = new URL(trimmed);
+      return ["http:", "https:", "mailto:", "tel:"].includes(url.protocol) ? trimmed : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  function safeImageSrc(src: string | undefined): string | undefined {
+    if (!src) return undefined;
+    return /^(data:image\/(png|jpeg|gif|webp|bmp);base64,|blob:)/i.test(src) ? src : undefined;
+  }
+
+  function inlineStyle(inline: Inline): string {
+    const styles: string[] = [];
+    if (inline.color && /^#[0-9a-f]{6}$/i.test(inline.color)) styles.push(`color:${inline.color}`);
+    if (Number.isFinite(inline.font_size) && (inline.font_size ?? 0) > 0)
+      styles.push(`font-size:${Math.min(inline.font_size ?? 0, 200)}pt`);
+    return styles.join(";");
   }
 
   function headingTag(level: number): "h1" | "h2" | "h3" | "h4" | "h5" | "h6" {
@@ -49,6 +99,49 @@
     return `h${safeLevel}` as "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
   }
 </script>
+
+{#snippet highlightedText(text: string)}
+  {#each highlightedParts(text) as part}
+    {#if part.match}<mark>{part.text}</mark>{:else}{part.text}{/if}
+  {/each}
+{/snippet}
+
+{#snippet richInlines(inlines: Inline[])}
+  {#each inlines as inline}
+    {@const href = safeHref(inline.href)}
+    {@const content = inline.text ?? ""}
+    {#if inline.image}
+      {@const imageSrc = safeImageSrc(inline.image.src)}
+      <span class="inline-image">
+        {#if imageSrc}
+          <img src={imageSrc} alt={inline.image.name ?? "Embedded image"} />
+        {:else}
+          <span class="img-placeholder">Embedded image</span>
+        {/if}
+      </span>
+    {/if}
+    {#if content}
+      {#if href}
+        <a
+          {href}
+          target={href.startsWith("#") ? undefined : "_blank"}
+          rel={href.startsWith("#") ? undefined : "noopener noreferrer"}
+          class:bold={inline.bold}
+          class:italic={inline.italic}
+          class:underline={inline.underline}
+          style={inlineStyle(inline)}>{@render highlightedText(content)}</a
+        >
+      {:else}
+        <span
+          class:bold={inline.bold}
+          class:italic={inline.italic}
+          class:underline={inline.underline}
+          style={inlineStyle(inline)}>{@render highlightedText(content)}</span
+        >
+      {/if}
+    {/if}
+  {/each}
+{/snippet}
 
 <article class="docx-viewer">
   {#if pluginHtml}
@@ -89,22 +182,36 @@
             {#if block.kind === "paragraph"}
               {#if block.heading}
                 <svelte:element this={headingTag(block.heading)} id={`block-${index}`}
-                  >{@html highlight(block.text)}</svelte:element
+                  >{#if block.inlines}{@render richInlines(
+                      block.inlines,
+                    )}{:else}{@render highlightedText(block.text)}{/if}</svelte:element
                 >
               {:else}
-                <p id={`block-${index}`}>{@html highlight(block.text)}</p>
+                <p id={`block-${index}`}>
+                  {#if block.inlines}{@render richInlines(
+                      block.inlines,
+                    )}{:else}{@render highlightedText(block.text)}{/if}
+                </p>
               {/if}
             {:else if block.kind === "list-item"}
               <ul id={`block-${index}`} style={`--level:${block.level ?? 0}`}>
-                <li>{@html highlight(block.text)}</li>
+                <li>
+                  {#if block.inlines}{@render richInlines(
+                      block.inlines,
+                    )}{:else}{@render highlightedText(block.text)}{/if}
+                </li>
               </ul>
             {:else if block.kind === "table"}
               <div class="table-wrap" id={`block-${index}`}>
                 <table>
                   <tbody>
-                    {#each block.rows as row}
+                    {#each block.rich_rows ?? block.rows as row}
                       <tr
-                        >{#each row as cell}<td>{@html highlight(cell)}</td>{/each}</tr
+                        >{#each row as cell}<td
+                            >{#if block.rich_rows}{@render richInlines(
+                                cell.inlines ?? [],
+                              )}{:else}{@render highlightedText(cell)}{/if}</td
+                          >{/each}</tr
                       >
                     {/each}
                   </tbody>
@@ -124,10 +231,14 @@
                 {/if}
               </figure>
             {:else if block.kind === "hyperlink"}
+              {@const href = safeHref(block.href)}
               <p id={`block-${index}`}>
-                <a href={block.href} target="_blank" rel="noopener noreferrer"
-                  >{@html highlight(block.text)}</a
-                >
+                {#if href}<a
+                    {href}
+                    target={href.startsWith("#") ? undefined : "_blank"}
+                    rel={href.startsWith("#") ? undefined : "noopener noreferrer"}
+                    >{@render highlightedText(block.text)}</a
+                  >{:else}{@render highlightedText(block.text)}{/if}
               </p>
             {/if}
           {/each}
@@ -292,6 +403,26 @@
     color: var(--link);
     text-decoration: underline;
     word-break: break-all;
+  }
+  .bold {
+    font-weight: 700;
+  }
+  .italic {
+    font-style: italic;
+  }
+  .underline {
+    text-decoration: underline;
+  }
+  .body :global(p),
+  .body :global(li),
+  td {
+    white-space: pre-wrap;
+  }
+  .inline-image img {
+    display: inline-block;
+    max-width: 100%;
+    height: auto;
+    vertical-align: middle;
   }
   :global(mark) {
     background: rgba(255, 213, 79, 0.6);

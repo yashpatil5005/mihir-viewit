@@ -18,12 +18,14 @@
       underline?: boolean;
       font_size?: number;
       color?: string;
+      font_family?: string;
     }[];
     bullet?: boolean;
+    alignment?: string;
   };
 
   type PptxElement = {
-    kind: "text" | "image";
+    kind: "text" | "image" | "shape";
     x: number;
     y: number;
     w: number;
@@ -32,6 +34,9 @@
     src?: string;
     font_size?: number;
     paragraphs?: PptxParagraph[];
+    fill_color?: string;
+    border_color?: string;
+    border_width?: number;
   };
 
   type PptxSlide = {
@@ -131,13 +136,40 @@
   function slideStyle(slide: PptxSlide | undefined): string {
     if (!slide?.background) return "";
     const bg = slide.background;
-    if (bg.type === "solid" && bg.color) {
-      return `background-color:${bg.color};`;
+    const color = safeColor(bg.color);
+    if (bg.type === "solid" && color) {
+      return `background-color:${color};`;
     }
-    if (bg.type === "gradient" && bg.gradient) {
+    if (bg.type === "gradient" && bg.gradient && safeGradient(bg.gradient)) {
       return `background:${bg.gradient};`;
     }
     return "";
+  }
+
+  function safeColor(color: string | undefined): string {
+    return color && /^(#[0-9a-f]{3,8}|rgba?\([\d\s.,%]+\))$/i.test(color) ? color : "";
+  }
+
+  function safeGradient(gradient: string): boolean {
+    return /^linear-gradient\(\d+(?:\.\d+)?deg(?:,\s*#[0-9a-f]{6}\s+\d+(?:\.\d+)?%){2,}\)$/i.test(
+      gradient,
+    );
+  }
+
+  function safeImageSrc(src: string | undefined): string | undefined {
+    return src && /^(data:image\/(png|jpeg|gif|webp|bmp);base64,|blob:)/i.test(src)
+      ? src
+      : undefined;
+  }
+
+  function safeFontFamily(font: string | undefined): string {
+    return font && /^[\w\s.,'"-]{1,100}$/.test(font) ? font : "";
+  }
+
+  function cssAlignment(alignment: string | undefined): string | undefined {
+    return ({ l: "left", ctr: "center", r: "right", just: "justify" } as Record<string, string>)[
+      alignment ?? ""
+    ];
   }
 
   function elementStyle(element: PptxElement, slide: PptxSlide): string {
@@ -148,7 +180,13 @@
     const w = (element.w / width) * 100;
     const h = (element.h / height) * 100;
     const fontSize = element.font_size ? `font-size:${element.font_size / 12}vw;` : "";
-    return `left:${left}%;top:${top}%;width:${w}%;height:${h}%;${fontSize}`;
+    const fillColor = safeColor(element.fill_color);
+    const borderColor = safeColor(element.border_color);
+    const fill = fillColor ? `background-color:${fillColor};` : "";
+    const border = borderColor
+      ? `border:${Math.max(1, Math.min(20, element.border_width ?? 1))}px solid ${borderColor};`
+      : "";
+    return `left:${left}%;top:${top}%;width:${w}%;height:${h}%;${fontSize}${fill}${border}`;
   }
 </script>
 
@@ -181,7 +219,7 @@
                 >
                   {#if element.paragraphs && element.paragraphs.length > 0}
                     {#each element.paragraphs as para}
-                      <p class="pptx-para">
+                      <p class="pptx-para" style:text-align={cssAlignment(para.alignment)}>
                         {#if para.bullet}<span class="pptx-bullet">•</span>{/if}
                         {#each para.runs as run}
                           <span
@@ -189,9 +227,14 @@
                             class:pptx-italic={run.italic}
                             class:pptx-underline={run.underline}
                             style={[
-                              run.font_size ? `font-size:${run.font_size / 12}vw` : '',
-                              run.color ? `color:${run.color}` : '',
-                            ].filter(Boolean).join('; ')}>{run.text}</span
+                              run.font_size ? `font-size:${run.font_size / 12}vw` : "",
+                              safeColor(run.color) ? `color:${safeColor(run.color)}` : "",
+                              safeFontFamily(run.font_family)
+                                ? `font-family:${safeFontFamily(run.font_family)}`
+                                : "",
+                            ]
+                              .filter(Boolean)
+                              .join("; ")}>{run.text}</span
                           >
                         {/each}
                       </p>
@@ -201,12 +244,21 @@
                   {/if}
                 </div>
               {:else if element.kind === "image" && element.src}
-                <img
-                  class="slide-element image-box"
+                {@const imageSrc = safeImageSrc(element.src)}
+                {#if imageSrc}
+                  <img
+                    class="slide-element image-box"
+                    style={elementStyle(element, preParsedSlides[idx])}
+                    src={imageSrc}
+                    alt=""
+                  />
+                {/if}
+              {:else if element.kind === "shape"}
+                <div
+                  class="slide-element shape-box"
                   style={elementStyle(element, preParsedSlides[idx])}
-                  src={element.src}
-                  alt=""
-                />
+                  aria-hidden="true"
+                ></div>
               {/if}
             {/each}
           {:else if preParsedSlides[idx]}
