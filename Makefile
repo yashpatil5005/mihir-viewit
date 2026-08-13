@@ -3,7 +3,7 @@
 
 SHELL := /bin/sh
 .PHONY: help setup dev-web dev-desktop build-web build-android lint format \
-	check test test-rust test-ts test-release clean deny fmt cargo-fmt clippy misuse install-apk smoke
+	check test test-rust test-ts test-release test-visual-android clean deny fmt cargo-fmt clippy misuse install-apk smoke
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | sort | \
@@ -44,6 +44,9 @@ test-ts: ## Vitest unit tests for packages/platform
 
 test-release: ## Dependency-free release-tool tests
 	npm run test:release
+
+test-visual-android: ## Physical-device Office visual regression suite
+	npm run test:visual:android
 
 fmt: cargo-fmt ## Rust formatting (cargo fmt)
 cargo-fmt: ## Rust formatting (cargo fmt)

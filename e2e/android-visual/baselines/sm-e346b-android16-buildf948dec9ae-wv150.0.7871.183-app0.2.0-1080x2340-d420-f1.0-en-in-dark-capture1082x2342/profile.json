@@ -1,0 +1,37 @@
+{
+  "serial": "RZCW71NK7SN",
+  "model": "SM-E346B",
+  "android": "16",
+  "sdk": "36",
+  "size": "Physical size: 1080x2340",
+  "density": "Physical density: 450\nOverride density: 420",
+  "font_scale": "1.0",
+  "locale": "en-IN",
+  "ui_mode": "Night mode: auto",
+  "build_fingerprint": "samsung/m34xins/m34x:16/BP4A.251205.006/E346BXXUCFZE6:user/release-keys",
+  "webview_version": "150.0.7871.183",
+  "app_version": "0.2.0",
+  "profile_slug": "sm-e346b-android16-buildf948dec9ae-wv150.0.7871.183-app0.2.0-1080x2340-d420-f1.0-en-in-dark-capture1082x2342",
+  "capture_size": [
+    1082,
+    2342
+  ],
+  "fixtures": {
+    "docx-report": "edc30c6790e421bfd3002778daaf70b7cc72e7b1c1442a2dba3b824b34e7ada1",
+    "pptx-deck": "3032f50b6b220b1589a54238e4f1829923090d7e752f20eb3989b777e175aeb5",
+    "odp-deck": "c8b252b0387d4706e891d3fb6a037769d843c863a58667686583bb965442ecd8",
+    "xlsx-sample": "f98f9cbde2e81d60de20f70631d9866066ba190fd29387a6174764480954af42"
+  },
+  "plugins": [
+    {
+      "id": "office-universal",
+      "version": "0.1.5"
+    }
+  ],
+  "cases": [
+    "docx-report",
+    "pptx-deck",
+    "odp-deck",
+    "xlsx-sample"
+  ]
+}

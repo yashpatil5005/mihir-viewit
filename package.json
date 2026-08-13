@@ -27,6 +27,8 @@
     "test:release": "python3 -m unittest discover -s scripts/tests -p 'test_*.py'",
     "test:rust": "cargo test --workspace --exclude viewit-mobile --exclude viewit-desktop --lib",
     "test:e2e": "playwright test --config e2e/web/playwright.config.ts",
+    "test:visual:android": "python3 scripts/android-visual-regression.py --confirm-device-reset",
+    "test:visual:android:update": "python3 scripts/android-visual-regression.py --confirm-device-reset --update-baselines",
     "test": "npm run test:rust && npm run test:ts && npm run test:release",
     "size-check": "node scripts/size-budget.ts"
   },

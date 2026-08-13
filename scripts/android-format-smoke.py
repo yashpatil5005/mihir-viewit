@@ -27,18 +27,21 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import base64
 import hashlib
 import json
 import os
-import socket
-import struct
 import subprocess
 import sys
 import time
-import urllib.request
 from dataclasses import dataclass
 from typing import Any, Iterable
+
+from android_device import (
+    AndroidSession,
+    CdpClient,
+    adb_command,
+    run as device_run,
+)
 
 PKG = "ai.viewit.app"
 ACT = "ai.viewit.app/.MainActivity"
@@ -54,154 +57,39 @@ REVIEW_INSTRUCTIONS = """Next visual verification workflow:
 
 
 def adb_cmd(serial: str | None) -> list[str]:
-    cmd = ["adb"]
-    if serial:
-        cmd += ["-s", serial]
-    return cmd
+    return adb_command(serial)
 
 
 def sh(args: list[str], *, check: bool = True, capture: bool = True) -> str:
-    res = subprocess.run(
-        args,
-        check=check,
-        text=True,
-        stdout=subprocess.PIPE if capture else None,
-        stderr=subprocess.STDOUT if capture else None,
-    )
-    return res.stdout if capture else ""
+    return device_run(args, check=check, capture=capture)
 
 
 def forward(adb: list[str], port: int) -> None:
-    for _ in range(30):
-        pid = sh(adb + ["shell", "pidof", PKG], check=False).strip().replace("\r", "")
-        if pid:
-            sh(adb + ["forward", "--remove", f"tcp:{port}"], check=False)
-            sh(adb + ["forward", f"tcp:{port}", f"localabstract:webview_devtools_remote_{pid}"])
-            return
-        time.sleep(1)
-    raise RuntimeError(f"app process did not start: {PKG}")
+    session = AndroidSession(port=port)
+    session.adb = adb
+    session.forward_webview()
 
 
 def wait_for_cdp(port: int, timeout: int = 20) -> Any:
-    deadline = time.time() + timeout
-    last_err = ""
-    while time.time() < deadline:
-        try:
-            with urllib.request.urlopen(f"http://127.0.0.1:{port}/json", timeout=2) as r:
-                pages = json.load(r)
-            if pages:
-                return pages[0]["webSocketDebuggerUrl"]
-        except Exception as e:  # noqa: BLE001
-            last_err = str(e)
-            time.sleep(0.5)
-    raise RuntimeError(f"CDP not ready on http://127.0.0.1:{port}/json: {last_err}")
-
-
-def _ws_handshake(ws_url: str) -> socket.socket:
-    parts = ws_url.split("/")
-    hostport = parts[2]
-    host, port = hostport.split(":")
-    path = "/" + "/".join(parts[3:])
-    s = socket.create_connection((host, int(port)), timeout=5)
-    key = base64.b64encode(os.urandom(16)).decode()
-    req = (
-        f"GET {path} HTTP/1.1\r\n"
-        f"Host: {hostport}\r\n"
-        "Upgrade: websocket\r\n"
-        "Connection: Upgrade\r\n"
-        f"Sec-WebSocket-Key: {key}\r\n"
-        "Sec-WebSocket-Version: 13\r\n\r\n"
-    )
-    s.sendall(req.encode())
-    resp = s.recv(4096)
-    if b"101" not in resp.split(b"\r\n", 1)[0]:
-        raise RuntimeError(f"WS handshake failed: {resp.decode(errors='replace')[:200]}")
-    return s
-
-
-def _ws_send(s: socket.socket, obj: dict) -> None:
-    data = json.dumps(obj).encode()
-    mask = os.urandom(4)
-    header = bytearray([0x81])
-    n = len(data)
-    if n < 126:
-        header.append(0x80 | n)
-    elif n < 65536:
-        header += bytes([0x80 | 126]) + struct.pack("!H", n)
-    else:
-        header += bytes([0x80 | 127]) + struct.pack("!Q", n)
-    s.sendall(bytes(header) + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(data)))
-
-
-def _ws_recv(s: socket.socket) -> dict:
-    h = s.recv(2)
-    if len(h) < 2:
-        raise RuntimeError("WS closed")
-    _b1, b2 = h
-    n = b2 & 0x7F
-    if n == 126:
-        n = struct.unpack("!H", s.recv(2))[0]
-    elif n == 127:
-        n = struct.unpack("!Q", s.recv(8))[0]
-    if b2 & 0x80:
-        s.recv(4)
-    data = b""
-    while len(data) < n:
-        chunk = s.recv(n - len(data))
-        if not chunk:
-            raise RuntimeError("WS closed mid-frame")
-        data += chunk
-    return json.loads(data.decode())
+    return AndroidSession(port=port).websocket_url(timeout)
 
 
 def ws_eval(ws_url: str, expr: str, *, timeout: int = 15) -> Any:
-    s = _ws_handshake(ws_url)
-    try:
-        _ws_send(s, {"id": 1, "method": "Runtime.enable"})
-        _ws_recv(s)
-        _ws_send(s, {"id": 2, "method": "Runtime.evaluate", "params": {"expression": expr, "returnByValue": True, "awaitPromise": True}})
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            msg = _ws_recv(s)
-            if msg.get("id") == 2:
-                result = msg.get("result", {}).get("result", {})
-                if result.get("type") == "object" and result.get("subtype") == "error":
-                    raise RuntimeError(f"Runtime.evaluate error: {result.get('description')}")
-                return result.get("value")
-        raise RuntimeError("Runtime.evaluate timed out")
-    finally:
-        try:
-            s.close()
-        except Exception:  # noqa: BLE001
-            pass
+    with CdpClient(ws_url, timeout) as client:
+        return client.evaluate(expr)
 
 
 def ws_click(ws_url: str, selector: str, *, timeout: int = 10) -> bool:
     """Click an element matching selector via CDP. Returns True if clicked."""
-    s = _ws_handshake(ws_url)
-    try:
-        _ws_send(s, {"id": 1, "method": "Runtime.enable"})
-        _ws_recv(s)
-        click_js = f"""(() => {{
+    click_js = f"""(() => {{
           const el = document.querySelector('{selector}');
           if (!el) return false;
           el.scrollIntoView({{ block: 'center' }});
           el.click();
           return true;
         }})()"""
-        _ws_send(s, {"id": 2, "method": "Runtime.evaluate", "params": {"expression": click_js, "returnByValue": True}})
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            msg = _ws_recv(s)
-            if msg.get("id") == 2:
-                result = msg.get("result", {}).get("result", {})
-                return bool(result.get("value"))
-        return False
-    finally:
-        try:
-            s.close()
-        except Exception:  # noqa: BLE001
-            pass
+    with CdpClient(ws_url, timeout) as client:
+        return bool(client.evaluate(click_js))
 
 
 DOM_QUERY = """(() => {
