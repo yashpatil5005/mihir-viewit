@@ -240,7 +240,7 @@ class PluginManager(private val context: Context) {
                     val stagingDir = File(pluginsDir, "${manifest.id}.staging")
                     stagingDir.deleteRecursively()
                     stagingDir.mkdirs()
-                    unzip(zipFile, stagingDir, manifest.installedSizeBytes)
+                    unzip(zipFile, stagingDir)
                     val dir2 = File(pluginsDir, manifest.id)
                     dir2.deleteRecursively()
                     stagingDir.renameTo(dir2)
@@ -255,7 +255,7 @@ class PluginManager(private val context: Context) {
                     val stagingDir = File(pluginsDir, "${manifest.id}.staging")
                     stagingDir.deleteRecursively()
                     stagingDir.mkdirs()
-                    unzip(zipFile, stagingDir, manifest.installedSizeBytes)
+                    unzip(zipFile, stagingDir)
                     saveManifest(stagingDir, manifest)
                     val dir2 = File(pluginsDir, manifest.id)
                     dir2.deleteRecursively()
@@ -286,7 +286,7 @@ class PluginManager(private val context: Context) {
             stagingDir.mkdirs()
 
             onProgress(0.6f)
-            unzip(zipFile, stagingDir, manifest.installedSizeBytes)
+            unzip(zipFile, stagingDir)
             saveManifest(stagingDir, manifest)
 
             val plugin = loadPluginFromDir(stagingDir)
@@ -614,14 +614,13 @@ class PluginManager(private val context: Context) {
         }
     }
 
-    private fun unzip(zipFile: File, destDir: File, declaredInstalledSize: Long) {
-        val maxBytes = PluginRuntimePolicy.installedSizeLimit(declaredInstalledSize)
+    private fun unzip(zipFile: File, destDir: File) {
         var totalBytes = 0L
         var entryCount = 0
         java.util.zip.ZipFile(zipFile).use { zip ->
             zip.entries().asSequence().forEach { entry ->
                 entryCount++
-                PluginRuntimePolicy.requireExtractionWithinLimits(entryCount, totalBytes, maxBytes)
+                PluginRuntimePolicy.requireExtractionWithinLimits(entryCount, totalBytes)
                 val outFile = PluginRuntimePolicy.zipEntryDestination(destDir, entry.name)
                 if (entry.isDirectory) {
                     outFile.mkdirs()
@@ -634,7 +633,7 @@ class PluginManager(private val context: Context) {
                                 val read = input.read(buffer)
                                 if (read < 0) break
                                 totalBytes += read
-                                PluginRuntimePolicy.requireExtractionWithinLimits(entryCount, totalBytes, maxBytes)
+                                PluginRuntimePolicy.requireExtractionWithinLimits(entryCount, totalBytes)
                                 output.write(buffer, 0, read)
                             }
                         }

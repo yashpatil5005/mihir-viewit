@@ -45,17 +45,9 @@ object PluginRuntimePolicy {
 
     fun isValidPluginId(id: String): Boolean = id.matches(Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,127}"))
 
-    fun installedSizeLimit(declaredInstalledSize: Long): Long {
-        return if (declaredInstalledSize > 0) {
-            declaredInstalledSize.coerceAtMost(MAX_INSTALLED_BYTES)
-        } else {
-            MAX_INSTALLED_BYTES
-        }
-    }
-
-    fun requireExtractionWithinLimits(entryCount: Int, totalBytes: Long, maxBytes: Long) {
+    fun requireExtractionWithinLimits(entryCount: Int, totalBytes: Long) {
         require(entryCount <= MAX_PLUGIN_ENTRIES) { "Plugin zip contains too many entries" }
-        require(totalBytes <= maxBytes) { "Plugin exceeds its installed size limit" }
+        require(totalBytes <= MAX_INSTALLED_BYTES) { "Plugin exceeds its installed size limit" }
     }
 
     fun warmInstallAction(

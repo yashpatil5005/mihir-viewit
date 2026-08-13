@@ -92,17 +92,14 @@ class PluginRuntimePolicyTest {
 
     @Test
     fun `plugin extraction enforces entry and expanded size limits`() {
-        val sizeLimit = PluginRuntimePolicy.installedSizeLimit(100)
-
-        PluginRuntimePolicy.requireExtractionWithinLimits(1, 100, sizeLimit)
+        PluginRuntimePolicy.requireExtractionWithinLimits(1, PluginRuntimePolicy.MAX_INSTALLED_BYTES)
         assertThrows(IllegalArgumentException::class.java) {
-            PluginRuntimePolicy.requireExtractionWithinLimits(1, 101, sizeLimit)
+            PluginRuntimePolicy.requireExtractionWithinLimits(1, PluginRuntimePolicy.MAX_INSTALLED_BYTES + 1)
         }
         assertThrows(IllegalArgumentException::class.java) {
             PluginRuntimePolicy.requireExtractionWithinLimits(
                 PluginRuntimePolicy.MAX_PLUGIN_ENTRIES + 1,
                 0,
-                sizeLimit,
             )
         }
     }

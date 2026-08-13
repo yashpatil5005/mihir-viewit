@@ -29,6 +29,7 @@
     "test:e2e": "playwright test --config e2e/web/playwright.config.ts",
     "test:visual:android": "python3 scripts/android-visual-regression.py --confirm-device-reset",
     "test:visual:android:update": "python3 scripts/android-visual-regression.py --confirm-device-reset --update-baselines",
+    "test:plugins:android": "python3 scripts/android-plugin-lifecycle.py --confirm-device-reset",
     "test:android": "./scripts/android-unit-tests.sh",
     "test": "npm run test:rust && npm run test:ts && npm run test:release && npm run test:android",
     "size-check": "node scripts/size-budget.ts"

@@ -51,6 +51,9 @@ test-android: ## Android plugin-runtime JVM tests
 test-visual-android: ## Physical-device Office visual regression suite
 	npm run test:visual:android
 
+test-plugins-android: ## Physical-device plugin lifecycle regression suite
+	npm run test:plugins:android
+
 fmt: cargo-fmt ## Rust formatting (cargo fmt)
 cargo-fmt: ## Rust formatting (cargo fmt)
 	cargo fmt
