@@ -1,0 +1,131 @@
+import { describe, expect, it } from "vitest";
+import type { PluginInfo } from "../src/pluginBridge";
+import {
+  ARCHIVE_EXTS,
+  FONT_EXTS,
+  NON_ARCHIVE_BUNDLE_EXTS,
+  OFFICE_ALL_EXTS,
+  hasPptxJsRenderer,
+  installPromptForFormat,
+  pluginForFormat,
+  selectBasePlugin,
+  selectDetectedOfficePlugin,
+  selectNativeOfficePlugin,
+  selectPptxJsPlugin,
+} from "../src/runtimeRouting";
+
+const plugin = (overrides: Partial<PluginInfo>): PluginInfo => ({
+  id: "plugin",
+  name: "Plugin",
+  version: "1",
+  description: "",
+  formats: [],
+  ...overrides,
+});
+
+describe("format plugin routing", () => {
+  it("routes all advertised office/archive formats and only supported fonts", () => {
+    expect(pluginForFormat("DOCX")).toBe("office-universal");
+    expect(pluginForFormat(".7z")).toBe("compression-universal");
+    expect(pluginForFormat("woff")).toBe("font-universal");
+    expect(pluginForFormat("woff2")).toBeNull();
+    expect(FONT_EXTS.has("woff2")).toBe(true);
+    expect(ARCHIVE_EXTS.has("tar")).toBe(true);
+    expect([...OFFICE_ALL_EXTS].every((ext) => pluginForFormat(ext) === "office-universal")).toBe(
+      true,
+    );
+    expect([...ARCHIVE_EXTS].every((ext) => pluginForFormat(ext) === "compression-universal")).toBe(
+      true,
+    );
+  });
+
+  it("keeps iWork bundles out of generic archive sniff fallback", () => {
+    expect(NON_ARCHIVE_BUNDLE_EXTS.has("pages")).toBe(true);
+    expect(NON_ARCHIVE_BUNDLE_EXTS.has("numbers-template")).toBe(true);
+  });
+});
+
+describe("install prompt", () => {
+  it("prompts only when the matching plugin is absent or lacks the format", () => {
+    const uri = "content://report";
+    expect(installPromptForFormat("docx", uri, [])).toEqual({
+      ext: "docx",
+      pluginName: "Office",
+      uri,
+    });
+    expect(
+      installPromptForFormat("docx", uri, [
+        plugin({ id: "office-universal", formats: ["docx"], runtime: "native" }),
+      ]),
+    ).toBeNull();
+    expect(
+      installPromptForFormat("docx", uri, [
+        plugin({ id: "office-universal", formats: ["xlsx"], runtime: "native" }),
+      ]),
+    ).not.toBeNull();
+    expect(installPromptForFormat("txt", uri, [])).toBeNull();
+  });
+});
+
+describe("PPTX JS selection", () => {
+  const nativeHybrid = plugin({
+    id: "office-universal",
+    runtime: "native",
+    formats: ["pptx"],
+    jsEntry: "index.js",
+  });
+  const jsRenderer = plugin({ id: "pptx-js", runtime: "js", formats: ["pptx"] });
+
+  it("never treats a native hybrid plugin as the JS renderer", () => {
+    expect(hasPptxJsRenderer(nativeHybrid)).toBe(false);
+    expect(selectPptxJsPlugin([nativeHybrid], null)).toBeNull();
+  });
+
+  it("honors builtin, preferred JS, missing preferred, and automatic choices", () => {
+    expect(selectPptxJsPlugin([jsRenderer], "__builtin__")).toBeNull();
+    expect(selectPptxJsPlugin([jsRenderer], "pptx-js")).toBe(jsRenderer);
+    expect(selectPptxJsPlugin([jsRenderer], "missing")).toBeNull();
+    expect(selectPptxJsPlugin([nativeHybrid, jsRenderer], null)).toBe(jsRenderer);
+  });
+});
+
+describe("native office selection", () => {
+  const office = plugin({ id: "office-universal", runtime: "native", formats: ["docx"] });
+  const alternate = plugin({ id: "alternate", runtime: "dex", formats: ["docx"] });
+  const js = plugin({ id: "js", runtime: "js", formats: ["docx"] });
+
+  it("honors builtin and preferred native runtime", () => {
+    expect(selectNativeOfficePlugin([office], "docx", "__builtin__")).toBeNull();
+    expect(selectNativeOfficePlugin([office, alternate], "docx", "alternate")).toBe(alternate);
+    expect(selectNativeOfficePlugin([office], "docx", "missing")).toBeNull();
+  });
+
+  it("prefers office-universal automatically, skips JS and failed plugins", () => {
+    expect(selectNativeOfficePlugin([alternate, js, office], "docx", null)).toBe(office);
+    expect(selectNativeOfficePlugin([office, alternate], "docx", null, "office-universal")).toBe(
+      alternate,
+    );
+  });
+
+  it("uses a native parse provider for preferred JS and missing preferences after detection", () => {
+    expect(selectDetectedOfficePlugin([office, alternate], "docx", "pptx-js")).toBe(office);
+    expect(selectDetectedOfficePlugin([office, alternate], "docx", "missing")).toBe(office);
+    expect(selectDetectedOfficePlugin([office], "docx", "__builtin__")).toBeNull();
+    expect(selectDetectedOfficePlugin([office, alternate], "docx", "pptx-js", office.id)).toBe(
+      alternate,
+    );
+  });
+});
+
+describe("play/edit base selection", () => {
+  const editor = plugin({ id: "editor", base: "edit", runtime: "js", formats: ["md"] });
+  const genericEditor = plugin({ id: "generic", base: "edit", runtime: "js", formats: [] });
+  const player = plugin({ id: "player", base: "play", runtime: "js", formats: ["mp3"] });
+
+  it("requires exact play support and permits edit fallback", () => {
+    expect(selectBasePlugin([player], "play", "mp3", false)).toBe(player);
+    expect(selectBasePlugin([player], "play", "wav", false)).toBeNull();
+    expect(selectBasePlugin([genericEditor, editor], "edit", "md", true)).toBe(editor);
+    expect(selectBasePlugin([genericEditor], "edit", "txt", true)).toBe(genericEditor);
+  });
+});

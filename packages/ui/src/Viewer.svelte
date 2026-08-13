@@ -51,75 +51,19 @@
     renderDocumentWithPlugin,
     type PluginInfo,
   } from "./pluginBridge";
-
-  const OFFICE_ALL_EXTS = new Set([
-    "docx",
-    "docm",
-    "dotx",
-    "dotm",
-    "xlsx",
-    "xlsm",
-    "xlsb",
-    "xls",
-    "pptx",
-    "pptm",
-    "potx",
-    "odt",
-    "ott",
-    "ods",
-    "ots",
-    "odp",
-    "otp",
-    "doc",
-    "ppt",
-  ]);
-  const ARCHIVE_EXTS = new Set([
-    "zip",
-    "7z",
-    "rar",
-    "tar",
-    "gz",
-    "tgz",
-    "bz2",
-    "tbz2",
-    "xz",
-    "txz",
-    "zst",
-    "tzst",
-    "lz4",
-    "lzma",
-    "tlz",
-  ]);
-  // Fonts ship as the built-in font-universal native plugin on Android (kept
-  // out of the base Rust lib to save APK budget). Desktop/web parse fonts
-  // natively, so this only triggers when the AndroidBridge is present. The
-  // broad set keeps every font extension recognizable so unsupported ones
-  // (woff2/pfb/cff/dfont/sfd/ps) fall to the base viewer honestly; only
-  // ttf/otf/woff/ttc route to font-universal.
-  const FONT_EXTS = new Set([
-    "ttf",
-    "otf",
-    "woff",
-    "woff2",
-    "ttc",
-    "pfb",
-    "cff",
-    "dfont",
-    "sfd",
-    "ps",
-  ]);
-  const OFFICE_KINDS = new Set(["docx", "xlsx", "pptx"]);
-  // Container formats that must NOT fall back to the generic archive listing
-  // when the built-in can't decode them (they render a dedicated/partial view
-  // instead of leaking their zip internals): Apple iWork bundles.
-  const NON_ARCHIVE_BUNDLE_EXTS = new Set([
-    "pages",
-    "numbers",
-    "key",
-    "pages-template",
-    "numbers-template",
-    "key-template",
-  ]);
+  import {
+    ARCHIVE_EXTS,
+    FONT_EXTS,
+    NON_ARCHIVE_BUNDLE_EXTS,
+    OFFICE_ALL_EXTS,
+    OFFICE_KINDS,
+    installPromptForFormat,
+    pluginForFormat,
+    selectBasePlugin,
+    selectDetectedOfficePlugin,
+    selectNativeOfficePlugin,
+    selectPptxJsPlugin,
+  } from "./runtimeRouting";
 
   // Phase 3.8 — per-format lazy code-split. Heavy viewers load on demand via
   // dynamic import() so opening a .txt never pulls in the PDF/Office chunks.
@@ -599,75 +543,6 @@
     }
   }
 
-  /** Pick the installed runtime=js PPTX plugin (if any) that should own the
-   *  WebView rendering, honoring the per-format runtime pref. */
-  // A plugin renders PPTX faithfully when it bundles the pptx-vanilla JS engine:
-  // either a standalone runtime=js plugin OR a hybrid native plugin (office-universal)
-  // that ships the bundle as its jsEntry. Keep `p` loosely typed; listPlugins exposes
-  // `jsEntry` on the manifest even for native plugins when it is set.
-  function hasPptxJsRenderer(p: PluginInfo): boolean {
-    // Only pure runtime=js plugins render in the WebView via a JS bundle.
-    // A native plugin (office-universal) may carry a jsEntry, but its bundle
-    // is loaded from the native install dir which the JS bridge may not serve;
-    // the native plugin already produced the Document — the built-in PptxViewer
-    // renders it.
-    return isJsPlugin(p) && pluginSupports(p, "pptx");
-  }
-
-  // Office/archive/font formats each have an optional faithful downloadable
-  // plugin. On first open (online) prompt the PluginStore if that plugin isn't
-  // installed yet; the built-in fmt-* renderers stay as an offline fallback.
-  const PLUGIN_LABEL: Record<string, string> = {
-    "office-universal": "Office",
-    "compression-universal": "Archive",
-    "font-universal": "Font",
-  };
-
-  const FORMAT_PLUGIN: Record<string, string> = {
-    docx: "office-universal",
-    docm: "office-universal",
-    dotx: "office-universal",
-    dotm: "office-universal",
-    xlsx: "office-universal",
-    xlsm: "office-universal",
-    xlsb: "office-universal",
-    xls: "office-universal",
-    pptx: "office-universal",
-    pptm: "office-universal",
-    potx: "office-universal",
-    odt: "office-universal",
-    ott: "office-universal",
-    ods: "office-universal",
-    ots: "office-universal",
-    odp: "office-universal",
-    otp: "office-universal",
-    doc: "office-universal",
-    ppt: "office-universal",
-    zip: "compression-universal",
-    "7z": "compression-universal",
-    rar: "compression-universal",
-    tar: "compression-universal",
-    gz: "compression-universal",
-    tgz: "compression-universal",
-    bz2: "compression-universal",
-    tbz2: "compression-universal",
-    xz: "compression-universal",
-    txz: "compression-universal",
-    zst: "compression-universal",
-    tzst: "compression-universal",
-    lz4: "compression-universal",
-    lzma: "compression-universal",
-    tlz: "compression-universal",
-    // Only formats the font-universal parser actually decodes are routed there.
-    // woff2/pfb/cff/dfont/sfd/ps remain recognizable as fonts but fall back to
-    // the base viewer (placeholder → open-with-external) instead of a dangling
-    // plugin claim.
-    ttf: "font-universal",
-    otf: "font-universal",
-    woff: "font-universal",
-    ttc: "font-universal",
-  };
-
   // Reactive CTA: whenever the open document/URI changes, offer to install the
   // matching plugin if it's absent (online). Derives the extension from the URI
   // so it works on every open path (VIEW intent, picker, drop), not just load().
@@ -677,17 +552,14 @@
       return;
     }
     const ext = extFromUri(uri);
-    const pluginId = FORMAT_PLUGIN[ext];
+    const pluginId = pluginForFormat(ext);
     if (!pluginId) {
       formatInstallCta = null;
       return;
     }
     try {
       const installed = await listInstalledPlugins();
-      const present = installed.some((p) => p.id === pluginId && pluginSupports(p, ext));
-      formatInstallCta = present
-        ? null
-        : { ext, pluginName: PLUGIN_LABEL[pluginId] ?? pluginId, uri };
+      formatInstallCta = installPromptForFormat(ext, uri, installed);
     } catch {
       formatInstallCta = null;
     }
@@ -723,7 +595,7 @@
     const editors = installed.filter(
       (p) => (p as unknown as { base?: string }).base === "edit" && isJsPlugin(p),
     );
-    const found = editors.find((p) => pluginSupports(p, ext)) ?? editors[0] ?? null;
+    const found = selectBasePlugin(editors, "edit", ext, true);
     editPlugin = found;
     return found;
   }
@@ -786,13 +658,7 @@
       return;
     }
     const installed = await listInstalledPlugins();
-    playPlugin =
-      installed.find(
-        (p) =>
-          (p as unknown as { base?: string }).base === "play" &&
-          isJsPlugin(p) &&
-          pluginSupports(p, ext),
-      ) ?? null;
+    playPlugin = selectBasePlugin(installed, "play", ext, false);
     usePlayerBase = false;
   }
 
@@ -801,7 +667,7 @@
     if (!cta || formatInstalling) return;
     formatInstalling = true;
     try {
-      const pluginId = FORMAT_PLUGIN[cta.ext];
+      const pluginId = pluginForFormat(cta.ext);
       const catalog = (await fetchPluginCatalog()) ?? [];
       const manifest = catalog.find((p) => p.id === pluginId && pluginSupports(p, cta.ext));
       if (!manifest) throw new Error(`No ${pluginId} plugin in the catalog`);
@@ -822,12 +688,8 @@
   async function resolvePptxVanillaPlugin(): Promise<PluginInfo | null> {
     if (!hasAndroidBridge()) return null;
     const prefId = getRuntimePref("pptx");
-    if (prefId === "__builtin__") return null;
     const installed = await listInstalledPlugins();
-    if (prefId) {
-      return installed.find((p) => p.id === prefId && hasPptxJsRenderer(p)) ?? null;
-    }
-    return installed.find((p) => hasPptxJsRenderer(p)) ?? null;
+    return selectPptxJsPlugin(installed, prefId);
   }
   function getRuntimePref(ext: string): string | null {
     return loadRuntimePrefs()[ext] ?? null;
@@ -868,15 +730,7 @@
         const plugins = await listInstalledPlugins();
         // runtime=js plugins render in the WebView (Viewer template), not via
         // the native renderDocumentWithPlugin bridge — skip them here.
-        const plugin = prefId
-          ? null
-          : (plugins.find(
-              (candidate) =>
-                candidate.id === "office-universal" &&
-                !isJsPlugin(candidate) &&
-                pluginSupports(candidate, ext),
-            ) ??
-            plugins.find((candidate) => !isJsPlugin(candidate) && pluginSupports(candidate, ext)));
+        const plugin = selectNativeOfficePlugin(plugins, ext, prefId);
         if (prefId) {
           const prefPlugin = plugins.find((p) => p.id === prefId && pluginSupports(p, ext));
           if (!prefPlugin) {
@@ -1046,11 +900,11 @@
     if (hasAndroidBridge() && OFFICE_KINDS.has(detectedKind) && OFFICE_ALL_EXTS.has(ext)) {
       const prefId = getRuntimePref(detectedKind);
       if (prefId !== "__builtin__") {
-        const plugin = (await listInstalledPlugins()).find(
-          (candidate) =>
-            candidate.id !== failedPluginId &&
-            !isJsPlugin(candidate) &&
-            pluginSupports(candidate, detectedKind),
+        const plugin = selectDetectedOfficePlugin(
+          await listInstalledPlugins(),
+          detectedKind,
+          prefId,
+          failedPluginId,
         );
         if (plugin) {
           await dbg(`runtime[${detectedKind}] retry plugin ${plugin.id} via detected kind`);
