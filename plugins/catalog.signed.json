@@ -65,7 +65,7 @@
       {
         "id": "office-universal",
         "name": "Office Universal Plugin",
-        "version": "0.1.3",
+        "version": "0.1.4",
         "description": "Unified parser for all Office formats: OOXML (docx/xlsx/pptx + templates), Legacy Binary (doc/ppt), OpenDocument (odt/ods/odp + templates)",
         "minAppVersion": 1,
         "entryClass": "ai.viewit.plugins.officeuniversal.OfficeUniversalPlugin",
@@ -98,18 +98,18 @@
         ],
         "runtime": "native",
         "abiVersion": 1,
-        "downloadUrl": "https://omnia.mihirpatil.co/plugins/office-universal-0.1.3-arm64-v8a.zip",
+        "downloadUrl": "https://omnia.mihirpatil.co/plugins/office-universal-0.1.4-arm64-v8a.zip",
         "jsEntry": "index.js",
         "pptxVanilla": true,
         "abi": "arm64-v8a",
-        "sizeBytes": 2662236,
-        "installedSizeBytes": 8199360,
-        "checksum": "b235822c8a3941c74b584745533a831d96a819dcf048c7af298c978ab88d142a"
+        "sizeBytes": 2672547,
+        "installedSizeBytes": 8216953,
+        "checksum": "83d57589537b8762199ad75be78fac273bbe50a482c155beeee12843143f2fc2"
       },
       {
         "id": "office-universal",
         "name": "Office Universal Plugin",
-        "version": "0.1.3",
+        "version": "0.1.4",
         "description": "Unified parser for all Office formats: OOXML (docx/xlsx/pptx + templates), Legacy Binary (doc/ppt), OpenDocument (odt/ods/odp + templates)",
         "minAppVersion": 1,
         "entryClass": "ai.viewit.plugins.officeuniversal.OfficeUniversalPlugin",
@@ -142,13 +142,13 @@
         ],
         "runtime": "native",
         "abiVersion": 1,
-        "downloadUrl": "https://omnia.mihirpatil.co/plugins/office-universal-0.1.3-x86_64.zip",
+        "downloadUrl": "https://omnia.mihirpatil.co/plugins/office-universal-0.1.4-x86_64.zip",
         "jsEntry": "index.js",
         "pptxVanilla": true,
         "abi": "x86_64",
-        "sizeBytes": 2695454,
-        "installedSizeBytes": 8683528,
-        "checksum": "c1becb394574099d91fdaef13809fd5ada6b450b8a4c7108944de8ffd2045d40"
+        "sizeBytes": 2707323,
+        "installedSizeBytes": 8706705,
+        "checksum": "190a3feea1ba417bd3268a27856230f5086c85b243c8cb93996d2b9ff114f6ce"
       },
       {
         "id": "compression-universal",
@@ -427,5 +427,5 @@
       }
     ]
   },
-  "signature": "oV6aTF7jILiyfuBj1eTO/vpUQDQTyJfgxAjn0cpfoQbhbfffEh2nW889PTlP3zfpeqn05cVHiWlra/B1tksXAw=="
+  "signature": "jB3WR2nLrW4iGDMoUKOcylfWCYMplKUPPOZisIbMrgqGQRfEeptSmlh9aedxMrB1eX+IJBjXVmmAZvQh2D1HCg=="
 }
