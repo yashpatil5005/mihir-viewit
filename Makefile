@@ -3,7 +3,7 @@
 
 SHELL := /bin/sh
 .PHONY: help setup dev-web dev-desktop build-web build-android lint format \
-	check test test-rust test-ts clean deny fmt cargo-fmt clippy misuse install-apk smoke
+	check test test-rust test-ts test-release clean deny fmt cargo-fmt clippy misuse install-apk smoke
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | sort | \
@@ -34,13 +34,16 @@ format: ## Auto-format TS/Svelte/JS (prettier)
 check: ## TypeScript typecheck of packages/platform
 	npm run check
 
-test: test-rust test-ts ## Run Rust + vitest unit tests
+test: test-rust test-ts test-release ## Run Rust, Vitest, and release-tool tests
 
 test-rust: ## Host-side Rust tests (no Android SDK required)
 	cargo test --workspace --exclude viewit-mobile --exclude viewit-desktop
 
 test-ts: ## Vitest unit tests for packages/platform
 	npm run test:ts
+
+test-release: ## Dependency-free release-tool tests
+	npm run test:release
 
 fmt: cargo-fmt ## Rust formatting (cargo fmt)
 cargo-fmt: ## Rust formatting (cargo fmt)

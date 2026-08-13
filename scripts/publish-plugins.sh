@@ -50,50 +50,13 @@ python3 "$ROOT/scripts/update-catalog.py" "${CATALOG_ARGS[@]}"
 python3 "$ROOT/scripts/sign-catalog.py" sign \
   --input "$STAGE/catalog.json" --output "$STAGE/catalog.signed.json"
 python3 "$ROOT/scripts/sign-catalog.py" verify --input "$STAGE/catalog.signed.json"
-# Copy every plugin zip referenced by the catalog into staging/plugins/.
-python3 - <<PY
-import hashlib, json, shutil, sys, urllib.request
-from pathlib import Path
-root = Path("$ROOT"); stage = Path("$STAGE/plugins")
-cat = json.loads((Path("$STAGE")/"catalog.json").read_text())
-for entry in cat["plugins"]:
-    for url in [entry["downloadUrl"]]:
-        name = url.rsplit("/", 1)[-1]
-        # find the local zip by filename across the repo plugin build outputs
-        found = None
-        for cand in (root/"apps"/"mobile"/"plugins", root/"plugins", root/"build"):
-            p = cand / name
-            if p.exists(): found = p; break
-        if found is None:
-            for p in (root/"apps"/"mobile"/"plugins").glob("*/build/output/*.zip"):
-                if p.name == name: found = p; break
-        if found is None:
-            for p in (root/"plugins").glob("*/build/*.zip"):
-                if p.name == name: found = p; break
-        destination = stage / name
-        if found and hashlib.sha256(found.read_bytes()).hexdigest() == entry["checksum"]:
-            shutil.copy2(found, destination)
-        else:
-            print("  [publish] fetching unchanged artifact:", entry["id"], name)
-            request = urllib.request.Request(url, headers={"User-Agent": "viewit-release-stager"})
-            with urllib.request.urlopen(request, timeout=60) as response:
-                destination.write_bytes(response.read())
-PY
-python3 - "$STAGE/catalog.json" "$STAGE/plugins" <<'PY'
-import hashlib, json, sys
-from pathlib import Path
-catalog = json.loads(Path(sys.argv[1]).read_text())
-plugins = Path(sys.argv[2])
-signed = json.loads(Path(sys.argv[1]).with_name("catalog.signed.json").read_text())
-if signed.get("catalog") != catalog:
-    raise SystemExit("staged signed/unsigned catalogs differ")
-for entry in catalog["plugins"]:
-    artifact = plugins / entry["downloadUrl"].rsplit("/", 1)[-1]
-    data = artifact.read_bytes()
-    if len(data) != entry["sizeBytes"] or hashlib.sha256(data).hexdigest() != entry["checksum"]:
-        raise SystemExit(f"staged artifact mismatch: {artifact}")
-print(f"[publish] staged and verified {len(catalog['plugins'])} catalog artifacts")
-PY
+python3 "$ROOT/scripts/stage_plugin_catalog.py" \
+  --catalog "$STAGE/catalog.json" \
+  --signed-catalog "$STAGE/catalog.signed.json" \
+  --destination "$STAGE/plugins" \
+  --search-root "$ROOT/apps/mobile/plugins" \
+  --search-root "$ROOT/plugins" \
+  --search-root "$ROOT/build"
 
 echo "[publish] 3/3 deploy $STAGE -> Pages project '$PROJECT'"
 if [ "$STAGE_ONLY" -eq 1 ]; then

@@ -23,10 +23,11 @@
     "lint": "prettier --check 'apps/**/*.{ts,svelte,js}' 'packages/**/*.{ts,svelte,js}'",
     "format": "prettier --write 'apps/**/*.{ts,svelte,js}' 'packages/**/*.{ts,svelte,js}'",
     "check": "tsc --noEmit -p packages/platform",
-    "test:ts": "vitest run -c packages/platform/vitest.config.ts",
+    "test:ts": "node scripts/run-vitest.mjs",
+    "test:release": "python3 -m unittest discover -s scripts/tests -p 'test_*.py'",
     "test:rust": "cargo test --workspace --exclude viewit-mobile --exclude viewit-desktop --lib",
     "test:e2e": "playwright test --config e2e/web/playwright.config.ts",
-    "test": "npm run test:rust && npm run test:ts",
+    "test": "npm run test:rust && npm run test:ts && npm run test:release",
     "size-check": "node scripts/size-budget.ts"
   },
   "devDependencies": {

@@ -21,6 +21,8 @@ jobs:
         run: npm run test:rust
       - name: TypeScript tests
         run: npm run test:ts
+      - name: Release tooling tests
+        run: npm run test:release
       - name: Svelte typecheck
         run: cd packages/ui && npx svelte-check --tsconfig ./tsconfig.json
       - name: Frontend build
