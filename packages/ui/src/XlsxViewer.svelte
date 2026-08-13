@@ -15,6 +15,13 @@
       frozen_panes?: { x_split: number; y_split: number; active_pane: string };
       preview_formulas?: string[][];
       column_widths?: (number | null | undefined)[];
+      cell_styles?: Array<Array<{
+        fill_color?: string;
+        font_color?: string;
+        bold?: boolean;
+        italic?: boolean;
+        border_color?: string;
+      } | null>>;
     }>,
   );
   let pluginHtml = $derived((docProp.html ?? "") as string);
@@ -173,6 +180,18 @@
     }
     return `left:${left}px;`;
   }
+
+  function cellStyle(row: number, col: number): string {
+    const style = sheet?.cell_styles?.[row]?.[col];
+    if (!style) return "";
+    return [
+      style.fill_color ? `background-color:${style.fill_color}` : "",
+      style.font_color ? `color:${style.font_color}` : "",
+      style.bold ? "font-weight:700" : "",
+      style.italic ? "font-style:italic" : "",
+      style.border_color ? `border-color:${style.border_color}` : "",
+    ].filter(Boolean).join(";");
+  }
 </script>
 
 <article class="xlsx-viewer">
@@ -233,7 +252,7 @@
                 <th
                   colspan={headerMergeSpan[i] ?? 1}
                   class:frozen-c={i < frozenCols}
-                  style={colStyle(i) + frozenLeft(i)}>{@html cellMatches(h)}</th
+                  style={colStyle(i) + frozenLeft(i) + cellStyle(0, i)}>{@html cellMatches(h)}</th
                 >
               {/each}
             </tr>
@@ -251,7 +270,7 @@
                       class:formula={(cell ?? "").startsWith("=") ||
                         (!(cell ?? "").trim() && !!fmt)}
                       class:frozen-c={c < frozenCols}
-                      style={colStyle(c) + frozenLeft(c)}
+                      style={colStyle(c) + frozenLeft(c) + cellStyle(rowIndex + 1, c)}
                       title={fmt ? fmt + "\n" + (cell ?? "") : cell}
                     >
                       {#if !(cell ?? "").trim() && fmt}

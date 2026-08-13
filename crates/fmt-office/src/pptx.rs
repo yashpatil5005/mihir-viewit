@@ -35,7 +35,8 @@ pub fn parse_pptx(bytes: &[u8], _format: Format, _name: &str) -> Result<Document
         let (title, body) = extract_slide_text(&slide_xml);
         let rels = slide_relationships(bytes, i).unwrap_or_default();
         let elements = parse_slide_elements(bytes, &slide_xml, &rels, slide_w, slide_h);
-        let background = parse_slide_background(&slide_xml);
+        let background = parse_slide_background(&slide_xml)
+            .or_else(|| inherited_slide_background(bytes, i, &rels));
 
         slides.push(PptxSlide {
             title,
@@ -245,6 +246,153 @@ fn parse_slide_background(xml: &str) -> Option<PptxBackground> {
         }
     }
     bg
+}
+
+fn inherited_slide_background(
+    bytes: &[u8],
+    slide_index: usize,
+    slide_rels: &std::collections::HashMap<String, String>,
+) -> Option<PptxBackground> {
+    let layout_target = slide_rels
+        .values()
+        .find(|target| target.contains("slideLayout"))?;
+    let layout_path =
+        resolve_part_target(&format!("ppt/slides/slide{slide_index}.xml"), layout_target);
+    let layout_xml = zip_entry_string(bytes, &layout_path).ok()?;
+    if let Some(background) = parse_slide_background(&layout_xml) {
+        return Some(background);
+    }
+
+    let layout_rels = part_relationships(bytes, &layout_path).ok()?;
+    let master_target = layout_rels
+        .values()
+        .find(|target| target.contains("slideMaster"))?;
+    let master_path = resolve_part_target(&layout_path, master_target);
+    let master_xml = zip_entry_string(bytes, &master_path).ok()?;
+    if let Some(background) = parse_slide_background(&master_xml) {
+        return Some(background);
+    }
+
+    let scheme = parse_background_scheme(&master_xml)?;
+    let mapped = parse_color_map(&master_xml, &scheme).unwrap_or(scheme);
+    let master_rels = part_relationships(bytes, &master_path).ok()?;
+    let theme_target = master_rels
+        .values()
+        .find(|target| target.contains("theme"))?;
+    let theme_path = resolve_part_target(&master_path, theme_target);
+    let theme_xml = zip_entry_string(bytes, &theme_path).ok()?;
+    let color = parse_theme_color(&theme_xml, &mapped)?;
+    Some(PptxBackground {
+        kind: "solid".into(),
+        color: Some(color),
+        gradient: None,
+    })
+}
+
+fn part_relationships(
+    bytes: &[u8],
+    part_path: &str,
+) -> Result<std::collections::HashMap<String, String>, Error> {
+    let (dir, name) = part_path.rsplit_once('/').unwrap_or(("", part_path));
+    let rels_path = format!("{dir}/_rels/{name}.rels");
+    let xml = zip_entry_string(bytes, &rels_path)?;
+    let mut rels = std::collections::HashMap::new();
+    let mut reader = quick_xml::Reader::from_str(&xml);
+    loop {
+        match reader.read_event() {
+            Ok(quick_xml::events::Event::Start(e)) | Ok(quick_xml::events::Event::Empty(e))
+                if e.name().as_ref() == b"Relationship" =>
+            {
+                if let (Some(id), Some(target)) = (x_attr(&e, b"Id"), x_attr(&e, b"Target")) {
+                    rels.insert(id, target);
+                }
+            }
+            Ok(quick_xml::events::Event::Eof) => break,
+            Err(e) => return Err(Error::Parse(format!("relationships parse: {e}"))),
+            _ => {}
+        }
+    }
+    Ok(rels)
+}
+
+fn resolve_part_target(part_path: &str, target: &str) -> String {
+    if target.starts_with('/') {
+        return target.trim_start_matches('/').to_string();
+    }
+    let mut parts: Vec<&str> = part_path.split('/').collect();
+    parts.pop();
+    for component in target.split('/') {
+        match component {
+            ".." => {
+                parts.pop();
+            }
+            "." | "" => {}
+            value => parts.push(value),
+        }
+    }
+    parts.join("/")
+}
+
+fn parse_background_scheme(xml: &str) -> Option<String> {
+    let mut reader = quick_xml::Reader::from_str(xml);
+    let mut in_bg = false;
+    loop {
+        match reader.read_event() {
+            Ok(quick_xml::events::Event::Start(e)) if e.name().as_ref() == b"p:bg" => in_bg = true,
+            Ok(quick_xml::events::Event::Empty(e))
+                if in_bg && e.name().as_ref() == b"a:schemeClr" =>
+            {
+                return x_attr(&e, b"val");
+            }
+            Ok(quick_xml::events::Event::End(e)) if e.name().as_ref() == b"p:bg" => break,
+            Ok(quick_xml::events::Event::Eof) | Err(_) => break,
+            _ => {}
+        }
+    }
+    None
+}
+
+fn parse_color_map(xml: &str, key: &str) -> Option<String> {
+    let mut reader = quick_xml::Reader::from_str(xml);
+    loop {
+        match reader.read_event() {
+            Ok(quick_xml::events::Event::Start(e)) | Ok(quick_xml::events::Event::Empty(e))
+                if e.name().as_ref() == b"p:clrMap" =>
+            {
+                return x_attr(&e, key.as_bytes());
+            }
+            Ok(quick_xml::events::Event::Eof) | Err(_) => break,
+            _ => {}
+        }
+    }
+    None
+}
+
+fn parse_theme_color(xml: &str, key: &str) -> Option<String> {
+    let mut reader = quick_xml::Reader::from_str(xml);
+    let expected = format!("a:{key}");
+    let mut in_color = false;
+    loop {
+        match reader.read_event() {
+            Ok(quick_xml::events::Event::Start(e)) if e.name().as_ref() == expected.as_bytes() => {
+                in_color = true
+            }
+            Ok(quick_xml::events::Event::Empty(e)) if in_color => {
+                if e.name().as_ref() == b"a:srgbClr" {
+                    return x_attr(&e, b"val").map(|v| format!("#{v}"));
+                }
+                if e.name().as_ref() == b"a:sysClr" {
+                    return x_attr(&e, b"lastClr").map(|v| format!("#{v}"));
+                }
+            }
+            Ok(quick_xml::events::Event::End(e)) if e.name().as_ref() == expected.as_bytes() => {
+                break
+            }
+            Ok(quick_xml::events::Event::Eof) | Err(_) => break,
+            _ => {}
+        }
+    }
+    None
 }
 
 struct ElementBuilder {
@@ -692,5 +840,18 @@ mod tests {
         let para = el.paragraphs.as_ref().unwrap();
         assert_eq!(para[0].runs[0].text, "Exact deck");
         assert!(para[0].runs[0].bold);
+    }
+
+    #[test]
+    fn resolves_part_targets_and_theme_colors() {
+        assert_eq!(
+            resolve_part_target("ppt/slides/slide1.xml", "../slideLayouts/slideLayout7.xml"),
+            "ppt/slideLayouts/slideLayout7.xml"
+        );
+        let master = r#"<p:sldMaster xmlns:p="p" xmlns:a="a"><p:cSld><p:bg><p:bgRef><a:schemeClr val="bg1"/></p:bgRef></p:bg></p:cSld><p:clrMap bg1="lt1"/></p:sldMaster>"#;
+        assert_eq!(parse_background_scheme(master).as_deref(), Some("bg1"));
+        assert_eq!(parse_color_map(master, "bg1").as_deref(), Some("lt1"));
+        let theme = r#"<a:theme xmlns:a="a"><a:themeElements><a:clrScheme><a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1></a:clrScheme></a:themeElements></a:theme>"#;
+        assert_eq!(parse_theme_color(theme, "lt1").as_deref(), Some("#FFFFFF"));
     }
 }

@@ -5,7 +5,7 @@
 //! Produces Document::Pptx with structured slide data (title + body).
 
 use std::io::{Cursor, Read};
-use viewit_core_types::{Document, Error, Format, PptxSlide};
+use viewit_core_types::{Document, Error, Format, PptxElement, PptxSlide};
 use zip::ZipArchive;
 
 pub fn parse_odp(bytes: &[u8], _format: Format, _name: &str) -> Result<Document, Error> {
@@ -50,6 +50,8 @@ fn extract_odp_slides(xml: &str) -> Vec<PptxSlide> {
     let mut in_text_p = false;
     let mut current_text: Vec<String> = Vec::new();
     let mut page_texts: Vec<String> = Vec::new();
+    let mut page_elements: Vec<PptxElement> = Vec::new();
+    let mut frame: Option<(u64, u64, u64, u64, Vec<String>)> = None;
 
     loop {
         match reader.read_event_into(&mut buf) {
@@ -60,6 +62,16 @@ fn extract_odp_slides(xml: &str) -> Vec<PptxSlide> {
                 if tag == b"page" {
                     in_page = true;
                     page_texts.clear();
+                    page_elements.clear();
+                }
+                if tag == b"frame" && in_page && !in_notes {
+                    frame = Some((
+                        odf_length_attr(&e, b"x").unwrap_or(0),
+                        odf_length_attr(&e, b"y").unwrap_or(0),
+                        odf_length_attr(&e, b"width").unwrap_or(0),
+                        odf_length_attr(&e, b"height").unwrap_or(0),
+                        Vec::new(),
+                    ));
                 }
                 // Skip speaker notes — they're not visible slide content.
                 if tag == b"notes" && in_page {
@@ -81,9 +93,39 @@ fn extract_odp_slides(xml: &str) -> Vec<PptxSlide> {
                 let tag = name.local_name();
                 let tag = tag.as_ref();
                 if tag == b"p" && in_text_p {
-                    in_text_p = false;                    let text = current_text.concat();
+                    in_text_p = false;
+                    let text = current_text.concat();
                     if !text.trim().is_empty() {
+                        if let Some((_, _, _, _, texts)) = &mut frame {
+                            texts.push(text.clone());
+                        }
                         page_texts.push(text);
+                    }
+                }
+                if tag == b"frame" {
+                    if let Some((x, y, w, h, texts)) = frame.take() {
+                        let text = texts.join("\n");
+                        if !text.is_empty() {
+                            let index = page_elements.len();
+                            let (x, y, w, h) = if w > 0 && h > 0 {
+                                (x, y, w, h)
+                            } else if index == 0 {
+                                (640_080, 548_640, 7_863_840, 1_234_440)
+                            } else {
+                                (822_960, 2_057_400, 7_498_080, 3_977_640)
+                            };
+                            page_elements.push(PptxElement {
+                                kind: "text".into(),
+                                x,
+                                y,
+                                w,
+                                h,
+                                src: None,
+                                text: Some(text),
+                                font_size: Some(if index == 0 { 36.0 } else { 24.0 }),
+                                paragraphs: None,
+                            });
+                        }
                     }
                 }
                 if tag == b"notes" && in_notes {
@@ -101,7 +143,7 @@ fn extract_odp_slides(xml: &str) -> Vec<PptxSlide> {
                     slides.push(PptxSlide {
                         title,
                         body,
-                        elements: Vec::new(),
+                        elements: page_elements.clone(),
                         // ODP default: 25.4cm x 19.05cm (10" x 7.5" in EMUs)
                         // matching the common 4:3 presentation size.
                         width: Some(9_144_000),
@@ -118,6 +160,30 @@ fn extract_odp_slides(xml: &str) -> Vec<PptxSlide> {
     }
 
     slides
+}
+
+fn odf_length_attr(e: &quick_xml::events::BytesStart<'_>, local: &[u8]) -> Option<u64> {
+    e.attributes().flatten().find_map(|attr| {
+        if attr.key.local_name().as_ref() == local {
+            odf_length_to_emu(&String::from_utf8_lossy(attr.value.as_ref()))
+        } else {
+            None
+        }
+    })
+}
+
+fn odf_length_to_emu(value: &str) -> Option<u64> {
+    let split = value.find(|c: char| !c.is_ascii_digit() && c != '.' && c != '-')?;
+    let amount = value[..split].parse::<f64>().ok()?;
+    let unit = &value[split..];
+    let emu = match unit {
+        "cm" => amount * 360_000.0,
+        "mm" => amount * 36_000.0,
+        "in" => amount * 914_400.0,
+        "pt" => amount * 12_700.0,
+        _ => return None,
+    };
+    Some(emu.max(0.0).round() as u64)
 }
 
 #[cfg(test)]
@@ -150,5 +216,15 @@ mod tests {
         assert_eq!(slides[0].body, "Body text line 1\nBody text line 2");
         assert_eq!(slides[1].title, "Another Slide");
         assert_eq!(slides[1].body, "More content");
+    }
+
+    #[test]
+    fn extracts_positioned_odp_frame() {
+        let xml = r#"<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0"><office:body><office:presentation><draw:page><draw:frame svg:x="1cm" svg:y="2cm" svg:width="10cm" svg:height="3cm"><draw:text-box><text:p>Placed text</text:p></draw:text-box></draw:frame></draw:page></office:presentation></office:body></office:document-content>"#;
+        let slides = extract_odp_slides(xml);
+        let element = &slides[0].elements[0];
+        assert_eq!((element.x, element.y), (360_000, 720_000));
+        assert_eq!((element.w, element.h), (3_600_000, 1_080_000));
+        assert_eq!(element.text.as_deref(), Some("Placed text"));
     }
 }

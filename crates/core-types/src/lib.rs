@@ -300,6 +300,10 @@ pub enum DocxBlock {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         src: Option<String>,
     },
+    Hyperlink {
+        text: String,
+        href: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -381,6 +385,20 @@ pub struct XlsxFrozenPanes {
     pub active_pane: String,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct XlsxCellStyle {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fill_color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font_color: Option<String>,
+    #[serde(default)]
+    pub bold: bool,
+    #[serde(default)]
+    pub italic: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub border_color: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct XlsxSheet {
     pub name: String,
@@ -406,6 +424,10 @@ pub struct XlsxSheet {
     /// `None` entries mean "default width".
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub column_widths: Option<Vec<Option<f64>>>,
+    /// Sparse style grid aligned to all emitted worksheet rows, including the
+    /// header at index 0. Missing/default cells are `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cell_styles: Option<Vec<Vec<Option<XlsxCellStyle>>>>,
 }
 
 /// Errors that any fmt-* crate may return. Uniform so the frontend can rely

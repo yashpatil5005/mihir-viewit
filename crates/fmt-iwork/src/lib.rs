@@ -175,6 +175,7 @@ fn iwork_numbers_sheets(
         merged_cells: None,
         frozen_panes: None,
         column_widths: None,
+        cell_styles: None,
     }]
 }
 

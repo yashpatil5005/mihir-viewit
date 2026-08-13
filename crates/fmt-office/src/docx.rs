@@ -26,46 +26,64 @@ pub fn parse_docx(bytes: &[u8]) -> Result<Document, Error> {
     for content in &docx.document.body.content {
         match content {
             docx_rust::document::BodyContent::Paragraph(p) => {
-                // Check for embedded images in runs (w:drawing → a:blip r:embed).
-                let mut img_added = false;
+                let heading = p
+                    .property
+                    .as_ref()
+                    .and_then(|prop| prop.style_id.as_ref())
+                    .and_then(|sid| heading_from_style(&sid.value));
+                let is_list = p
+                    .property
+                    .as_ref()
+                    .and_then(|prop| prop.numbering.as_ref())
+                    .and_then(|n| n.id.as_ref())
+                    .map(|id| id.value != 0)
+                    .unwrap_or(false);
+                let mut pending_text = String::new();
                 for pc in &p.content {
-                    if let docx_rust::document::ParagraphContent::Run(r) = pc {
-                        for rc in &r.content {
-                            if let docx_rust::document::RunContent::Drawing(d) = rc {
-                                if let Some(name) = drawing_media_name(d, &rels) {
-                                    blocks.push(DocxBlock::Image {
-                                        name,
-                                        src: None,
-                                    });
-                                    img_added = true;
+                    match pc {
+                        docx_rust::document::ParagraphContent::Run(r) => {
+                            pending_text.extend(r.iter_text().map(|text| text.as_ref()));
+                            for rc in &r.content {
+                                if let docx_rust::document::RunContent::Drawing(d) = rc {
+                                    if let Some(name) = drawing_media_name(d, &rels) {
+                                        push_docx_text_block(
+                                            &mut blocks,
+                                            std::mem::take(&mut pending_text),
+                                            heading,
+                                            is_list,
+                                        );
+                                        blocks.push(DocxBlock::Image { name, src: None });
+                                    }
                                 }
                             }
                         }
+                        docx_rust::document::ParagraphContent::Link(link) => {
+                            let text = link.text();
+                            let href = link
+                                .id
+                                .as_deref()
+                                .and_then(|id| rels.get(id))
+                                .cloned()
+                                .or_else(|| link.anchor.as_ref().map(|a| format!("#{a}")));
+                            if !text.trim().is_empty() {
+                                if let Some(href) = href {
+                                    push_docx_text_block(
+                                        &mut blocks,
+                                        std::mem::take(&mut pending_text),
+                                        heading,
+                                        is_list,
+                                    );
+                                    blocks.push(DocxBlock::Hyperlink { text, href });
+                                }
+                            }
+                        }
+                        docx_rust::document::ParagraphContent::SDT(sdt) => {
+                            pending_text.extend(sdt.iter_text().map(|text| text.as_ref()));
+                        }
+                        _ => {}
                     }
                 }
-                let text = p.text();
-                if text.trim().is_empty() && !img_added {
-                    continue;
-                }
-                if !text.trim().is_empty() {
-                    let heading = p
-                        .property
-                        .as_ref()
-                        .and_then(|prop| prop.style_id.as_ref())
-                        .and_then(|sid| heading_from_style(&sid.value));
-                    let is_list = p
-                        .property
-                        .as_ref()
-                        .and_then(|prop| prop.numbering.as_ref())
-                        .and_then(|n| n.id.as_ref())
-                        .map(|id| id.value != 0)
-                        .unwrap_or(false);
-                    if is_list {
-                        blocks.push(DocxBlock::ListItem { text, level: 0 });
-                    } else {
-                        blocks.push(DocxBlock::Paragraph { text, heading });
-                    }
-                }
+                push_docx_text_block(&mut blocks, pending_text, heading, is_list);
             }
             docx_rust::document::BodyContent::Table(t) => {
                 let mut rows: Vec<Vec<String>> = Vec::new();
@@ -89,7 +107,7 @@ pub fn parse_docx(bytes: &[u8]) -> Result<Document, Error> {
                 }
                 blocks.push(DocxBlock::Table { rows });
             }
-            _ => {  }
+            _ => {}
         }
     }
 
@@ -97,6 +115,22 @@ pub fn parse_docx(bytes: &[u8]) -> Result<Document, Error> {
         blocks,
         byte_len: bytes.len(),
     })
+}
+
+fn push_docx_text_block(
+    blocks: &mut Vec<DocxBlock>,
+    text: String,
+    heading: Option<u8>,
+    is_list: bool,
+) {
+    if text.trim().is_empty() {
+        return;
+    }
+    if is_list {
+        blocks.push(DocxBlock::ListItem { text, level: 0 });
+    } else {
+        blocks.push(DocxBlock::Paragraph { text, heading });
+    }
 }
 
 fn parse_docx_ooxml_fallback(bytes: &[u8]) -> Result<Document, Error> {
@@ -153,7 +187,7 @@ fn parse_docx_document_xml(xml: &str, byte_len: usize) -> Result<Document, Error
                         cell_text.clear();
                     }
                     b"w:p" => {
-                        in_paragraph = true; 
+                        in_paragraph = true;
                         paragraph_text.clear();
                         paragraph_heading = None;
                         paragraph_is_list = false;
@@ -185,7 +219,7 @@ fn parse_docx_document_xml(xml: &str, byte_len: usize) -> Result<Document, Error
                             }
                         }
                     }
-                    _ => {  }
+                    _ => {}
                 }
             }
             Ok(Event::Text(e)) if in_text => {
@@ -232,7 +266,7 @@ fn parse_docx_document_xml(xml: &str, byte_len: usize) -> Result<Document, Error
                         }
                         in_table = false;
                     }
-                    _ => {  }
+                    _ => {}
                 }
             }
             Ok(Event::Eof) => break,
@@ -250,7 +284,7 @@ fn parse_docx_document_xml(xml: &str, byte_len: usize) -> Result<Document, Error
                 }
             }
             Err(e) => return Err(Error::Parse(format!("docx xml: {}", e))),
-            _ => {  }
+            _ => {}
         }
         buf.clear();
     }
@@ -349,5 +383,33 @@ mod tests {
         assert_eq!(heading_from_style("Heading 2"), Some(2));
         assert_eq!(heading_from_style("heading3"), Some(3));
         assert_eq!(heading_from_style("Normal"), None);
+    }
+
+    #[test]
+    fn extracts_external_hyperlink_without_duplicate_paragraph() {
+        use std::io::Write;
+        let mut bytes = Vec::new();
+        {
+            let mut zip = zip::ZipWriter::new(Cursor::new(&mut bytes));
+            let options = zip::write::SimpleFileOptions::default();
+            zip.start_file("[Content_Types].xml", options).unwrap();
+            zip.write_all(br#"<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>"#).unwrap();
+            zip.start_file("_rels/.rels", options).unwrap();
+            zip.write_all(br#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>"#).unwrap();
+            zip.start_file("word/document.xml", options).unwrap();
+            zip.write_all(br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body><w:p><w:r><w:t>Before </w:t></w:r><w:hyperlink r:id="rId1"><w:r><w:t>ViewIt</w:t></w:r></w:hyperlink><w:r><w:t> after</w:t></w:r></w:p></w:body></w:document>"#).unwrap();
+            zip.start_file("word/_rels/document.xml.rels", options)
+                .unwrap();
+            zip.write_all(br#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://viewit.example" TargetMode="External"/></Relationships>"#).unwrap();
+            zip.finish().unwrap();
+        }
+        let Document::Docx { blocks, .. } = parse_docx(&bytes).unwrap() else {
+            panic!("expected Docx")
+        };
+        assert!(matches!(&blocks[0], DocxBlock::Paragraph { text, .. } if text == "Before "));
+        assert!(
+            matches!(&blocks[1], DocxBlock::Hyperlink { text, href } if text == "ViewIt" && href == "https://viewit.example")
+        );
+        assert!(matches!(&blocks[2], DocxBlock::Paragraph { text, .. } if text == " after"));
     }
 }
