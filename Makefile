@@ -34,7 +34,7 @@ format: ## Auto-format TS/Svelte/JS (prettier)
 check: ## TypeScript typecheck of packages/platform
 	npm run check
 
-test: test-rust test-ts test-release ## Run Rust, Vitest, and release-tool tests
+test: test-rust test-ts test-release test-android ## Run all unit and release-tool tests
 
 test-rust: ## Host-side Rust tests (no Android SDK required)
 	cargo test --workspace --exclude viewit-mobile --exclude viewit-desktop
@@ -44,6 +44,9 @@ test-ts: ## Vitest unit tests for packages/platform
 
 test-release: ## Dependency-free release-tool tests
 	npm run test:release
+
+test-android: ## Android plugin-runtime JVM tests
+	npm run test:android
 
 test-visual-android: ## Physical-device Office visual regression suite
 	npm run test:visual:android

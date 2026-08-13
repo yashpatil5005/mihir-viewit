@@ -12,9 +12,11 @@ import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
-import java.security.spec.X509EncodedKeySpec
-import java.security.KeyFactory
 import java.util.TreeSet
+import net.i2p.crypto.eddsa.EdDSAEngine
+import net.i2p.crypto.eddsa.EdDSAPublicKey
+import net.i2p.crypto.eddsa.spec.EdDSANamedCurveTable
+import net.i2p.crypto.eddsa.spec.EdDSAPublicKeySpec
 
 class PluginManager(private val context: Context) {
 
@@ -22,8 +24,6 @@ class PluginManager(private val context: Context) {
         private const val TAG = "PluginManager"
         private const val CATALOG_URL_DEBUG = "http://127.0.0.1:8888/catalog.json"
         private const val CATALOG_URL_RELEASE = "https://omnia.mihirpatil.co/catalog.signed.json"
-
-        private const val SUPPORTED_ABI_VERSION = 1
 
         // Ed25519 public key for catalog signature verification (base64 encoded)
         // Generated with: python3 scripts/sign-catalog.py generate
@@ -64,20 +64,11 @@ class PluginManager(private val context: Context) {
         }
 
         fun validateManifest(manifest: PluginManifest): List<String> {
-            val errors = mutableListOf<String>()
-            if (manifest.id.isBlank()) errors.add("id is required")
-            if (manifest.name.isBlank()) errors.add("name is required")
-            if (manifest.version.isBlank()) errors.add("version is required")
-            if (manifest.runtime != "js" && manifest.entryClass.isBlank()) errors.add("entryClass is required")
-            if (manifest.supportedFormats.isEmpty()) errors.add("supportedFormats is required")
-            if (manifest.abiVersion > SUPPORTED_ABI_VERSION) {
-                errors.add("abiVersion ${manifest.abiVersion} is not supported (max $SUPPORTED_ABI_VERSION)")
-            }
-            return errors
+            return PluginRuntimePolicy.validateManifest(manifest)
         }
 
         fun runtimeAbi(): String {
-            return android.os.Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a"
+            return PluginRuntimePolicy.selectRuntimeAbi(android.os.Build.SUPPORTED_ABIS)
         }
 
         fun getCatalogUrl(): String {
@@ -208,6 +199,10 @@ class PluginManager(private val context: Context) {
                 z.getInputStream(entry).readBytes().toString(Charsets.UTF_8)
             }
             val manifest = fetchManifestFromJson(JSONObject(manifestJson))
+            val validationErrors = validateManifest(manifest)
+            if (validationErrors.isNotEmpty()) {
+                return Result.failure(Exception("Invalid manifest: ${validationErrors.joinToString(", ")}"))
+            }
             onProgress(0.3f)
             installZipPayload(zipFile, manifest, onProgress)
         } catch (e: Throwable) {
@@ -222,22 +217,30 @@ class PluginManager(private val context: Context) {
         onProgress: (Float) -> Unit,
     ): Result<InstalledPlugin> {
         return try {
+            if (manifest.checksum.isNotEmpty()) {
+                val hash = sha256(zipFile)
+                if (!hash.equals(manifest.checksum, ignoreCase = true)) {
+                    return Result.failure(Exception("Checksum mismatch"))
+                }
+            }
+
             // A native plugin loaded this process stays loaded (Android cannot
             // dlclose it). Reinstall of the SAME artifact reuses the loaded
             // instance; an UPGRADE persists the new files and asks for a restart
             // (reloading the .so into a fresh classloader would throw an
             // UnsatisfiedLinkError cross-loader).
             val warm = warmLoaded[manifest.id]
-            if (warm != null && (warm.mediaPlugin != null || warm.documentPlugin != null)) {
-                val sameArtifact =
-                    warm.manifest.version == manifest.version
-                        && (manifest.checksum.isEmpty()
-                            || warm.manifest.checksum.equals(manifest.checksum, ignoreCase = true))
-                if (sameArtifact) {
+            when (PluginRuntimePolicy.warmInstallAction(
+                warm?.manifest,
+                warm?.let { it.mediaPlugin != null || it.documentPlugin != null } == true,
+                manifest,
+            )) {
+                PluginRuntimePolicy.WarmInstallAction.REUSE -> {
+                    checkNotNull(warm)
                     val stagingDir = File(pluginsDir, "${manifest.id}.staging")
                     stagingDir.deleteRecursively()
                     stagingDir.mkdirs()
-                    unzip(zipFile, stagingDir)
+                    unzip(zipFile, stagingDir, manifest.installedSizeBytes)
                     val dir2 = File(pluginsDir, manifest.id)
                     dir2.deleteRecursively()
                     stagingDir.renameTo(dir2)
@@ -247,24 +250,21 @@ class PluginManager(private val context: Context) {
                     Log.i(TAG, "Reused warm-loaded plugin (native stays loaded): ${manifest.id} v${manifest.version}")
                     return Result.success(reinstalled)
                 }
-                val stagingDir = File(pluginsDir, "${manifest.id}.staging")
-                stagingDir.deleteRecursively()
-                stagingDir.mkdirs()
-                if (manifest.checksum.isNotEmpty()) {
-                    val hash = sha256(zipFile)
-                    if (!hash.equals(manifest.checksum, ignoreCase = true)) {
-                        stagingDir.deleteRecursively()
-                        return Result.failure(Exception("Checksum mismatch"))
-                    }
+                PluginRuntimePolicy.WarmInstallAction.STAGE_FOR_RESTART -> {
+                    checkNotNull(warm)
+                    val stagingDir = File(pluginsDir, "${manifest.id}.staging")
+                    stagingDir.deleteRecursively()
+                    stagingDir.mkdirs()
+                    unzip(zipFile, stagingDir, manifest.installedSizeBytes)
+                    saveManifest(stagingDir, manifest)
+                    val dir2 = File(pluginsDir, manifest.id)
+                    dir2.deleteRecursively()
+                    stagingDir.renameTo(dir2)
+                    installed[manifest.id] = warm // keep this session working on the old loaded instance
+                    Log.w(TAG, "Native plugin update staged; restart to apply: ${manifest.id} → v${manifest.version}")
+                    return Result.failure(Exception("Update downloaded. Restart the app to apply it."))
                 }
-                unzip(zipFile, stagingDir)
-                saveManifest(stagingDir, manifest)
-                val dir2 = File(pluginsDir, manifest.id)
-                dir2.deleteRecursively()
-                stagingDir.renameTo(dir2)
-                installed[manifest.id] = warm // keep this session working on the old loaded instance
-                Log.w(TAG, "Native plugin update staged; restart to apply: ${manifest.id} → v${manifest.version}")
-                return Result.failure(Exception("Update downloaded. Restart the app to apply it."))
+                PluginRuntimePolicy.WarmInstallAction.LOAD -> Unit
             }
 
             val dir = File(pluginsDir, manifest.id)
@@ -285,16 +285,8 @@ class PluginManager(private val context: Context) {
             stagingDir.deleteRecursively()
             stagingDir.mkdirs()
 
-            if (manifest.checksum.isNotEmpty()) {
-                val hash = sha256(zipFile)
-                if (!hash.equals(manifest.checksum, ignoreCase = true)) {
-                    stagingDir.deleteRecursively()
-                    return Result.failure(Exception("Checksum mismatch"))
-                }
-            }
-
             onProgress(0.6f)
-            unzip(zipFile, stagingDir)
+            unzip(zipFile, stagingDir, manifest.installedSizeBytes)
             saveManifest(stagingDir, manifest)
 
             val plugin = loadPluginFromDir(stagingDir)
@@ -329,9 +321,9 @@ class PluginManager(private val context: Context) {
     /** Base64 of a plugin asset file (used by runtime=js plugins to load bundles in the WebView). */
     fun pluginAssetB64(pluginId: String, relPath: String): String? {
         val plugin = installed[pluginId] ?: return null
-        val file = File(plugin.installDir, relPath)
-        if (!file.exists() || file.length() > 16L * 1024 * 1024) return null
         return try {
+            val file = PluginRuntimePolicy.zipEntryDestination(plugin.installDir, relPath)
+            if (!file.isFile || file.length() > 16L * 1024 * 1024) return null
             java.util.Base64.getEncoder().encodeToString(file.readBytes())
         } catch (e: Exception) {
             Log.e(TAG, "Read plugin asset failed: $pluginId/$relPath", e)
@@ -340,6 +332,9 @@ class PluginManager(private val context: Context) {
     }
 
     fun removePlugin(pluginId: String): Result<Unit> {
+        if (!PluginRuntimePolicy.isValidPluginId(pluginId)) {
+            return Result.failure(IllegalArgumentException("Invalid plugin id"))
+        }
         return try {
             val plugin = installed.remove(pluginId)
             plugin?.mediaPlugin?.cleanup()
@@ -382,7 +377,9 @@ class PluginManager(private val context: Context) {
                 }
                 Result.success(list)
             } else {
-                // Fallback for unsigned catalog (debug/dev)
+                if (!PluginRuntimePolicy.acceptsUnsignedCatalog(BuildConfig.DEBUG)) {
+                    return Result.failure(Exception("Plugin catalog signature is required"))
+                }
                 Log.w(TAG, "Catalog is not signed - accepting for debug/dev")
                 val arr = obj.getJSONArray("plugins")
                 val list = mutableListOf<PluginManifest>()
@@ -405,11 +402,9 @@ class PluginManager(private val context: Context) {
             val publicKeyBytes = android.util.Base64.decode(CATALOG_PUBLIC_KEY_B64, android.util.Base64.DEFAULT)
             val signatureBytes = android.util.Base64.decode(signatureB64, android.util.Base64.DEFAULT)
 
-            val keySpec = X509EncodedKeySpec(ed25519SubjectPublicKeyInfo(publicKeyBytes))
-            val keyFactory = KeyFactory.getInstance("Ed25519")
-            val publicKey = keyFactory.generatePublic(keySpec)
-
-            val sig = java.security.Signature.getInstance("Ed25519")
+            val keySpec = EdDSAPublicKeySpec(publicKeyBytes, EdDSANamedCurveTable.getByName("Ed25519"))
+            val publicKey = EdDSAPublicKey(keySpec)
+            val sig = EdDSAEngine(MessageDigest.getInstance("SHA-512"))
             sig.initVerify(publicKey)
             sig.update(catalogJson.toByteArray(Charsets.UTF_8))
             sig.verify(signatureBytes)
@@ -420,23 +415,11 @@ class PluginManager(private val context: Context) {
     }
 
     private fun isCompatible(manifest: PluginManifest): Boolean {
-        val abiMatches = manifest.abi.isEmpty() || manifest.abi == runtimeAbi()
-        return abiMatches && manifest.minAppVersion <= BuildConfig.VERSION_CODE
+        return PluginRuntimePolicy.isCompatible(manifest, runtimeAbi(), BuildConfig.VERSION_CODE)
     }
 
     private fun isInstallable(manifest: PluginManifest): Boolean {
-        return manifest.downloadUrl.isNotBlank() && manifest.checksum.isNotBlank() && manifest.sizeBytes > 0
-    }
-
-    private fun ed25519SubjectPublicKeyInfo(rawKey: ByteArray): ByteArray {
-        if (rawKey.size != 32) return rawKey
-        val prefix = byteArrayOf(
-            0x30, 0x2a,
-            0x30, 0x05,
-            0x06, 0x03, 0x2b, 0x65, 0x70,
-            0x03, 0x21, 0x00,
-        )
-        return prefix + rawKey
+        return PluginRuntimePolicy.isInstallable(manifest)
     }
 
     private fun canonicalJson(value: Any?): String {
@@ -479,8 +462,8 @@ class PluginManager(private val context: Context) {
             val manifest = parseManifest(JSONObject(manifestFile.readText()))
 
             if (manifest.runtime == "js") {
-                val entry = File(dir, manifest.jsEntry)
-                if (!entry.exists()) {
+                val entry = PluginRuntimePolicy.zipEntryDestination(dir, manifest.jsEntry)
+                if (!entry.isFile) {
                     Log.e(TAG, "JS plugin ${manifest.id} missing entry ${manifest.jsEntry}")
                     return null
                 }
@@ -631,22 +614,34 @@ class PluginManager(private val context: Context) {
         }
     }
 
-    private fun unzip(zipFile: File, destDir: File) {
-        val zip = java.util.zip.ZipFile(zipFile)
-        zip.entries().asSequence().forEach { entry ->
-            val outFile = File(destDir, entry.name)
-            if (entry.isDirectory) {
-                outFile.mkdirs()
-            } else {
-                outFile.parentFile?.mkdirs()
-                zip.getInputStream(entry).use { input ->
-                    FileOutputStream(outFile).use { output ->
-                        input.copyTo(output)
+    private fun unzip(zipFile: File, destDir: File, declaredInstalledSize: Long) {
+        val maxBytes = PluginRuntimePolicy.installedSizeLimit(declaredInstalledSize)
+        var totalBytes = 0L
+        var entryCount = 0
+        java.util.zip.ZipFile(zipFile).use { zip ->
+            zip.entries().asSequence().forEach { entry ->
+                entryCount++
+                PluginRuntimePolicy.requireExtractionWithinLimits(entryCount, totalBytes, maxBytes)
+                val outFile = PluginRuntimePolicy.zipEntryDestination(destDir, entry.name)
+                if (entry.isDirectory) {
+                    outFile.mkdirs()
+                } else {
+                    outFile.parentFile?.mkdirs()
+                    zip.getInputStream(entry).use { input ->
+                        FileOutputStream(outFile).use { output ->
+                            val buffer = ByteArray(8192)
+                            while (true) {
+                                val read = input.read(buffer)
+                                if (read < 0) break
+                                totalBytes += read
+                                PluginRuntimePolicy.requireExtractionWithinLimits(entryCount, totalBytes, maxBytes)
+                                output.write(buffer, 0, read)
+                            }
+                        }
                     }
                 }
             }
         }
-        zip.close()
     }
 
     private fun sha256(file: File): String {

@@ -491,9 +491,9 @@ class MainActivity : TauriActivity() {
     fun loadPluginBundle(pluginId: String): String {
       val pm = (application as? ViewItApp)?.pluginManager ?: return ""
       val plugin = pm.getInstalledPlugins().firstOrNull { it.manifest.id == pluginId } ?: return ""
-      val file = File(plugin.installDir, plugin.manifest.jsEntry)
-      if (!file.exists()) return ""
       return try {
+        val file = PluginRuntimePolicy.zipEntryDestination(plugin.installDir, plugin.manifest.jsEntry)
+        if (!file.isFile) return ""
         // "b64gz:" — gzip + base64 to keep the JS→native bridge payload small
         // (WebView string bridges degrade past ~10 MB). Decompressed in JS via
         // DecompressionStream('gzip').
@@ -743,7 +743,7 @@ class MainActivity : TauriActivity() {
         runOnUiThread {
           val jsonStr = payload.toString()
           webView.evaluateJavascript(
-            "(window._documentPluginCallback || window._docPluginCallback) && (window._documentPluginCallback || window._docPluginCallback)(${jsonStr})",
+            AndroidCallbackScripts.documentPlugin(jsonStr),
             null
           )
         }
