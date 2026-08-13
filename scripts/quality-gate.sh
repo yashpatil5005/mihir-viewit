@@ -109,15 +109,23 @@ mark "plugin crate tests"
 
 # 3. Plugin ZIP exists and is valid
 echo "[7/10] Plugin ZIP build..."
-PLUGIN_ARTIFACTS=(
-  apps/mobile/plugins/office-universal/build/output/office-universal-0.1.0-arm64-v8a.zip
-  apps/mobile/plugins/compression-universal/build/output/compression-universal-0.1.0-arm64-v8a.zip
-  apps/mobile/plugins/font-universal/build/output/font-universal-0.1.0-arm64-v8a.zip
-  apps/mobile/plugins/iwork-universal/build/output/iwork-universal-0.1.0-arm64-v8a.zip
-  plugins/pptx-vanilla-1.0.1.zip
-  plugins/player-base-0.1.0.zip
-  plugins/editor-base-0.1.0.zip
-)
+plugin_version(){ python3 -c "import json;print(json.load(open('$1'))['version'])"; }
+if [[ "${VIEWIT_PLUGIN_GATE_ONLY:-}" == "office-universal" ]]; then
+  PLUGIN_ARTIFACTS=(
+    "apps/mobile/plugins/office-universal/build/output/office-universal-$(plugin_version apps/mobile/plugins/office-universal/plugin.json)-arm64-v8a.zip"
+    "apps/mobile/plugins/office-universal/build/output/office-universal-$(plugin_version apps/mobile/plugins/office-universal/plugin.json)-x86_64.zip"
+  )
+else
+  PLUGIN_ARTIFACTS=(
+    "apps/mobile/plugins/office-universal/build/output/office-universal-$(plugin_version apps/mobile/plugins/office-universal/plugin.json)-arm64-v8a.zip"
+    "apps/mobile/plugins/compression-universal/build/output/compression-universal-$(plugin_version apps/mobile/plugins/compression-universal/plugin.json)-arm64-v8a.zip"
+    "apps/mobile/plugins/font-universal/build/output/font-universal-$(plugin_version apps/mobile/plugins/font-universal/plugin.json)-arm64-v8a.zip"
+    "apps/mobile/plugins/iwork-universal/build/output/iwork-universal-$(plugin_version apps/mobile/plugins/iwork-universal/plugin.json)-arm64-v8a.zip"
+    plugins/pptx-vanilla-1.0.1.zip
+    plugins/player-base-0.1.0.zip
+    plugins/editor-base-0.1.0.zip
+  )
+fi
 MISSING_ARTIFACTS=()
 for artifact in "${PLUGIN_ARTIFACTS[@]}"; do
   [[ -f "$artifact" ]] || MISSING_ARTIFACTS+=("$artifact")

@@ -2,17 +2,17 @@
 # Build script for office-universal Android native plugin
 # Builds arm64-v8a and x86_64 .so files
 
-set -e
+set -euo pipefail
 
 PLUGIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CARGO_DIR="${PLUGIN_DIR}/src/main/rust"
 OUTPUT_DIR="${PLUGIN_DIR}/build/output"
 
-# Android NDK setup
-if [ -z "$ANDROID_NDK_HOME" ]; then
-    echo "ERROR: ANDROID_NDK_HOME not set"
-    exit 1
-fi
+ROOT="$(cd "${PLUGIN_DIR}/../../../.." && pwd)"
+ANDROID_HOME="${ANDROID_HOME:-${ANDROID_SDK_HOME:-$HOME/Android/Sdk}}"
+ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-${NDK_HOME:-$ANDROID_HOME/ndk/26.1.10909125}}"
+export ANDROID_HOME ANDROID_NDK_HOME
+[ -d "$ANDROID_NDK_HOME" ] || { echo "ERROR: Android NDK not found: $ANDROID_NDK_HOME"; exit 1; }
 
 # Rust targets for Android
 TARGETS=("aarch64-linux-android" "x86_64-linux-android")
@@ -48,37 +48,6 @@ for i in "${!TARGETS[@]}"; do
     echo "Built ${OUTPUT_DIR}/${ABI}/libviewit_plugin_office_universal.so"
 done
 
-# Create plugin package — canonical root layout matching office-ooxml:
-#   plugin.json / lib/<ABI>/libviewit_plugin_office_universal.so / [dex/]
-# (The app's plugin loader expects entries at the ZIP root, NOT under package/.)
-PACKAGE_DIR="${OUTPUT_DIR}/package"
-rm -rf "${PACKAGE_DIR}"
-mkdir -p "${PACKAGE_DIR}/lib/arm64-v8a"
-mkdir -p "${PACKAGE_DIR}/lib/x86_64"
-mkdir -p "${PACKAGE_DIR}/dex"
-
-# Copy libraries
-cp "${OUTPUT_DIR}/arm64-v8a/libviewit_plugin_office_universal.so" "${PACKAGE_DIR}/lib/arm64-v8a/"
-cp "${OUTPUT_DIR}/x86_64/libviewit_plugin_office_universal.so" "${PACKAGE_DIR}/lib/x86_64/"
-
-# Copy plugin.json
-cp "${PLUGIN_DIR}/plugin.json" "${PACKAGE_DIR}/"
-
-# Generate classes.dex (requires dx/d8 from Android SDK)
-if command -v d8 &> /dev/null; then
-    echo "Generating classes.dex..."
-    cd "${PLUGIN_DIR}/src/main/java"
-    d8 --output "${PACKAGE_DIR}/dex" --lib "${ANDROID_SDK_HOME}/platforms/android-36/android.jar" ai/viewit/plugins/officeuniversal/OfficeUniversalPlugin.kt
-else
-    echo "WARNING: d8 not found, skipping classes.dex generation"
-fi
-
-# Create ZIP packages (one per ABI, entries relative to the package root).
-# Remove stale zips first: `zip -r` appends, so a prior package/ prefix would leak in.
-PLUGIN_VERSION="$(python3 -c "import json;print(json.load(open('${PLUGIN_DIR}/plugin.json'))['version'])")"
-for ABI in "${ABIS[@]}"; do
-    rm -f "${OUTPUT_DIR}/office-universal-${PLUGIN_VERSION}-${ABI}.zip"
-    (cd "${PACKAGE_DIR}" && zip -r "${OUTPUT_DIR}/office-universal-${PLUGIN_VERSION}-${ABI}.zip" "lib/${ABI}" "plugin.json" "dex")
-done
-
-echo "Build complete! Output in ${OUTPUT_DIR}"
+echo "Packaging canonical plugin ZIPs..."
+bash "$ROOT/scripts/package-plugins.sh" --plugin office-universal
+echo "Build complete! Validated output in ${OUTPUT_DIR}"

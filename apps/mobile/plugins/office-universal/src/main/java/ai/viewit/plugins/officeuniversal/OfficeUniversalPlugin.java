@@ -22,7 +22,7 @@ public class OfficeUniversalPlugin implements ViewItDocumentPlugin {
     public String getId() { return "office-universal"; }
 
     @Override
-    public String getVersion() { return "0.1.0"; }
+    public native String getVersion();
 
     @Override
     public java.util.List<String> getSupportedFormats() {

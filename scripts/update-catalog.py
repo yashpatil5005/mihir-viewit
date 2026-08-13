@@ -13,8 +13,11 @@ Usage:
 import argparse
 import hashlib
 import json
+import subprocess
 import zipfile
 from pathlib import Path
+
+from release_io import atomic_write_text, persist_git_blob
 
 ROOT = Path(__file__).parent.parent
 CATALOG = ROOT / "plugins" / "catalog.json"
@@ -97,7 +100,7 @@ def pptx_vanilla_entries() -> list[dict]:
 UNIVERSAL_PLUGINS = ("office-universal", "compression-universal", "font-universal", "iwork-universal")
 
 
-def universal_entries() -> list[dict]:
+def universal_entries(plugin_ids=UNIVERSAL_PLUGINS) -> list[dict]:
     """Per-ABI catalog entries for the downloadable native universal plugins.
 
     These live under apps/mobile/plugins/<id> and are built by their build.sh
@@ -105,7 +108,7 @@ def universal_entries() -> list[dict]:
     now fully downloadable (never baked into the APK), every ABI ships here.
     """
     out: list[dict] = []
-    for pid in UNIVERSAL_PLUGINS:
+    for pid in plugin_ids:
         mdir = ROOT / "apps" / "mobile" / "plugins" / pid
         manifest_file = mdir / "plugin.json"
         if not manifest_file.exists():
@@ -130,7 +133,7 @@ def universal_entries() -> list[dict]:
         for abi in ("arm64-v8a", "x86_64"):
             zip_path = mdir / "build" / "output" / f"{pid}-{manifest['version']}-{abi}.zip"
             if not zip_path.exists():
-                continue
+                raise SystemExit(f"[catalog] missing required artifact: {zip_path}")
             # The catalog host serves `<id>-<version>-<abi>.zip` (omnia proxy to
             # Pages); derive the URL from the packaged zip name, not the manifest
             # (which may only pin one ABI).
@@ -204,19 +207,74 @@ def editor_base_entries() -> list[dict]:
     }]
 
 
-def build_entries(existing: list[dict]) -> list[dict]:
+def build_entries(existing: list[dict], only: str | None = None) -> list[dict]:
+    if only:
+        rebuilt = {only}
+        builders = {
+            "office-universal": lambda: universal_entries(("office-universal",)),
+            "compression-universal": lambda: universal_entries(("compression-universal",)),
+            "font-universal": lambda: universal_entries(("font-universal",)),
+            "iwork-universal": lambda: universal_entries(("iwork-universal",)),
+            "office-ooxml": office_ooxml_entries,
+            "pptx-vanilla": pptx_vanilla_entries,
+            "player-base": player_base_entries,
+            "editor-base": editor_base_entries,
+        }
+        if only not in builders:
+            raise SystemExit(f"[catalog] unsupported --only plugin: {only}")
+        kept = [entry for entry in existing if entry.get("id") not in rebuilt]
+        return kept + builders[only]()
     rebuilt = {"office-ooxml", "pptx-vanilla", "player-base", "editor-base", *UNIVERSAL_PLUGINS}
     kept = [e for e in existing if e.get("id") not in rebuilt]
     return kept + office_ooxml_entries() + pptx_vanilla_entries() + universal_entries() + player_base_entries() + editor_base_entries()
 
 
+def reject_replaced_versions(existing: list[dict], updated: list[dict]) -> None:
+    old: dict[tuple, set[str]] = {}
+    for entry in existing:
+        key = (entry.get("id"), entry.get("version"), entry.get("abi") or "")
+        old.setdefault(key, set()).add(entry.get("checksum"))
+    history = subprocess.run(
+        ["git", "log", "--format=%H", "--", str(CATALOG.relative_to(ROOT))],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    for commit in history.stdout.splitlines():
+        snapshot = subprocess.run(
+            ["git", "show", f"{commit}:{CATALOG.relative_to(ROOT)}"],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if snapshot.returncode != 0:
+            continue
+        for entry in json.loads(snapshot.stdout).get("plugins", []):
+            key = (entry.get("id"), entry.get("version"), entry.get("abi") or "")
+            old.setdefault(key, set()).add(entry.get("checksum"))
+    for entry in updated:
+        key = (entry.get("id"), entry.get("version"), entry.get("abi") or "")
+        previous_checksums = old.get(key, set())
+        if previous_checksums and entry.get("checksum") not in previous_checksums:
+            plugin_id, version, abi = key
+            raise SystemExit(
+                f"[catalog] refusing to replace published bytes for {plugin_id} v{version} "
+                f"abi={abi or '-'}; bump the plugin version"
+            )
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true")
+    ap.add_argument("--only")
+    ap.add_argument("--output", type=Path, default=CATALOG)
     args = ap.parse_args()
 
     existing = json.loads(CATALOG.read_text()).get("plugins", [])
-    new_plugins = build_entries(existing)
+    new_plugins = build_entries(existing, args.only)
+    reject_replaced_versions(existing, new_plugins)
     updated = {"plugins": new_plugins}
 
     if args.check:
@@ -226,7 +284,9 @@ def main() -> int:
         print("[catalog] OUT OF SYNC — run python3 scripts/update-catalog.py")
         return 1
 
-    CATALOG.write_text(json.dumps(updated, indent=2) + "\n")
+    atomic_write_text(args.output, json.dumps(updated, indent=2) + "\n")
+    if args.output.resolve() == CATALOG.resolve():
+        persist_git_blob(CATALOG)
     for e in new_plugins:
         print(f"[catalog] {e['id']:<18} v{e['version']:<6} abi={e.get('abi') or '-':<10} "
               f"runtime={e.get('runtime') or '-':<22} {e['sizeBytes']}B sha={e['checksum'][:12]}…")

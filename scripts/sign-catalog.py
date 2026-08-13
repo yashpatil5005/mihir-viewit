@@ -21,6 +21,8 @@ import json
 import sys
 from pathlib import Path
 
+from release_io import atomic_write_text, persist_git_blob
+
 SCRIPT_DIR = Path(__file__).parent
 PRIVATE_KEY_FILE = SCRIPT_DIR / ".catalog-signing-key.priv"
 PUBLIC_KEY_FILE = SCRIPT_DIR / ".catalog-signing-key.pub"
@@ -109,8 +111,9 @@ def sign_catalog(input_file=CATALOG_FILE, output_file=SIGNED_CATALOG_FILE, priva
         "signature": signature_b64
     }
 
-    output_file.parent.mkdir(parents=True, exist_ok=True)
-    output_file.write_text(json.dumps(signed_catalog, indent=2) + "\n")
+    atomic_write_text(output_file, json.dumps(signed_catalog, indent=2) + "\n")
+    if output_file.resolve() == SIGNED_CATALOG_FILE.resolve():
+        persist_git_blob(output_file)
 
     print(f"Signed catalog: {output_file}")
     print(f"Signature: {signature_b64[:40]}...")
