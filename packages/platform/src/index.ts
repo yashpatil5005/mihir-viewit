@@ -243,26 +243,6 @@ export async function openFile(uri: string, nameHint?: string | null): Promise<D
         }
       }
 
-      // Try Android document plugin for office formats
-      const ext = (nameHint && fileExtension(nameHint)) || fileExtension(displayNameFromUri(uri));
-      if (
-        isOfficeExt(ext) &&
-        typeof window !== "undefined" &&
-        "AndroidBridge" in window &&
-        typeof (window as any).AndroidBridge.renderDocumentWithPlugin === "function"
-      ) {
-        debugLog(`Trying Android office plugin for .${ext}`);
-        try {
-          const doc = await renderDocumentWithAndroidPlugin("office-universal", uri, ext);
-          debugLog(`Android office plugin ok kind=${(doc as Document).kind}`);
-          return doc;
-        } catch (e) {
-          debugLog(
-            `Android office plugin failed: ${e instanceof Error ? e.message : String(e)}, falling back to Rust`,
-          );
-        }
-      }
-
       const doc = await invokeOpenUri(uri, nameHint || displayNameFromUri(uri), mimeType);
       debugLog(`ok kind=${(doc as Document).kind}`);
       return doc;
@@ -302,50 +282,6 @@ export {
 } from "./formatCapabilities";
 export { pickSingleFile } from "./pickFile";
 export { debugLog, debugLogLines, debugLogClear } from "./debugLog";
-
-/** Register a URI with the stream server and return a stream URL. */
-export async function registerStreamUri(uri: string): Promise<string> {
-  if (!IS_TAURI) return uri;
-  const { invoke } = await import("@tauri-apps/api/core");
-  return invoking(() => invoke<string>("register_stream_uri", { uri }));
-}
-
-/** Invoke Android document plugin (office-universal) for office formats on Android. */
-export async function renderDocumentWithAndroidPlugin(
-  pluginId: string,
-  uri: string,
-  ext: string,
-): Promise<Document> {
-  if (!IS_TAURI || typeof window === "undefined" || !("AndroidBridge" in window)) {
-    throw new Error("Android document plugin not available");
-  }
-  const bridge = (window as any).AndroidBridge;
-  if (typeof bridge.renderDocumentWithPlugin !== "function") {
-    throw new Error("renderDocumentWithPlugin not available on AndroidBridge");
-  }
-  return new Promise((resolve, reject) => {
-    const callbackId = `doc_plugin_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    // Set up callback function
-    (window as any)._docPluginCallback = (data: any) => {
-      delete (window as any)._docPluginCallback;
-      if (data.id === callbackId) {
-        if (data.error) {
-          reject(new Error(data.error));
-        } else if (data.document) {
-          resolve(data.document as Document);
-        } else {
-          reject(new Error("Invalid response from document plugin"));
-        }
-      }
-    };
-    bridge.renderDocumentWithPlugin(pluginId, uri, ext, callbackId);
-    // Timeout after 30 seconds
-    setTimeout(() => {
-      delete (window as any)._docPluginCallback;
-      reject(new Error("Document plugin timeout"));
-    }, 30000);
-  });
-}
 
 /** After `<input type="file">` — checks size/type first (no read for video/large). */
 const STREAM_PICKER_EXT = new Set([

@@ -47,13 +47,11 @@ class AndroidPluginLifecycleTests(unittest.TestCase):
         self.assertIn("callbackRestored", expression)
         self.assertIn("catch (error)", expression)
 
-    def test_render_expression_isolates_each_callback_name(self):
-        current = runner.render_expression("_documentPluginCallback", "file:///sample.docx")
-        legacy = runner.render_expression("_docPluginCallback", "file:///sample.docx")
-        self.assertIn("window._docPluginCallback = undefined", current)
-        self.assertIn("window._documentPluginCallback = undefined", legacy)
-        self.assertIn("renderDocumentWithPlugin", current)
-        self.assertIn("callbacksRestored", current)
+    def test_render_expression_restores_document_callback(self):
+        expression = runner.render_expression("file:///sample.docx")
+        self.assertIn("window._documentPluginCallback = previous", expression)
+        self.assertIn("renderDocumentWithPlugin", expression)
+        self.assertIn("callbacksRestored", expression)
 
     def test_output_must_remain_under_build_directory(self):
         with self.assertRaisesRegex(runner.LifecycleFailure, "must be a child"):

@@ -1,4 +1,4 @@
-export const IS_TAURI = typeof window !== "undefined" && "__TAURI_INTERNALS__" in (window ?? {});
+const IS_TAURI = typeof window !== "undefined" && "__TAURI_INTERNALS__" in (window ?? {});
 
 function pathForConvert(uriOrPath: string): string {
   if (uriOrPath.startsWith("file://")) {

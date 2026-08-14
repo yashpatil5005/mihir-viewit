@@ -138,18 +138,3 @@ export async function openArchive(bytes: Uint8Array, name: string, ext: string):
     };
   }
 }
-
-export function getSupportedFormats(): string[] {
-  if (!wasmModule) return Array.from(ARCHIVE_EXTS);
-  return wasmModule.supportedFormats();
-}
-
-export function getPluginName(): string {
-  if (!wasmModule) return "archive-universal";
-  return wasmModule.name();
-}
-
-export function getPluginVersion(): string {
-  if (!wasmModule) return "0.1.0";
-  return wasmModule.version();
-}

@@ -226,18 +226,3 @@ export async function openOffice(bytes: Uint8Array, name: string, ext: string): 
     suggestion: "open-with-external",
   };
 }
-
-export function getSupportedFormats(): string[] {
-  if (!wasmModule) return Array.from(OFFICE_EXTS);
-  return wasmModule.supported_formats();
-}
-
-export function getPluginName(): string {
-  if (!wasmModule) return "office-universal";
-  return wasmModule.name();
-}
-
-export function getPluginVersion(): string {
-  if (!wasmModule) return "0.1.0";
-  return wasmModule.version();
-}

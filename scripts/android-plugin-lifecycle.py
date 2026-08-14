@@ -228,21 +228,17 @@ def install_expression(remote_path: str, callback_id: str, timeout_ms: int = 90_
     }})"""
 
 
-def render_expression(callback_name: str, document_uri: str, timeout_ms: int = 60_000) -> str:
-    other = "_docPluginCallback" if callback_name == "_documentPluginCallback" else "_documentPluginCallback"
+def render_expression(document_uri: str, timeout_ms: int = 60_000) -> str:
     return f"""new Promise(resolve => {{
       const id = 'render_' + Date.now() + '_' + Math.random().toString(36).slice(2);
-      const previous = window.{callback_name};
-      const previousOther = window.{other};
+      const previous = window._documentPluginCallback;
       const finish = payload => {{
         clearTimeout(timer);
-        window.{callback_name} = previous;
-        window.{other} = previousOther;
-        resolve({{ payload, callbacksRestored: window.{callback_name} === previous && window.{other} === previousOther }});
+        window._documentPluginCallback = previous;
+        resolve({{ payload, callbacksRestored: window._documentPluginCallback === previous }});
       }};
       const timer = setTimeout(() => finish({{ id, error: 'document callback timeout' }}), {timeout_ms});
-      window.{other} = undefined;
-      window.{callback_name} = payload => {{ if (payload.id === id) finish(JSON.parse(JSON.stringify(payload))); }};
+      window._documentPluginCallback = payload => {{ if (payload.id === id) finish(JSON.parse(JSON.stringify(payload))); }};
       window.AndroidBridge.renderDocumentWithPlugin('office-universal', {json.dumps(document_uri)}, 'docx', id);
     }})"""
 
@@ -383,15 +379,14 @@ def main() -> int:
             installed,
         )
 
-        for callback_name in ("_documentPluginCallback", "_docPluginCallback"):
-            rendered = evaluate(render_expression(callback_name, f"file://{args.document}"), timeout=70)
-            payload = rendered["payload"]
-            check(
-                f"{callback_name} receives rendered document",
-                rendered["callbacksRestored"] and "document" in payload and "error" not in payload,
-                "document payload with restored callbacks",
-                payload.get("error") or {"keys": list(payload.keys()), "callbacksRestored": rendered["callbacksRestored"]},
-            )
+        rendered = evaluate(render_expression(f"file://{args.document}"), timeout=70)
+        payload = rendered["payload"]
+        check(
+            "_documentPluginCallback receives rendered document",
+            rendered["callbacksRestored"] and "document" in payload and "error" not in payload,
+            "document payload with restored callback",
+            payload.get("error") or {"keys": list(payload.keys()), "callbacksRestored": rendered["callbacksRestored"]},
+        )
 
         removed = evaluate("window.AndroidBridge.removePlugin('office-universal')")
         check("native plugin removal succeeds", removed is True, True, removed)
@@ -399,7 +394,7 @@ def main() -> int:
 
         warm = evaluate(install_expression(remote_paths[str(args.native_current.resolve())], "native_warm"))
         check("same native artifact warm-reinstalls", warm["terminal"].get("event") == "complete" and warm["callbackRestored"], "complete with restored callback", warm)
-        rendered = evaluate(render_expression("_documentPluginCallback", f"file://{args.document}"), timeout=70)
+        rendered = evaluate(render_expression(f"file://{args.document}"), timeout=70)
         payload = rendered["payload"]
         check(
             "warm-reinstalled native plugin renders",
@@ -423,7 +418,7 @@ def main() -> int:
             current_manifest["version"],
             active_before_restart,
         )
-        rendered = evaluate(render_expression("_documentPluginCallback", f"file://{args.document}"), timeout=70)
+        rendered = evaluate(render_expression(f"file://{args.document}"), timeout=70)
         payload = rendered["payload"]
         check(
             "old native instance renders after upgrade staging",
@@ -443,7 +438,8 @@ def main() -> int:
             upgrade_manifest["version"],
             active_after_restart,
         )
-        rendered = evaluate(render_expression("_documentPluginCallback", f"file://{args.document}"), timeout=70)
+
+        rendered = evaluate(render_expression(f"file://{args.document}"), timeout=70)
         payload = rendered["payload"]
         check(
             "upgraded native plugin renders after restart",

@@ -1,6 +1,12 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
-    import { isJsPlugin, listInstalledPlugins, loadJsPlugin, saveEditedText, type PluginInfo } from "./pluginBridge";
+  import {
+    isJsPlugin,
+    listInstalledPlugins,
+    loadJsPlugin,
+    saveEditedText,
+    type PluginInfo,
+  } from "./pluginBridge";
 
   let {
     text = "",
@@ -21,14 +27,14 @@
   let errorMsg = $state("");
   let editor: any = null;
 
-    onMount(async () => {
-      try {
-        if (!plugin) {
-          const installed = await listInstalledPlugins();
-          plugin = installed.find((p) => (p as any).base === "edit" && isJsPlugin(p)) ?? null;
-        }
-        if (!plugin) throw new Error("No editor-base plugin installed");
-        const mod = await loadJsPlugin(plugin);
+  onMount(async () => {
+    try {
+      if (!plugin) {
+        const installed = await listInstalledPlugins();
+        plugin = installed.find((p) => (p as any).base === "edit" && isJsPlugin(p)) ?? null;
+      }
+      if (!plugin) throw new Error("No editor-base plugin installed");
+      const mod = await loadJsPlugin(plugin);
       if (!mod || typeof mod.createEditor !== "function")
         throw new Error(`${plugin.name} has no createEditor export`);
       if (!hostEl) throw new Error("Editor host not ready");
@@ -58,8 +64,9 @@
   onDestroy(() => {
     try {
       editor?.destroy?.();
-    } catch {}
-    editor = null;
+    } catch {
+      /* ignore */
+    }
   });
 </script>
 
