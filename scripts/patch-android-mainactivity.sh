@@ -38,4 +38,5 @@ fi
 if [[ -d "$SRC_JAVA" ]]; then
   cp -R "$SRC_JAVA"/* "$DST_JAVA/"
 fi
+python3 "$ROOT/scripts/patch-android-open-with.py"
 echo "[patch-android] installed Android source overlays"

@@ -1,3 +1,5 @@
+import { providerSupportsFormat, resolveFormatCapability } from "@viewit/platform";
+
 export interface PluginInfo {
   id: string;
   name: string;
@@ -185,31 +187,37 @@ export async function pluginInventory(): Promise<{
   const installed = await listInstalledPlugins();
   const catalog = (await fetchPluginCatalogSources()).flatMap((source) => source.plugins);
   const installedById = new Map(installed.map((plugin) => [plugin.id, plugin]));
-  const seen = new Set<string>();
-  const mergedCatalog = catalog
-    .filter((item) => {
-      const key = `${item.id}:${item.abi ?? ""}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .map((item) => {
-      const installedPlugin = installedById.get(item.id);
-      const installedVersion = installedPlugin?.version;
-      const versionMatches = installedVersion === item.version;
-      return {
-        ...item,
-        installed: Boolean(installedPlugin && versionMatches),
-        installedVersion,
-        updateAvailable: Boolean(installedPlugin && !versionMatches),
-      };
+  const mergedByRuntime = new Map<string, PluginInfo>();
+  for (const item of catalog) {
+    const key = `${item.id}:${item.abi ?? ""}`;
+    const previous = mergedByRuntime.get(key);
+    mergedByRuntime.set(key, {
+      ...previous,
+      ...item,
+      formats: Array.from(new Set([...(previous?.formats ?? []), ...item.formats])),
     });
+  }
+  const mergedCatalog = Array.from(mergedByRuntime.values()).map((item) => {
+    const installedPlugin = installedById.get(item.id);
+    const installedVersion = installedPlugin?.version;
+    const versionMatches = installedVersion === item.version;
+    return {
+      ...item,
+      installed: Boolean(installedPlugin && versionMatches),
+      installedVersion,
+      updateAvailable: Boolean(installedPlugin && !versionMatches),
+    };
+  });
   return { installed, catalog: mergedCatalog };
 }
 
 export function pluginSupports(plugin: PluginInfo, ext: string): boolean {
-  const cleanExt = ext.toLowerCase().replace(/^\./, "");
-  return plugin.formats?.some((format) => format.toLowerCase() === cleanExt) ?? false;
+  return providerSupportsFormat(plugin, ext);
+}
+
+export async function resolveAvailableFormat(ext: string) {
+  const inventory = await pluginInventory();
+  return resolveFormatCapability(ext, inventory.installed, inventory.catalog);
 }
 
 export function materializeExternalUri(uri: string, ext: string): string {
@@ -318,7 +326,11 @@ export function restartApp(): void {
   (window as any).AndroidBridge.restartApp();
 }
 
-export function saveEditedText(text: string, displayName: string, mime = "text/plain"): Promise<number> {
+export function saveEditedText(
+  text: string,
+  displayName: string,
+  mime = "text/plain",
+): Promise<number> {
   if (!hasAndroidBridge()) {
     const blob = new Blob([text], { type: mime });
     const a = document.createElement("a");
@@ -331,8 +343,16 @@ export function saveEditedText(text: string, displayName: string, mime = "text/p
   return new Promise<number>((resolve, reject) => {
     const id = `edit_save_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const prev = (window as any)._editorSaveCallback;
-    (window as any)._editorSaveCallback = (payload: { id: string; ok?: boolean; size?: number; error?: string }) => {
-      if (payload.id !== id) { prev?.(payload); return; }
+    (window as any)._editorSaveCallback = (payload: {
+      id: string;
+      ok?: boolean;
+      size?: number;
+      error?: string;
+    }) => {
+      if (payload.id !== id) {
+        prev?.(payload);
+        return;
+      }
       (window as any)._editorSaveCallback = prev;
       if (payload.ok) resolve(payload.size ?? text.length);
       else reject(new Error(payload.error || "Save failed"));

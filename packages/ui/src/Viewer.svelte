@@ -25,7 +25,7 @@
   // `uri` is carried alongside the Document so Image (Phase 2.1) and Unsupported
   // (Phase 4 — "Open with…" hand-off per ADR 0004) viewers can act on it.
 
-  import type { Document } from "@viewit/platform";
+  import { formatFromFile, normalizeFormat, type Document } from "@viewit/platform";
   import TextViewer from "./TextViewer.svelte";
   import ImageViewer from "./ImageViewer.svelte";
   import MediaViewer from "./MediaViewer.svelte";
@@ -41,13 +41,13 @@
   import OfficePluginHtmlViewer from "./OfficePluginHtmlViewer.svelte";
   import {
     archiveBridgeFor,
-    fetchPluginCatalog,
     hasAndroidBridge,
     installPlugin,
     isJsPlugin,
     listInstalledPlugins,
     materializeExternalUri,
     pluginSupports,
+    resolveAvailableFormat,
     renderDocumentWithPlugin,
     type PluginInfo,
   } from "./pluginBridge";
@@ -57,8 +57,6 @@
     NON_ARCHIVE_BUNDLE_EXTS,
     OFFICE_ALL_EXTS,
     OFFICE_KINDS,
-    installPromptForFormat,
-    pluginForFormat,
     selectBasePlugin,
     selectDetectedOfficePlugin,
     selectNativeOfficePlugin,
@@ -170,6 +168,7 @@
   let pendingUri: string | null = $state(null);
   let pendingName: string | null = $state(null);
   let pendingExt: string | null = $state(null);
+  let pendingMime: string | null = $state(null);
   let pendingPlugin: string | null = $state(null);
   let busy = $state(false);
   let busyHint = $state("");
@@ -281,12 +280,14 @@
       pendingUri = record;
       pendingName = null;
       pendingExt = null;
+      pendingMime = null;
       pendingPlugin = null;
     } else if (record && typeof record === "object") {
       const r = record as any;
       pendingUri = typeof r.uri === "string" ? r.uri : null;
       pendingName = typeof r.name === "string" && r.name ? r.name : null;
       pendingExt = typeof r.ext === "string" && r.ext ? r.ext : null;
+      pendingMime = typeof r.mime === "string" && r.mime ? r.mime : null;
       pendingPlugin = typeof r.plugin === "string" && r.plugin ? r.plugin : null;
     } else {
       pendingUri = null;
@@ -331,6 +332,7 @@
     const seq = ++loadSeq;
     const nameHint = pendingName ?? undefined;
     const extHint = pendingExt ?? undefined;
+    const mimeHint = pendingMime ?? undefined;
     const pluginHint = pendingPlugin ?? undefined;
     busy = true;
     error = null;
@@ -338,7 +340,7 @@
     docUri = uri;
     busyHint = "Opening…";
     try {
-      const nextDoc = await openWithDefaultRuntime(uri, nameHint, extHint, pluginHint);
+      const nextDoc = await openWithDefaultRuntime(uri, nameHint, extHint, pluginHint, mimeHint);
       if (seq !== loadSeq || pendingUri !== uri) return;
       doc = nextDoc;
       const nextKind = (nextDoc as any)?.kind;
@@ -384,6 +386,7 @@
       pendingUri = viewitUri;
       pendingName = resolvePickerName(f, viewitUri);
       pendingExt = null;
+      pendingMime = null;
       pendingPlugin = null;
       docUri = viewitUri;
       doc = null;
@@ -411,6 +414,10 @@
     }
     const seq = ++loadSeq;
     pendingUri = f.name;
+    pendingName = f.name;
+    pendingExt = formatFromFile(f.name, f.type);
+    pendingMime = f.type || null;
+    pendingPlugin = null;
     docUri = f.name;
     doc = null;
     const mb = (f.size / 1_048_576).toFixed(1);
@@ -551,15 +558,15 @@
       formatInstallCta = null;
       return;
     }
-    const ext = extFromUri(uri);
-    const pluginId = pluginForFormat(ext);
-    if (!pluginId) {
+    const ext = normalizeFormat(pendingExt) || formatFromFile(pendingName || uri, pendingMime);
+    if (!ext) {
       formatInstallCta = null;
       return;
     }
     try {
-      const installed = await listInstalledPlugins();
-      formatInstallCta = installPromptForFormat(ext, uri, installed);
+      const capability = await resolveAvailableFormat(ext);
+      const plugin = capability.available[0] as PluginInfo | undefined;
+      formatInstallCta = plugin ? { ext, pluginName: plugin.name, plugin, uri } : null;
     } catch {
       formatInstallCta = null;
     }
@@ -577,7 +584,12 @@
 
   // One-tap: install the matching plugin from the catalog, then reopen the file so
   // the richer renderer (or the plugin's viewer) takes over.
-  let formatInstallCta = $state<{ ext: string; pluginName: string; uri: string } | null>(null);
+  let formatInstallCta = $state<{
+    ext: string;
+    pluginName: string;
+    plugin: PluginInfo;
+    uri: string;
+  } | null>(null);
   let formatInstalling = $state(false);
 
   // Player base (base=play): an installed js plugin can replace the built-in media player.
@@ -667,11 +679,7 @@
     if (!cta || formatInstalling) return;
     formatInstalling = true;
     try {
-      const pluginId = pluginForFormat(cta.ext);
-      const catalog = (await fetchPluginCatalog()) ?? [];
-      const manifest = catalog.find((p) => p.id === pluginId && pluginSupports(p, cta.ext));
-      if (!manifest) throw new Error(`No ${pluginId} plugin in the catalog`);
-      await installPlugin(manifest);
+      await installPlugin(cta.plugin);
       formatInstallCta = null;
       // reopen after the plugin is in place
       if (cta.uri) {
@@ -700,12 +708,13 @@
     nameHint?: string,
     extHint?: string,
     pluginHint?: string,
+    mimeHint?: string,
   ): Promise<Document> {
     selectedOfficePlugin = null;
     officePluginNotice = "";
     officeWarnings = [];
     officeFidelity = "";
-    const ext = extHint && OFFICE_ALL_EXTS.has(extHint) ? extHint : extFromUri(uri, nameHint);
+    const ext = normalizeFormat(extHint) || formatFromFile(nameHint || uri, mimeHint);
     let failedPluginId = "";
     let readableUri = uri;
     if (hasAndroidBridge() && OFFICE_ALL_EXTS.has(ext)) {
@@ -837,6 +846,41 @@
         } catch (e) {
           pluginArchiveError = e instanceof Error ? e.message : String(e);
           await dbg(`archive[${ext}] ${archivePlugin.id} error: ${pluginArchiveError}`);
+        }
+      }
+    }
+    if (
+      hasAndroidBridge() &&
+      ext &&
+      !OFFICE_ALL_EXTS.has(ext) &&
+      !FONT_EXTS.has(ext) &&
+      !ARCHIVE_EXTS.has(ext)
+    ) {
+      const capability = await resolveAvailableFormat(ext);
+      if (capability.kind === "installed-plugin") {
+        const installed = await listInstalledPlugins();
+        const hinted = pluginHint
+          ? installed.find(
+              (candidate) =>
+                candidate.id === pluginHint &&
+                (candidate.base ?? "view") === "view" &&
+                !isJsPlugin(candidate) &&
+                pluginSupports(candidate, ext),
+            )
+          : null;
+        const plugin = (hinted ?? capability.plugin) as PluginInfo;
+        if (!isJsPlugin(plugin)) {
+          try {
+            busyHint = `Opening with ${plugin.name}…`;
+            const pluginUri = materializeExternalUri(uri, ext);
+            const rendered = (await renderDocumentWithPlugin(plugin, pluginUri, ext)) as Document;
+            if (rendered.kind !== "unsupported") return rendered;
+            await dbg(`runtime[${ext}] plugin ${plugin.id} declined the file`);
+          } catch (e) {
+            await dbg(
+              `runtime[${ext}] plugin ${plugin.id} failed: ${e instanceof Error ? e.message : String(e)}`,
+            );
+          }
         }
       }
     }
@@ -1276,7 +1320,15 @@
         {#key docUri}
           <UnsupportedViewer
             uri={docUri ?? undefined}
-            document={doc as any}
+            document={{
+              ...(doc as any),
+              format:
+                (doc as any).format === "unsupported"
+                  ? pendingExt ||
+                    extFromUri(docUri ?? "", pendingName ?? undefined) ||
+                    "unsupported"
+                  : (doc as any).format,
+            }}
             onPluginInstalled={() => {
               if (docUri) {
                 pendingUri = docUri;

@@ -1,4 +1,5 @@
 import type { PluginInfo } from "./pluginBridge";
+import { providerSupportsFormat } from "@viewit/platform";
 
 export const OFFICE_ALL_EXTS = new Set([
   "docx",
@@ -63,43 +64,12 @@ export const NON_ARCHIVE_BUNDLE_EXTS = new Set([
   "key-template",
 ]);
 
-export const PLUGIN_LABEL: Record<string, string> = {
-  "office-universal": "Office",
-  "compression-universal": "Archive",
-  "font-universal": "Font",
-};
-
-export const FORMAT_PLUGIN: Record<string, string> = Object.fromEntries([
-  ...Array.from(OFFICE_ALL_EXTS, (ext) => [ext, "office-universal"]),
-  ...Array.from(ARCHIVE_EXTS, (ext) => [ext, "compression-universal"]),
-  ...["ttf", "otf", "woff", "ttc"].map((ext) => [ext, "font-universal"]),
-]);
-
 export function pluginSupportsFormat(plugin: PluginInfo, ext: string): boolean {
-  const clean = ext.toLowerCase().replace(/^\./, "");
-  return plugin.formats?.some((format) => format.toLowerCase() === clean) ?? false;
+  return providerSupportsFormat(plugin, ext);
 }
 
 export function hasPptxJsRenderer(plugin: PluginInfo): boolean {
   return plugin.runtime === "js" && pluginSupportsFormat(plugin, "pptx");
-}
-
-export function pluginForFormat(ext: string): string | null {
-  return FORMAT_PLUGIN[ext.toLowerCase().replace(/^\./, "")] ?? null;
-}
-
-export function installPromptForFormat(
-  ext: string,
-  uri: string,
-  installed: PluginInfo[],
-): { ext: string; pluginName: string; uri: string } | null {
-  const clean = ext.toLowerCase().replace(/^\./, "");
-  const pluginId = pluginForFormat(clean);
-  if (!pluginId) return null;
-  const present = installed.some(
-    (plugin) => plugin.id === pluginId && pluginSupportsFormat(plugin, clean),
-  );
-  return present ? null : { ext: clean, pluginName: PLUGIN_LABEL[pluginId] ?? pluginId, uri };
 }
 
 export function selectPptxJsPlugin(

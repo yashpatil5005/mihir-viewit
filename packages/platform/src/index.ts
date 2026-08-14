@@ -291,6 +291,15 @@ export { assetUrlForPath } from "./mediaUrl";
 export { readMaterializedBytes, readUriBytes } from "./readMaterialized";
 export { resolvePptxAssetPath } from "./pptxAsset";
 export { displayNameFromUri } from "./displayNameFromUri";
+export {
+  formatFromFile,
+  isBuiltInFormat,
+  normalizeFormat,
+  providerSupportsFormat,
+  resolveFormatCapability,
+  type FormatCapability,
+  type FormatProvider,
+} from "./formatCapabilities";
 export { pickSingleFile } from "./pickFile";
 export { debugLog, debugLogLines, debugLogClear } from "./debugLog";
 

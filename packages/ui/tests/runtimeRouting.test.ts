@@ -1,13 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { PluginInfo } from "../src/pluginBridge";
 import {
-  ARCHIVE_EXTS,
-  FONT_EXTS,
   NON_ARCHIVE_BUNDLE_EXTS,
-  OFFICE_ALL_EXTS,
   hasPptxJsRenderer,
-  installPromptForFormat,
-  pluginForFormat,
   selectBasePlugin,
   selectDetectedOfficePlugin,
   selectNativeOfficePlugin,
@@ -24,46 +19,9 @@ const plugin = (overrides: Partial<PluginInfo>): PluginInfo => ({
 });
 
 describe("format plugin routing", () => {
-  it("routes all advertised office/archive formats and only supported fonts", () => {
-    expect(pluginForFormat("DOCX")).toBe("office-universal");
-    expect(pluginForFormat(".7z")).toBe("compression-universal");
-    expect(pluginForFormat("woff")).toBe("font-universal");
-    expect(pluginForFormat("woff2")).toBeNull();
-    expect(FONT_EXTS.has("woff2")).toBe(true);
-    expect(ARCHIVE_EXTS.has("tar")).toBe(true);
-    expect([...OFFICE_ALL_EXTS].every((ext) => pluginForFormat(ext) === "office-universal")).toBe(
-      true,
-    );
-    expect([...ARCHIVE_EXTS].every((ext) => pluginForFormat(ext) === "compression-universal")).toBe(
-      true,
-    );
-  });
-
   it("keeps iWork bundles out of generic archive sniff fallback", () => {
     expect(NON_ARCHIVE_BUNDLE_EXTS.has("pages")).toBe(true);
     expect(NON_ARCHIVE_BUNDLE_EXTS.has("numbers-template")).toBe(true);
-  });
-});
-
-describe("install prompt", () => {
-  it("prompts only when the matching plugin is absent or lacks the format", () => {
-    const uri = "content://report";
-    expect(installPromptForFormat("docx", uri, [])).toEqual({
-      ext: "docx",
-      pluginName: "Office",
-      uri,
-    });
-    expect(
-      installPromptForFormat("docx", uri, [
-        plugin({ id: "office-universal", formats: ["docx"], runtime: "native" }),
-      ]),
-    ).toBeNull();
-    expect(
-      installPromptForFormat("docx", uri, [
-        plugin({ id: "office-universal", formats: ["xlsx"], runtime: "native" }),
-      ]),
-    ).not.toBeNull();
-    expect(installPromptForFormat("txt", uri, [])).toBeNull();
   });
 });
 

@@ -7,7 +7,7 @@
     "dev": "vite dev",
     "build": "vite build",
     "tauri": "tauri",
-    "dev:android": "tauri android dev",
+    "dev:android": "../../scripts/prepare-android-project.sh && tauri android dev",
     "preview": "vite preview"
   },
   "devDependencies": {

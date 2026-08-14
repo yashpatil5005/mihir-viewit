@@ -1,9 +1,7 @@
 <script lang="ts">
   import { openWithExternal } from "@viewit/platform";
   import {
-    fetchPluginCatalogSources,
-    pluginSupports,
-    isInstallablePlugin,
+    resolveAvailableFormat,
     installPlugin,
     formatPluginSize,
     type PluginInfo,
@@ -38,15 +36,8 @@
     loaded = true;
     (async () => {
       try {
-        const sources = await fetchPluginCatalogSources();
-        const all = sources.flatMap((s) => s.plugins);
-        const matching = all.filter((p) => pluginSupports(p, ext) && isInstallablePlugin(p));
-        const seen = new Set<string>();
-        suggestedPlugins = matching.filter((p) => {
-          if (seen.has(p.id)) return false;
-          seen.add(p.id);
-          return true;
-        });
+        const capability = await resolveAvailableFormat(ext);
+        suggestedPlugins = capability.available as PluginInfo[];
       } catch {
         suggestedPlugins = [];
       }
