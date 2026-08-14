@@ -22,6 +22,7 @@ tauri-build.workspace = true
 [dependencies]
 viewit-core = { path = "../../../crates/core", features = ["fmt-text"] }
 viewit-fmt-pdf = { path = "../../../crates/fmt-pdf", optional = true }
+viewit-fmt-image = { path = "../../../crates/fmt-image" }
 tauri.workspace = true
 tauri-plugin-dialog.workspace = true
 tauri-plugin-fs.workspace = true
@@ -34,6 +35,11 @@ zip.workspace = true
 tar.workspace = true
 flate2.workspace = true
 base64.workspace = true
+# HEIC/HEIF decode — pure-Rust `hpvcd` (BSD-3-Clause OR Apache-2.0).
+# No `neon` feature: it is an aarch64-only SIMD accelerator that would force
+# cross-target confusion on x86_64 desktop builds.
+hpvcd = { version = "0.3" }
+image = { workspace = true, default-features = false, features = ["jpeg"] }
 
 [features]
 default = ["fmt-everything"]

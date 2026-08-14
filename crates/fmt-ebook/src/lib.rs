@@ -12,6 +12,21 @@ use base64::{engine::general_purpose, Engine as _};
 use viewit_core_types::{Document, Error, Format};
 use zip::ZipArchive;
 
+#[cfg(all(target_arch = "wasm32", feature = "wasm"))]
+pub mod wasm_entry;
+
+/// WASM/native-plugin entry point: map the extension to a Format, parse, JSON.
+pub fn render(bytes: &[u8], ext: &str) -> Result<String, Error> {
+    let format = match ext {
+        "epub" => Format::Epub,
+        "mobi" => Format::Mobi,
+        "azw3" => Format::Azw3,
+        _ => return Err(Error::UnsupportedFormat(Format::Epub)),
+    };
+    let doc = parse(bytes, format, "ebook")?;
+    serde_json::to_string(&doc).map_err(|e| Error::Parse(e.to_string()))
+}
+
 pub fn parse(bytes: &[u8], _format: Format, _name: &str) -> Result<Document, Error> {
     match _format {
         Format::Epub => parse_epub(bytes),

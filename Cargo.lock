@@ -5534,6 +5534,8 @@ dependencies = [
  "base64 0.22.1",
  "csv",
  "flate2",
+ "hpvcd",
+ "image",
  "serde",
  "serde_json",
  "tar",
@@ -5544,6 +5546,7 @@ dependencies = [
  "tauri-plugin-notification",
  "tauri-plugin-shell",
  "viewit-core",
+ "viewit-fmt-image",
  "viewit-fmt-pdf",
  "zip 8.6.0",
 ]
@@ -5581,12 +5584,15 @@ dependencies = [
  "anyhow",
  "base64 0.22.1",
  "bytes",
+ "console_error_panic_hook",
+ "flate2",
  "mobi",
  "quick-xml 0.36.2",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
  "viewit-core-types",
+ "wasm-bindgen",
  "zip 8.6.0",
 ]
 
@@ -5595,10 +5601,13 @@ name = "viewit-fmt-font"
 version = "0.1.0-scaffold"
 dependencies = [
  "base64 0.22.1",
+ "console_error_panic_hook",
  "flate2",
+ "serde_json",
  "thiserror 2.0.18",
  "ttf-parser",
  "viewit-core-types",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -5621,10 +5630,13 @@ version = "0.1.0-scaffold"
 dependencies = [
  "anyhow",
  "bytes",
+ "console_error_panic_hook",
+ "flate2",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
  "viewit-core-types",
+ "wasm-bindgen",
  "zip 8.6.0",
 ]
 

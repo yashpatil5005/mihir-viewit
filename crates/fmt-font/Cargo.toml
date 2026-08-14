@@ -8,9 +8,24 @@ license.workspace = true
 repository.workspace = true
 description = "ViewIt font metadata parser (TTF/OTF/WOFF)"
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
 viewit-core-types = { path = "../core-types" }
 thiserror.workspace = true
 ttf-parser = "0.20"
 flate2 = { workspace = true, features = ["rust_backend"] }
 base64.workspace = true
+serde_json.workspace = true
+
+[features]
+wasm = ["viewit-core-types/wasm"]
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen.workspace = true
+console_error_panic_hook.workspace = true
+
+[package.metadata.wasm-pack]
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false

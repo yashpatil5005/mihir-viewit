@@ -66,6 +66,15 @@
     pdfStarted = true;
     pdfjsStatus = "loading";
 
+    // Web (no Tauri): `source_uri` is a `blob:`/`data:` URL the frontend made.
+    // pdf.js reads it directly — no Tauri IPC involved.
+    if (!("__TAURI_INTERNALS__" in window) && /^(blob:|data:|https?:)/.test(source_uri)) {
+      debugLog(`[pdf] web: using blob source_uri ${source_uri.slice(0, 60)}…`);
+      pdfBlobUrl = source_uri;
+      void loadPdfJsAndRender();
+      return;
+    }
+
     // Priority 1: Direct stream URL (new architecture)
     if (streamUrl) {
       debugLog(`[pdf] using stream_url: ${streamUrl.slice(0, 80)}`);

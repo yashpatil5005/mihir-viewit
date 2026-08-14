@@ -8,6 +8,23 @@ use base64::{engine::general_purpose, Engine as _};
 use tauri::{Manager, Url};
 use viewit_core::{is_stream_ext, open, open_stream, sniff, Document, Format, OPEN_BYTES_CAP};
 
+/// Resolve a `file://` URI or a raw OS filesystem path into a `PathBuf`.
+/// Desktop callers pass raw paths (picker, CLI, drag-drop); macOS file
+/// associations arrive as `file://` URLs. Accept both for parity.
+fn resolve_path(uri: &str) -> Option<std::path::PathBuf> {
+    if let Ok(url) = tauri::Url::parse(uri) {
+        if url.scheme() == "file" {
+            return url.to_file_path().ok();
+        }
+    }
+    let p = std::path::PathBuf::from(uri);
+    if p.is_absolute() || p.exists() {
+        Some(p)
+    } else {
+        None
+    }
+}
+
 #[cfg(feature = "fmt-pdf")]
 use viewit_fmt_pdf;
 
@@ -37,7 +54,7 @@ fn opened_urls(app: tauri::AppHandle) -> Vec<String> {
 /// file and render it" loop.
 #[tauri::command]
 async fn open_uri(uri: String, name: Option<String>) -> Result<Document, String> {
-    let path = parse_file_uri(&uri).ok_or_else(|| format!("not a file:// URI: {}", uri))?;
+    let path = resolve_path(&uri).ok_or_else(|| format!("not a file URI or path: {}", uri))?;
     let ext = path
         .extension()
         .and_then(|s| s.to_str())
@@ -113,7 +130,7 @@ fn is_image_format(format: Format) -> bool {
 #[cfg(feature = "fmt-pdf")]
 #[tauri::command]
 async fn pdf_page(uri: String, index: usize) -> Result<String, String> {
-    let path = parse_file_uri(&uri).ok_or_else(|| format!("not a file:// URI: {}", uri))?;
+    let path = resolve_path(&uri).ok_or_else(|| format!("not a file URI or path: {}", uri))?;
     let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
     if bytes.len() > OPEN_BYTES_CAP {
         return Err("PDF too large".into());
@@ -143,11 +160,93 @@ fn open_bytes(bytes: Vec<u8>, name: String) -> Result<Document, String> {
     open(&bytes, &ext, &display).map_err(|e| e.to_string())
 }
 
+/// Mirror of the mobile picker path: base64-decode bytes then open.
+#[tauri::command]
+fn open_bytes_b64(b64: String, name: String) -> Result<Document, String> {
+    let bytes = general_purpose::STANDARD
+        .decode(b64.trim())
+        .map_err(|e| format!("base64 decode: {}", e))?;
+    let ext = name.rsplit('.').next().unwrap_or("").to_lowercase();
+    let display = if name.is_empty() {
+        "file".to_string()
+    } else {
+        name.clone()
+    };
+    if is_stream_ext(&ext) && bytes.len() > OPEN_BYTES_CAP {
+        return open_stream(&ext, &display).map_err(|e| e.to_string());
+    }
+    if let Some(doc) = viewit_core::reject_if_too_large(bytes.len()) {
+        return Ok(doc);
+    }
+    open(&bytes, &ext, &display).map_err(|e| e.to_string())
+}
+
+/// Parity guard: the frontend probes URIs before open. Desktop cost is trivial —
+/// return `None` and let `open_uri` do the real work.
+#[tauri::command]
+fn probe_uri(_app: tauri::AppHandle, _uri: String, _name: Option<String>) -> Result<Option<Document>, String> {
+    Ok(None)
+}
+
+/// Raw bytes of a materialized (`asset_path`) file for JS viewers (pdf.js, media,
+/// docx-preview). Desktop returns an `ipc::Response` (zero-copy `ArrayBuffer`).
+#[tauri::command]
+fn read_materialized_bytes(asset_path: String) -> Result<tauri::ipc::Response, String> {
+    let bytes = std::fs::read(&asset_path).map_err(|e| e.to_string())?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+/// Raw bytes of a `file://` URI or OS path.
+#[tauri::command]
+async fn read_uri_bytes(uri: String) -> Result<tauri::ipc::Response, String> {
+    let path = resolve_path(&uri).ok_or_else(|| format!("not a file URI or path: {}", uri))?;
+    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+/// Return a local filesystem path the PPTX/asset viewers can read. Desktop files
+/// are already local — we only normalize a `file://` URL to a path.
+#[tauri::command]
+fn ensure_pptx_asset(uri: String, _name: Option<String>) -> Result<String, String> {
+    resolve_path(&uri)
+        .map(|p| p.to_string_lossy().to_string())
+        .ok_or_else(|| format!("not a file URI or path: {}", uri))
+}
+
+/// HEIC/HEIF decode to a JPEG data URL (WebView can't render HEIC natively).
+/// Mirrors the mobile implementation.
+#[tauri::command]
+async fn decode_heic_to_data_url(
+    asset_path: String,
+    uri: Option<String>,
+) -> Result<String, String> {
+    use base64::Engine;
+
+    let path = if asset_path.is_empty() {
+        uri.as_deref().and_then(resolve_path)
+    } else {
+        resolve_path(&asset_path)
+    };
+    let Some(path) = path else {
+        return Err("no path or URI for HEIC file".into());
+    };
+    let data = std::fs::read(&path).map_err(|e| format!("read HEIC: {e}"))?;
+    let rgb = hpvcd::decode_heic_rgb8(&data).map_err(|e| format!("decode HEIC: {e}"))?;
+    let img = image::RgbImage::from_raw(rgb.width, rgb.height, rgb.pixels)
+        .ok_or("invalid HEIC pixel dimensions")?;
+    let mut jpeg_buf = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgb8(img)
+        .write_to(&mut jpeg_buf, image::ImageFormat::Jpeg)
+        .map_err(|e| format!("encode JPEG: {e}"))?;
+    let b64 = general_purpose::STANDARD.encode(jpeg_buf.into_inner());
+    Ok(format!("data:image/jpeg;base64,{b64}"))
+}
+
 /// Phase 2.3 — fetch a slice of a large text file as UTF-8 string.
 /// `offset` and `len` are byte offsets into the already-decoded form.
 #[tauri::command]
 async fn text_page(uri: String, offset: usize, len: usize) -> Result<String, String> {
-    let path = parse_file_uri(&uri).ok_or_else(|| format!("not a file:// URI: {}", uri))?;
+    let path = resolve_path(&uri).ok_or_else(|| format!("not a file URI or path: {}", uri))?;
     let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
     // Decode lossy then slice — text encoding detection here uses the
     // fmt-text path's heuristic; for streaming we accept the minor perf cost.
@@ -162,7 +261,7 @@ async fn text_page(uri: String, offset: usize, len: usize) -> Result<String, Str
 /// (including header); `take` is page size.
 #[tauri::command]
 async fn csv_page(uri: String, skip: usize, take: usize) -> Result<Vec<Vec<String>>, String> {
-    let path = parse_file_uri(&uri).ok_or_else(|| format!("not a file:// URI: {}", uri))?;
+    let path = resolve_path(&uri).ok_or_else(|| format!("not a file URI or path: {}", uri))?;
     let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
     let text = String::from_utf8_lossy(&bytes);
     let mut rdr = csv::ReaderBuilder::new()
@@ -192,7 +291,7 @@ async fn csv_page(uri: String, skip: usize, take: usize) -> Result<Vec<Vec<Strin
 /// Re-routes through `core::open` to render the inner format's viewer.
 #[tauri::command]
 async fn archive_extract(uri: String, entry_name: String) -> Result<Vec<u8>, String> {
-    let path = parse_file_uri(&uri).ok_or_else(|| format!("not a file:// URI: {}", uri))?;
+    let path = resolve_path(&uri).ok_or_else(|| format!("not a file URI or path: {}", uri))?;
     let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
     let ext = path
         .extension()
@@ -234,7 +333,7 @@ async fn archive_extract(uri: String, entry_name: String) -> Result<Vec<u8>, Str
 /// Returns XHTML string (frontend renders in sandbox iframe).
 #[tauri::command]
 async fn epub_chapter(uri: String, index: usize) -> Result<String, String> {
-    let path = parse_file_uri(&uri).ok_or_else(|| format!("not a file:// URI: {}", uri))?;
+    let path = resolve_path(&uri).ok_or_else(|| format!("not a file URI or path: {}", uri))?;
     let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
     let cursor = std::io::Cursor::new(bytes);
     let mut archive = zip::ZipArchive::new(cursor).map_err(|e| e.to_string())?;
@@ -440,14 +539,6 @@ fn resolve_relative(href: String, base: &str) -> String {
     }
 }
 
-fn parse_file_uri(uri: &str) -> Option<std::path::PathBuf> {
-    let url = tauri::Url::parse(uri).ok()?;
-    if url.scheme() != "file" {
-        return None;
-    }
-    url.to_file_path().ok()
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -460,16 +551,47 @@ pub fn run() {
             opened_urls,
             open_uri,
             open_bytes,
+            open_bytes_b64,
+            probe_uri,
+            read_materialized_bytes,
+            read_uri_bytes,
+            ensure_pptx_asset,
+            decode_heic_to_data_url,
             text_page,
             csv_page,
             epub_chapter,
             archive_extract,
             pdf_page
         ])
+        .setup(|app| {
+            // CLI/file-manager open: on Linux/Windows a file passed as an
+            // argument arrives here as a raw OS path (not RunEvent::Opened).
+            let opened = app.state::<OpenedUrls>();
+            for arg in std::env::args_os().skip(1) {
+                let Some(s) = arg.to_str() else { continue };
+                if s.starts_with('-') {
+                    continue;
+                }
+                let path = match resolve_path(s) {
+                    Some(p) => p,
+                    None => continue,
+                };
+                let path = match std::fs::canonicalize(&path) {
+                    Ok(p) => p,
+                    Err(_) => path,
+                };
+                if let Ok(url) = Url::from_file_path(&path) {
+                    opened.0.lock().unwrap().push(url);
+                }
+            }
+            Ok(())
+        })
         .build(tauri::generate_context!())
         .expect("error while building viewit-desktop Tauri application")
         .run(|app, event| {
-            // macOS / iOS / Android file-association events emit RunEvent::Opened.
+            // macOS file-association events emit RunEvent::Opened (requires the
+            // tauri `unstable` feature). Drag-and-drop is handled uniformly in
+            // the webview (Viewer.svelte) so web and desktop share one path.
             #[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
             if let tauri::RunEvent::Opened { ref urls } = event {
                 use tauri::Emitter;
@@ -480,8 +602,6 @@ pub fn run() {
                     .extend(urls.iter().cloned());
                 let _ = app.emit("opened", urls.clone());
             }
-            // Other desktop platforms get to fall through; Windows/Linux
-            // typically use drag-drop events separately (Phase 1.6+).
             let _ = (app, event);
         });
 }

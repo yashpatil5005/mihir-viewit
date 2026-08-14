@@ -8,6 +8,9 @@ license.workspace = true
 repository.workspace = true
 description = "ViewIt EPUB renderer — Phase 2.8 (zip + XHTML spine via iframe srcdoc)"
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
 viewit-core-types = { path = "../core-types" }
 anyhow.workspace = true
@@ -16,6 +19,18 @@ serde.workspace = true
 serde_json.workspace = true
 bytes.workspace = true
 zip = { workspace = true, features = ["deflate-flate2"] }
+flate2 = { workspace = true, features = ["rust_backend"] }
 quick-xml.workspace = true
 mobi = "0.8"
 base64.workspace = true
+
+[features]
+wasm = ["viewit-core-types/wasm"]
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen.workspace = true
+console_error_panic_hook.workspace = true
+
+[package.metadata.wasm-pack]
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false

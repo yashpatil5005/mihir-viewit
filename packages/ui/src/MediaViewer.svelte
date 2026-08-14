@@ -264,6 +264,15 @@
 
   async function useWebRuntime() {
     const { debugLog: log } = await import("@viewit/platform");
+    // Web (no Tauri): the frontend already hands us a loadable `blob:`/`data:`
+    // URL via the picker. Use it directly — no Tauri IPC needed.
+    if (/^(blob:|data:|https?:)/.test(uri)) {
+      src = uri;
+      currentStrategy = "direct-url";
+      log(`[media] using direct URL (web) ${uri.slice(0, 60)}…`);
+      return;
+    }
+
     if (await tryAiffWavUrl()) return;
 
     if (stream_url) {

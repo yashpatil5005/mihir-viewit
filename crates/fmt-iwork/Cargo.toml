@@ -8,6 +8,9 @@ license.workspace = true
 repository.workspace = true
 description = "ViewIt Apple iWork (.pages/.numbers/.key) — Phase 4. Per ADR 0003 best-effort only."
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
 viewit-core-types = { path = "../core-types" }
 anyhow.workspace = true
@@ -15,4 +18,16 @@ thiserror.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 bytes.workspace = true
-zip.workspace = true
+zip = { workspace = true, default-features = false, features = ["deflate-flate2"] }
+flate2 = { workspace = true, features = ["rust_backend"] }
+
+[features]
+wasm = ["viewit-core-types/wasm"]
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen.workspace = true
+console_error_panic_hook.workspace = true
+
+[package.metadata.wasm-pack]
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false

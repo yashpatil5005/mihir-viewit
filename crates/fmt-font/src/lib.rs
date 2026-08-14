@@ -15,6 +15,22 @@
 use base64::{engine::general_purpose, Engine as _};
 use viewit_core_types::{Document, Error, Format};
 
+#[cfg(all(target_arch = "wasm32", feature = "wasm"))]
+pub mod wasm_entry;
+
+/// WASM/native-plugin entry point: sniff the container from the extension then
+/// parse, returning the `Document::Font` as JSON.
+pub fn render(bytes: &[u8], ext: &str) -> Result<String, Error> {
+    if !matches!(
+        ext,
+        "ttf" | "otf" | "woff" | "woff2" | "ttc" | "pfb" | "cff" | "dfont" | "sfd" | "ps"
+    ) {
+        return Err(Error::UnsupportedFormat(Format::Font));
+    }
+    let doc = parse(bytes, Format::Font, "font")?;
+    serde_json::to_string(&doc).map_err(|e| Error::Parse(e.to_string()))
+}
+
 pub fn parse(bytes: &[u8], format: Format, _name: &str) -> Result<Document, Error> {
     let sfnt: Vec<u8> = if bytes.len() >= 4 && &bytes[..4] == b"wOFF" {
         sfnt_from_woff(bytes)?

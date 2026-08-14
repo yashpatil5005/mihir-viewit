@@ -19,6 +19,21 @@ use std::io::{Cursor, Read};
 use viewit_core_types::{Document, DocxBlock, Error, Format, PptxElement, PptxSlide, XlsxSheet};
 use zip::ZipArchive;
 
+#[cfg(all(target_arch = "wasm32", feature = "wasm"))]
+pub mod wasm_entry;
+
+/// WASM/native-plugin entry point: map the extension to a Format, parse, JSON.
+pub fn render(bytes: &[u8], ext: &str) -> Result<String, Error> {
+    let format = match ext {
+        "pages" => Format::IworkPages,
+        "numbers" => Format::IworkNumbers,
+        "key" => Format::IworkKey,
+        _ => return Err(Error::UnsupportedFormat(Format::IworkPages)),
+    };
+    let doc = parse(bytes, format, "iwork")?;
+    serde_json::to_string(&doc).map_err(|e| Error::Parse(e.to_string()))
+}
+
 pub fn parse(bytes: &[u8], format: Format, _name: &str) -> Result<Document, Error> {
     let cursor = Cursor::new(bytes);
     let mut archive = ZipArchive::new(cursor).map_err(|e| Error::Parse(format!("zip: {}", e)))?;

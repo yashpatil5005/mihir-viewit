@@ -5,6 +5,7 @@ import {
   fileExtension,
 } from "./filePolicy";
 import { displayNameFromUri } from "./displayNameFromUri";
+import { webRouteKind } from "./webRouting";
 
 // @viewit/platform — single seam between the Svelte frontend and the
 // backing implementation (Tauri Rust commands OR direct WASM calls).
@@ -662,10 +663,11 @@ async function webOpenFile(
   }
   const name = hint?.name ?? uri.split("/").pop()?.split("?")[0] ?? "file";
   const ext = hint?.ext ?? name.split(".").pop()?.toLowerCase() ?? "";
+  const route = webRouteKind(ext);
 
   // Office — use WASM plugin (docx, xlsx, pptx, odt, ods, odp, doc, ppt, etc.)
-  const { isOfficeExt, openOffice } = await import("./plugins/officeUniversal");
-  if (isOfficeExt(ext)) {
+  if (route === "office") {
+    const { openOffice } = await import("./plugins/officeUniversal");
     try {
       return await openOffice(buf, name, ext);
     } catch (e) {
@@ -678,8 +680,8 @@ async function webOpenFile(
   }
 
   // Archive — use WASM plugin (zip, tar, 7z, rar, etc.)
-  const { isArchiveExt, openArchive } = await import("./plugins/archiveUniversal");
-  if (isArchiveExt(ext)) {
+  if (route === "archive") {
+    const { openArchive } = await import("./plugins/archiveUniversal");
     try {
       return await openArchive(buf, name, ext);
     } catch (e) {
@@ -691,9 +693,39 @@ async function webOpenFile(
     }
   }
 
+  // Ebook — WASM plugin (epub/mobi/azw3 → kind "epub" for EpubViewer).
+  if (route === "ebook") {
+    const { openEbook } = await import("./plugins/ebookUniversal");
+    try {
+      const doc = await openEbook(buf, name, ext);
+      return { ...doc, byte_len: buf.length, name };
+    } catch (e) {
+      console.error("[ebook-universal] parse failed:", e);
+      return unsupportedDocument(
+        `Ebook parsing failed: ${e instanceof Error ? e.message : String(e)}`,
+        true,
+      );
+    }
+  }
+
+  // iWork — WASM plugin (pages/numbers/key).
+  if (route === "iwork") {
+    const { openIwork } = await import("./plugins/iworkUniversal");
+    try {
+      const doc = await openIwork(buf, name, ext);
+      return { ...doc, byte_len: buf.length, name };
+    } catch (e) {
+      console.error("[iwork-universal] parse failed:", e);
+      return unsupportedDocument(
+        `iWork parsing failed: ${e instanceof Error ? e.message : String(e)}`,
+        true,
+      );
+    }
+  }
+
   // Image — native webview decoder path. Hand the URI directly back to
   // the frontend ImageViewer's <img> tag.
-  if (isImageExt(ext)) {
+  if (route === "image") {
     return {
       kind: "image",
       byte_len: buf.length,
@@ -702,7 +734,7 @@ async function webOpenFile(
     };
   }
 
-  if (isTextExt(ext)) {
+  if (route === "text") {
     const lossy = new TextDecoder("utf-8", { fatal: false }).decode(buf);
     // Mirror the Rust routing — markdown/json/csv parsed JS-side as a fallback.
     if (ext === "md" || ext === "markdown") {
@@ -736,6 +768,51 @@ async function webOpenFile(
     }
     return { kind: "text", content: lossy, encoding: "utf-8", byte_len: buf.length };
   }
+
+  // Font — fmt-font WASM returns parsed metadata + base64 glyph data so
+  // FontViewer can render a live preview via @font-face.
+  if (route === "font") {
+    const { openFont } = await import("./plugins/fontUniversal");
+    try {
+      const doc = await openFont(buf, name, ext);
+      return { ...doc, kind: "font", byte_len: buf.length, name };
+    } catch (e) {
+      console.error("[font-universal] parse failed:", e);
+      return {
+        kind: "font",
+        format: "font",
+        byte_len: buf.length,
+        name,
+        reason: e instanceof Error ? e.message : String(e),
+      } as Document;
+    }
+  }
+
+  // PDF — a small file is handed to pdf.js in the browser (blob URL).
+  if (route === "pdf") {
+    return {
+      kind: "pdf",
+      native: true,
+      page_count: 0,
+      pages: [],
+      byte_len: buf.length,
+      name,
+    } as Document;
+  }
+
+  // Audio / video — the browser renders these natively.
+  if (route === "audio" || route === "video") {
+    return {
+      kind: "media",
+      media_kind: route === "audio" ? "audio" : "video",
+      format: route === "audio" ? "audio" : "video",
+      ext,
+      name,
+      byte_len: buf.length,
+      stream_url: null,
+    } as Document;
+  }
+
   return {
     kind: "placeholder",
     format: extToFormat(ext),
@@ -746,75 +823,6 @@ async function webOpenFile(
 
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"]/g, (c) => ({ "&": "&", "<": "<", ">": ">", '"': '"' })[c] ?? c);
-}
-
-const IMAGE_EXT = new Set([
-  "png",
-  "jpg",
-  "jpeg",
-  "webp",
-  "gif",
-  "bmp",
-  "tif",
-  "tiff",
-  "svg",
-  "heic",
-  "heif",
-  "avif",
-  "psd",
-  "dng",
-  "cr2",
-  "cr3",
-  "nef",
-  "arw",
-  "orf",
-  "rw2",
-  "raf",
-  "srw",
-  "pef",
-  "cur",
-  "dds",
-  "erf",
-  "exr",
-  "fts",
-  "hdr",
-  "jp2",
-  "jpe",
-  "jps",
-  "mng",
-  "nrw",
-  "pam",
-  "pbm",
-  "pcd",
-  "pcx",
-  "pes",
-  "pfm",
-  "pgm",
-  "picon",
-  "pict",
-  "pnm",
-  "ppm",
-  "ras",
-  "sfw",
-  "sgi",
-  "tga",
-  "wbmp",
-  "wpg",
-  "x3f",
-  "xbm",
-  "xcf",
-  "xpm",
-  "xwd",
-  "djvu",
-  "djv",
-]);
-function isImageExt(ext: string): boolean {
-  return IMAGE_EXT.has(ext);
-}
-
-const TEXT_EXT = new Set(["txt", "text", "log", "md", "markdown", "json", "csv", "tsv", "jsonl"]);
-function isTextExt(ext: string): boolean {
-  return TEXT_EXT.has(ext);
 }
 
 function extToFormat(ext: string): Format {

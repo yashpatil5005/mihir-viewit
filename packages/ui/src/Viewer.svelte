@@ -155,6 +155,10 @@
 
   let mode: "view" | "browse" = $state("view");
 
+  // True inside a Tauri webview (desktop/mobile); false in a plain browser.
+  const isTauriHost =
+    typeof window !== "undefined" && "__TAURI_INTERNALS__" in (window as unknown as object);
+
   let {
     root,
     initialFile = undefined,
@@ -438,9 +442,19 @@
       doc = nextDoc;
       selectedOfficePlugin = null;
       officePluginNotice = "";
-      if (doc.kind === "image") {
-        imagePreviewUrl = URL.createObjectURL(f);
-        docUri = imagePreviewUrl;
+      // On the web (no Tauri host), the raw bytes only live in this File — give
+      // the viewers a `blob:` URL they can actually load for image/media/pdf/font.
+      const needsObjectUrl =
+        !isTauriHost &&
+        ["image", "media", "pdf", "font", "epub", "mobi", "azw3"].includes(doc.kind);
+      if (needsObjectUrl) {
+        if (imagePreviewUrl) {
+          URL.revokeObjectURL(imagePreviewUrl);
+          imagePreviewUrl = null;
+        }
+        const objectUrl = URL.createObjectURL(f);
+        if (doc.kind === "image") imagePreviewUrl = objectUrl;
+        docUri = objectUrl;
       }
     } catch (e: unknown) {
       if (seq !== loadSeq || pendingUri !== f.name) return;
@@ -1049,9 +1063,41 @@
       }
     }
   }
+  // Drag-and-drop open (web + desktop webview, uniform).
+  let dragOver = $state(false);
+  let dragDepth = 0;
+  function handleDragOver(e: DragEvent) {
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+  }
+  function handleDragEnter() {
+    dragDepth++;
+    dragOver = true;
+  }
+  function handleDragLeave() {
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0) dragOver = false;
+  }
+  async function handleDrop(e: DragEvent) {
+    e.preventDefault();
+    dragDepth = 0;
+    dragOver = false;
+    const file = e.dataTransfer?.files?.[0];
+    if (!file) return;
+    mode = "view";
+    await pickFile(file);
+  }
 </script>
 
-<div class="viewit-root" data-root={root}>
+<div
+  class="viewit-root"
+  class:dragover={dragOver}
+  data-root={root}
+  ondragover={handleDragOver}
+  ondragenter={handleDragEnter}
+  ondragleave={handleDragLeave}
+  ondrop={handleDrop}
+>
   <header>
     <h1>ViewIt</h1>
     <div class="header-actions">
@@ -1398,6 +1444,11 @@
     display: flex;
     flex-direction: column;
     min-height: 100vh;
+    transition: outline-color 0.15s ease;
+  }
+  .viewit-root.dragover {
+    outline: 3px dashed var(--link);
+    outline-offset: -8px;
   }
   header {
     display: flex;

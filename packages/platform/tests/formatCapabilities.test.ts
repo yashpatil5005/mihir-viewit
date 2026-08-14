@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   formatFromFile,
+  isBuiltInFormat,
   resolveFormatCapability,
   type FormatProvider,
 } from "../src/formatCapabilities";
@@ -63,5 +64,67 @@ describe("format capability resolution", () => {
         [plugin("provider", ["future"])],
       ).kind,
     ).toBe("available-plugin");
+  });
+
+  it("treats code/image/media/extended formats as built-in (parity with renderers)", () => {
+    for (const ext of [
+      // code / config
+      "rs",
+      "ts",
+      "tsx",
+      "js",
+      "py",
+      "go",
+      "cpp",
+      "java",
+      "kt",
+      "swift",
+      "sql",
+      "sh",
+      "yaml",
+      "toml",
+      "ini",
+      "html",
+      "css",
+      // extended/raw images
+      "djvu",
+      "dds",
+      "exr",
+      "tga",
+      "dng",
+      "cr2",
+      // structured text
+      "ics",
+      "vcf",
+      "desktop",
+      "plist",
+      // fonts
+      "ttf",
+      "otf",
+      // media
+      "mp4",
+      "webm",
+      "mp3",
+      "flac",
+      // archives
+      "7z",
+      "tar",
+      "zst",
+    ]) {
+      expect(resolveFormatCapability(ext, [], []).kind, ext).toBe("built-in");
+      expect(isBuiltInFormat(ext), ext).toBe(true);
+    }
+  });
+
+  it("maps MIME types across documents, images, audio, and video", () => {
+    expect(formatFromFile(null, "application/pdf")).toBe("pdf");
+    expect(formatFromFile(null, "application/vnd.ms-excel")).toBe("xls");
+    expect(formatFromFile(null, "image/png")).toBe("png");
+    expect(formatFromFile(null, "audio/mpeg")).toBe("mp3");
+    expect(formatFromFile(null, "video/webm")).toBe("webm");
+    expect(formatFromFile(null, "font/woff2")).toBe("woff2");
+    expect(formatFromFile(null, "application/epub+zip")).toBe("epub");
+    expect(formatFromFile(null, "text/vcard")).toBe("vcf");
+    expect(formatFromFile(null, "unknown/x-thing")).toBe("");
   });
 });
