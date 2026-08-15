@@ -106,7 +106,8 @@ export function checkFileBeforeRead(file: File): PickerReject {
   if (VIDEO_EXT.has(ext) || AUDIO_EXT.has(ext)) {
     return { reject: false };
   }
-  if (ext === "pdf") {
+  if (ext === "pdf" || ext === "txt" || ext === "log" || ext === "csv") {
+    // Text, logs, CSVs, and PDFs can be paged/streamed
     return { reject: false };
   }
   if (file.size > OPEN_BYTES_CAP) {

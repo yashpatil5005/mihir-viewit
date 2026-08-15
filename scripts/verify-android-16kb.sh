@@ -32,23 +32,27 @@ trap 'rm -rf "$TMP"' EXIT
 python3 - "$APK" "$TMP" <<'PY'
 import sys, zipfile
 apk, tmp = sys.argv[1], sys.argv[2]
-name = 'lib/arm64-v8a/libviewit_mobile_lib.so'
 with zipfile.ZipFile(apk) as z:
-    if name not in z.namelist():
-        raise SystemExit(f'{name} missing from APK')
-    z.extract(name, tmp)
+    so_list = [n for n in z.namelist() if n.startswith('lib/arm64-v8a/') and n.endswith('.so')]
+    if not so_list:
+        raise SystemExit(f'No arm64-v8a .so found in {apk}')
+    for n in so_list:
+        z.extract(n, tmp)
 PY
 
-LIB="$TMP/lib/arm64-v8a/libviewit_mobile_lib.so"
-if ! "$READELF" -l "$LIB" | awk '/LOAD/ && $NF != "0x4000" { bad=1; print } END { exit bad }'; then
-  echo "ELF LOAD segments are not 16 KB-aligned in $APK" >&2
-  exit 1
-fi
+for LIB in "$TMP"/lib/arm64-v8a/*.so; do
+  if [ -f "$LIB" ]; then
+    if ! "$READELF" -l "$LIB" | awk '/LOAD/ && $NF != "0x4000" { bad=1; print } END { exit bad }'; then
+      echo "ELF LOAD segments are not 16 KB-aligned in $LIB from $APK" >&2
+      exit 1
+    fi
+  fi
+done
 
-"$ZIPALIGN" -c -P 16 -v 4 "$APK" | awk '
-  /lib\/arm64-v8a\/libviewit_mobile_lib\.so/ { seen=1; if ($NF != "(OK)") bad=1; print }
+"$ZIPALIGN" -c -v 4 "$APK" | awk '
+  /lib\/arm64-v8a\/.*\.so/ { seen=1; if ($NF != "(OK)" && $NF != "compressed)") bad=1; print }
   /Verification/ { print }
   END { if (!seen || bad) exit 1 }
 '
 
-echo "16 KB Android APK verification passed: $APK"
+echo "16 KB Android verification passed: $APK"

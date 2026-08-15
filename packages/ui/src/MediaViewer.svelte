@@ -129,24 +129,108 @@
     return false;
   }
 
-  async function tryAiffWavUrl(): Promise<boolean> {
-    if (ext !== "aif" && ext !== "aiff") return false;
+  async function trySpecialAudioToWavUrl(): Promise<boolean> {
+    if (ext !== "aif" && ext !== "aiff" && ext !== "caf") return false;
     const { debugLog: log } = await import("@viewit/platform");
     try {
-      // Bytes over Tauri IPC — cross-origin JS fetch to the localhost stream
-      // server is blocked in the Android WebView (secure context).
       const { readUriBytes, readMaterializedBytes } = await import("@viewit/platform");
       const bytes = await (asset_path ? readMaterializedBytes(asset_path) : readUriBytes(uri));
-      const wav = aiffToWav(bytes);
-      blobUrl = URL.createObjectURL(new Blob([bytesArrayBuffer(wav)], { type: "audio/wav" }));
-      src = blobUrl;
-      currentStrategy = "aiff-wav";
-      log(`[media] AIFF decoded to WAV bytes=${wav.length}`);
-      return true;
+      if (ext === "aif" || ext === "aiff") {
+        const wav = aiffToWav(bytes);
+        blobUrl = URL.createObjectURL(new Blob([bytesArrayBuffer(wav)], { type: "audio/wav" }));
+        src = blobUrl;
+        currentStrategy = "aiff-wav";
+        log(`[media] AIFF decoded to WAV bytes=${wav.length}`);
+        return true;
+      }
+      if (ext === "caf") {
+        const wav = cafToWav(bytes);
+        blobUrl = URL.createObjectURL(new Blob([bytesArrayBuffer(wav)], { type: "audio/wav" }));
+        src = blobUrl;
+        currentStrategy = "caf-wav";
+        log(`[media] CAF decoded to WAV bytes=${wav.length}`);
+        return true;
+      }
+      return false;
     } catch (e) {
-      log(`[media] AIFF decode failed: ${e instanceof Error ? e.message : String(e)}`);
+      log(`[media] audio decode failed: ${e instanceof Error ? e.message : String(e)}`);
       return false;
     }
+  }
+
+  function cafToWav(bytes: Uint8Array): Uint8Array {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const ascii = (offset: number, len: number) =>
+      String.fromCharCode(...bytes.subarray(offset, offset + len));
+    if (ascii(0, 4) !== "caff") throw new Error("not Apple Core Audio Format (caff)");
+
+    let sampleRate = 44100;
+    let formatID = "";
+    let formatFlags = 0;
+    let bytesPerPacket = 0;
+    let framesPerPacket = 0;
+    let channelsPerFrame = 0;
+    let bitsPerChannel = 0;
+    let pcmStart = 0;
+    let pcmLen = 0;
+
+    for (let pos = 8; pos + 12 <= bytes.length;) {
+      const chunkType = ascii(pos, 4);
+      // CAF chunk size is 64-bit int
+      const chunkSizeHi = view.getUint32(pos + 4, false);
+      const chunkSizeLo = view.getUint32(pos + 8, false);
+      const chunkSize =
+        chunkSizeHi === 0
+          ? chunkSizeLo
+          : Number((BigInt(chunkSizeHi) << 32n) | BigInt(chunkSizeLo));
+      const dataPos = pos + 12;
+
+      if (chunkType === "desc") {
+        sampleRate = view.getFloat64(dataPos, false);
+        formatID = ascii(dataPos + 8, 4);
+        formatFlags = view.getUint32(dataPos + 12, false);
+        bytesPerPacket = view.getUint32(dataPos + 16, false);
+        framesPerPacket = view.getUint32(dataPos + 20, false);
+        channelsPerFrame = view.getUint32(dataPos + 24, false);
+        bitsPerChannel = view.getUint32(dataPos + 28, false);
+      } else if (chunkType === "data") {
+        // data chunk has 4 bytes editCount followed by data
+        pcmStart = dataPos + 4;
+        pcmLen =
+          chunkSize < 0 || chunkSize === 0xffffffff ? bytes.length - pcmStart : chunkSize - 4;
+      }
+
+      if (chunkSize < 0 || chunkSize === 0xffffffff) break;
+      pos = dataPos + chunkSize;
+    }
+
+    if (!pcmStart || pcmLen <= 0) throw new Error("missing or invalid CAF audio data chunk");
+
+    // Handle Linear PCM ('lpcm')
+    if (formatID === "lpcm") {
+      const isFloat = (formatFlags & (1 << 0)) !== 0;
+      const isLittleEndian = (formatFlags & (1 << 1)) !== 0;
+      if (isFloat) throw new Error("floating-point LPCM in CAF not supported directly");
+
+      const bits = bitsPerChannel || 16;
+      const channels = channelsPerFrame || 1;
+      const pcm = new Uint8Array(pcmLen);
+
+      if (isLittleEndian || bits === 8) {
+        pcm.set(bytes.subarray(pcmStart, pcmStart + pcmLen));
+      } else {
+        // Swap big-endian to little-endian for WAV
+        const step = bits / 8;
+        for (let i = 0; i < pcmLen; i += step) {
+          for (let b = 0; b < step; b++) {
+            pcm[i + b] = bytes[pcmStart + i + step - 1 - b];
+          }
+        }
+      }
+      return wavBytes(pcm, channels, Math.round(sampleRate), bits);
+    }
+
+    throw new Error(`unsupported compressed CAF format '${formatID}' (requires LPCM)`);
   }
 
   function aiffToWav(bytes: Uint8Array): Uint8Array {
@@ -273,7 +357,7 @@
       return;
     }
 
-    if (await tryAiffWavUrl()) return;
+    if (await trySpecialAudioToWavUrl()) return;
 
     if (stream_url) {
       log(`[media] using direct stream_url`);

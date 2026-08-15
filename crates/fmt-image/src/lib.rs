@@ -540,6 +540,44 @@ fn encode_to_png(img: &image::DynamicImage) -> Result<Vec<u8>, Error> {
     Ok(png_bytes)
 }
 
+/// Unpack the highest-resolution valid PNG or JPEG image from an Apple .icns container.
+pub fn unpack_icns(bytes: &[u8]) -> Result<Vec<u8>, Error> {
+    if bytes.len() < 8 || &bytes[0..4] != b"icns" {
+        return Err(Error::Parse("not an ICNS container".into()));
+    }
+    let total_len = u32::from_be_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]) as usize;
+    let limit = total_len.min(bytes.len());
+    let mut pos = 8;
+    let mut best_img: Option<Vec<u8>> = None;
+    let mut best_size: usize = 0;
+
+    while pos + 8 <= limit {
+        let _tag = &bytes[pos..pos + 4];
+        let chunk_len = u32::from_be_bytes([bytes[pos + 4], bytes[pos + 5], bytes[pos + 6], bytes[pos + 7]]) as usize;
+        if chunk_len < 8 || pos + chunk_len > limit {
+            break;
+        }
+        let data = &bytes[pos + 8..pos + chunk_len];
+
+        // Modern ICNS types embed raw PNG or JPEG-2000 files directly:
+        // ic04 (16x16), ic05 (32x32), ic07 (128x128), ic08 (256x256), ic09 (512x512), ic10 (1024x1024)
+        // ic11 (32x32@2x), ic12 (64x64@2x), ic13 (256x256@2x), ic14 (512x512@2x)
+        if data.len() > 8 && (&data[0..8] == b"\x89PNG\r\n\x1a\n" || &data[0..3] == b"\xff\xd8\xff") {
+            if data.len() > best_size {
+                best_size = data.len();
+                best_img = Some(data.to_vec());
+            }
+        }
+        pos += chunk_len;
+    }
+
+    if let Some(img) = best_img {
+        Ok(img)
+    } else {
+        Err(Error::Parse("no PNG or JPEG icon found in ICNS container".into()))
+    }
+}
+
 fn format_short_name(f: Format) -> &'static str {
     match f {
         Format::ImageTiff => "TIFF",

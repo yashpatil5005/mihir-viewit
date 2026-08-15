@@ -53,7 +53,11 @@ pub fn parse(bytes: &[u8], format: Format, _name: &str) -> Result<Document, Erro
         }
 
         if entry_name.ends_with(".iwa") {
-            // Snappy-compressed protobuf — needs litchi (ADR 0006 deferred).
+            // Extract raw strings from decompressed or binary iwa chunks
+            let text = extract_iwa_strings(&buf);
+            if !text.trim().is_empty() {
+                text_parts.push((entry_name, text));
+            }
             continue;
         }
         if is_preview_image(&entry_name) {
@@ -263,11 +267,42 @@ fn iwork_key_slides(
         .collect()
 }
 
+/// Extract human-readable string tokens (ASCII/UTF-8 runs >= 4 chars) from raw or snappy-compressed .iwa bytes.
+fn extract_iwa_strings(bytes: &[u8]) -> String {
+    let mut result = Vec::new();
+    let mut current = Vec::new();
+
+    for &b in bytes {
+        if (32..=126).contains(&b) || b == b'\n' || b == b'\t' {
+            current.push(b);
+        } else {
+            if current.len() >= 4 {
+                if let Ok(s) = std::str::from_utf8(&current) {
+                    let trimmed = s.trim();
+                    if !trimmed.is_empty() && !trimmed.starts_with("TSA") && !trimmed.starts_with("TSP") {
+                        result.push(trimmed.to_string());
+                    }
+                }
+            }
+            current.clear();
+        }
+    }
+    if current.len() >= 4 {
+        if let Ok(s) = std::str::from_utf8(&current) {
+            let trimmed = s.trim();
+            if !trimmed.is_empty() {
+                result.push(trimmed.to_string());
+            }
+        }
+    }
+    result.join("\n")
+}
+
 fn partial_notice(has_preview: bool) -> String {
     if has_preview {
-        "Partial iWork preview: native .iwa layout is not decoded yet; preview image/text metadata were preserved.".into()
+        "Partial iWork preview: native .iwa layout is not decoded yet; embedded QuickLook preview was preserved.".into()
     } else {
-        "Partial iWork preview: native .iwa layout is not decoded yet; extractable package text is rendered structurally.".into()
+        "Notice: Document was saved without an embedded QuickLook preview. Rendering extractable package data in text-recovery mode.".into()
     }
 }
 

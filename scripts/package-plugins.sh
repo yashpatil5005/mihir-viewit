@@ -127,8 +127,21 @@ package_plugin() { # pid, name, srcDir, sobase, with_js
     if [ "$with_js" = "1" ]; then cp "$ROOT/build/plugins/office-universal/index.js" "$pkg/index.js"; fi
     normalize_tree "$pkg"
     (cd "$pkg" && zip -q -X -r "$out" .)
+    if [ -x "$D8" ]; then
+      BUILD_TOOLS="$(dirname "$D8")"
+      if [ -x "$BUILD_TOOLS/zipalign" ]; then
+        "$BUILD_TOOLS/zipalign" -p -f 4 "$out" "$out.aligned"
+        mv "$out.aligned" "$out"
+      fi
+    fi
     python3 "$ROOT/scripts/validate-plugin-package.py" "$out" \
       --id "$pid" --version "$version" --abi "$abi"
+    if [ "$abi" = "arm64-v8a" ] && [ -x "$ROOT/scripts/verify-android-16kb.sh" ]; then
+      bash "$ROOT/scripts/verify-android-16kb.sh" "$out" || {
+        echo "  [package] ERROR: 16 KB verification failed on $out" >&2
+        return 1
+      }
+    fi
     echo "  [package] $pid $abi -> $(basename "$out") ($(du -h "$out" | cut -f1))"
   done
 }

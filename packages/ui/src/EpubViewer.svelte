@@ -75,6 +75,23 @@
     if (currentChapter < spine_len - 1) loadChapter(currentChapter + 1);
   }
 
+  let showToc = $state(false);
+
+  function toggleToc() {
+    showToc = !showToc;
+    if (showToc) {
+      if (overlayTimer) clearTimeout(overlayTimer);
+    } else {
+      resetOverlayTimer();
+    }
+  }
+
+  function selectChapter(idx: number) {
+    showToc = false;
+    loadChapter(idx);
+    resetOverlayTimer();
+  }
+
   function resetOverlayTimer() {
     if (overlayTimer) clearTimeout(overlayTimer);
     overlayTimer = setTimeout(() => {
@@ -167,9 +184,27 @@
       {#if author}<div class="overlay-author">{author}</div>{/if}
       <div class="overlay-nav">
         <button onclick={prevChapter} disabled={currentChapter === 0}>← Prev</button>
-        <span class="overlay-chapter">{currentChapter + 1} / {spine_len}</span>
+        <button class="toc-toggle-btn" onclick={toggleToc} aria-label="Table of Contents">
+          <span class="overlay-chapter">{currentChapter + 1} / {spine_len} ☰</span>
+        </button>
         <button onclick={nextChapter} disabled={currentChapter >= spine_len - 1}>Next →</button>
       </div>
+      {#if showToc}
+        <div class="toc-popover">
+          <div class="toc-header">Table of Contents ({spine_len} chapters)</div>
+          <div class="toc-list">
+            {#each Array.from({ length: spine_len }, (_, i) => i) as idx}
+              <button
+                class="toc-item"
+                class:active={idx === currentChapter}
+                onclick={() => selectChapter(idx)}
+              >
+                Chapter {idx + 1}
+              </button>
+            {/each}
+          </div>
+        </div>
+      {/if}
       <div class="overlay-progress">
         <div class="progress-bar" style="width: {((currentChapter + 1) / spine_len) * 100}%"></div>
       </div>
@@ -332,5 +367,59 @@
     background: #58a6ff;
     border-radius: 1px;
     transition: width 0.3s ease;
+  }
+  .toc-toggle-btn {
+    background: transparent !important;
+    border: none !important;
+    cursor: pointer;
+    padding: 0.2rem 0.5rem !important;
+    border-radius: 4px;
+  }
+  .toc-toggle-btn:hover {
+    background: rgba(255, 255, 255, 0.1) !important;
+  }
+  .toc-popover {
+    margin-top: 0.5rem;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    max-height: 40vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    padding: 0.5rem;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    pointer-events: auto;
+  }
+  .toc-header {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #8b949e;
+    margin-bottom: 0.4rem;
+    padding: 0 0.4rem;
+  }
+  .toc-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .toc-item {
+    text-align: left;
+    background: transparent !important;
+    border: none !important;
+    color: #c9d1d9 !important;
+    padding: 0.4rem 0.6rem !important;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem !important;
+  }
+  .toc-item:hover {
+    background: #21262d !important;
+    color: #58a6ff !important;
+  }
+  .toc-item.active {
+    background: #1f6feb !important;
+    color: #ffffff !important;
+    font-weight: 600;
   }
 </style>

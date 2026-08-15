@@ -72,6 +72,13 @@
       Array.from({ length: columnCount }, (_, i) => row[i] ?? ""),
     );
   });
+  let maxRenderRows = $state(200);
+
+  function loadMoreRows() {
+    maxRenderRows += 200;
+  }
+
+  let renderRows = $derived(visibleRows.slice(0, maxRenderRows));
   let hasFormulas = $derived(formulaGrid.some((row) => row.some((c) => c)));
   let formulaCount = $derived(formulaGrid.reduce((n, row) => n + row.filter((c) => c).length, 0));
   let textBody = $derived.by(() => {
@@ -334,7 +341,7 @@
             </tr>
           </thead>
           <tbody>
-            {#each visibleRows as row, rowIndex}
+            {#each renderRows as row, rowIndex}
               <tr style={rowStyle(rowIndex + 1)}>
                 <th class="row-label">{rowIndex + 2}</th>
                 {#each row as cell, c}
@@ -362,6 +369,15 @@
             {/each}
           </tbody>
         </table>
+        {#if visibleRows.length > maxRenderRows}
+          <div class="virtual-scroll-footer">
+            <span>Showing {maxRenderRows} of {visibleRows.length} rows</span>
+            <button class="load-more-btn" onclick={loadMoreRows}>Load 200 More Rows</button>
+            <button class="load-more-btn" onclick={() => (maxRenderRows = visibleRows.length)}
+              >Show All</button
+            >
+          </div>
+        {/if}
       </div>
     {/if}
   {/if}
@@ -500,5 +516,27 @@
   :global(mark) {
     background: rgba(255, 213, 79, 0.6);
     border-radius: 0.15rem;
+  }
+  .virtual-scroll-footer {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    padding: 0.75rem;
+    background: var(--bg-surface-secondary, rgba(255, 255, 255, 0.05));
+    border-top: 1px solid var(--border-color, #30363d);
+    font-size: 0.85rem;
+  }
+  .load-more-btn {
+    padding: 0.35rem 0.85rem;
+    border-radius: 4px;
+    background: var(--button-bg, #21262d);
+    color: var(--text-primary, #c9d1d9);
+    border: 1px solid var(--border-color, #30363d);
+    cursor: pointer;
+    font-weight: 500;
+  }
+  .load-more-btn:hover {
+    background: var(--button-hover, #30363d);
   }
 </style>
