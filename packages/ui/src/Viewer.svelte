@@ -57,6 +57,7 @@
     NON_ARCHIVE_BUNDLE_EXTS,
     OFFICE_ALL_EXTS,
     OFFICE_KINDS,
+    resolveIworkFormat,
     selectBasePlugin,
     selectDetectedOfficePlugin,
     selectNativeOfficePlugin,
@@ -114,12 +115,13 @@
       else loader = undefined;
     }
     const isOdtLike = officeExt() === "odt" || officeExt() === "ott";
-    if (k === "docx" && isOdtLike) {
+    const isStructuredDocx = isOdtLike || isIworkDocument();
+    if (k === "docx" && isStructuredDocx) {
       // ODT/OTT: plugin produces Document::Docx with structured blocks —
       // render via the block-based DocxViewer instead of docx-preview.
       loader = () => import("./DocxViewer.svelte");
     }
-    if (k === "pptx") {
+    if (k === "pptx" && !isIworkDocument()) {
       void resolvePptxVanillaPlugin().then((p) => {
         if (p?.id !== pptxVanillaPlugin?.id) pptxVanillaPlugin = p;
         if (p) {
@@ -143,7 +145,7 @@
       else if (k === "pptx") PptxViewer = m.default;
       else if (k === "pptx-vanilla") PptxVanillaViewer = m.default;
       else if (k === "docx") {
-        if (isOdtLike) DocxViewer = m.default;
+        if (isStructuredDocx) DocxViewer = m.default;
         else DocxPreview = m.default;
       } else if (k === "xlsx") XlsxViewer = m.default;
       else if (k === "font") FontViewer = m.default;
@@ -475,6 +477,23 @@
     const kind = (doc as any)?.kind;
     if (OFFICE_KINDS.has(kind)) return kind;
     return derived;
+  }
+
+  function iworkExt(): "pages" | "numbers" | "key" | null {
+    const ext =
+      normalizeFormat(pendingExt) ||
+      extFromUri(docUri ?? pendingUri ?? "", pendingName ?? undefined);
+    return resolveIworkFormat(ext, (doc as any)?.source_format);
+  }
+
+  function isIworkDocument(): boolean {
+    return iworkExt() !== null;
+  }
+
+  function iworkLabel(): string {
+    const labels = { pages: "Apple Pages", numbers: "Apple Numbers", key: "Apple Keynote" };
+    const ext = iworkExt();
+    return ext ? labels[ext] : "Apple iWork";
   }
 
   function extFromUri(uri: string, nameHint?: string): string {
@@ -1093,6 +1112,8 @@
   class="viewit-root"
   class:dragover={dragOver}
   data-root={root}
+  role="region"
+  aria-label="ViewIt file viewer"
   ondragover={handleDragOver}
   ondragenter={handleDragEnter}
   ondragleave={handleDragLeave}
@@ -1294,20 +1315,27 @@
       {:else if doc.kind === "pptx" && PptxViewer}
         {#key docUri}
           <div class:plugin-renderer-shell={isPluginRendered()}>
-            <div class="runtime-bar" class:plugin-runtime-bar={isPluginRendered()}>
-              <button type="button" onclick={() => (officeRuntimeChooserOpen = true)}
-                >Runtime: {selectedOfficePlugin?.name ?? "Built-in lightweight viewer"}</button
-              >
-              {#if officePluginNotice}<span>{officePluginNotice}</span>{/if}
-              {#if officeFidelity}<span class="fidelity">{officeFidelity}</span>{/if}
-              {#if officeWarnings.length > 0}<details class="warnings">
-                  <summary>{officeWarnings.length} warning(s)</summary>
-                  <ul>
-                    {#each officeWarnings as w}<li>{w}</li>{/each}
-                  </ul>
-                </details>{/if}
-            </div>
-            {#if PptxVanillaViewer && pptxVanillaPlugin}
+            {#if isIworkDocument()}
+              <div class="runtime-bar plugin-runtime-bar">
+                <strong>{iworkLabel()}</strong>
+                <span>Best-effort partial preview from the iWork package.</span>
+              </div>
+            {:else}
+              <div class="runtime-bar" class:plugin-runtime-bar={isPluginRendered()}>
+                <button type="button" onclick={() => (officeRuntimeChooserOpen = true)}
+                  >Runtime: {selectedOfficePlugin?.name ?? "Built-in lightweight viewer"}</button
+                >
+                {#if officePluginNotice}<span>{officePluginNotice}</span>{/if}
+                {#if officeFidelity}<span class="fidelity">{officeFidelity}</span>{/if}
+                {#if officeWarnings.length > 0}<details class="warnings">
+                    <summary>{officeWarnings.length} warning(s)</summary>
+                    <ul>
+                      {#each officeWarnings as w}<li>{w}</li>{/each}
+                    </ul>
+                  </details>{/if}
+              </div>
+            {/if}
+            {#if !isIworkDocument() && PptxVanillaViewer && pptxVanillaPlugin}
               <PptxVanillaViewer
                 document={doc}
                 source_uri={docUri ?? ""}
@@ -1315,26 +1343,37 @@
               />
             {:else if (doc as any).html}<div class="plugin-html-surface">
                 {@html (doc as any).html}
-              </div>{:else}<PptxViewer document={doc} source_uri={docUri ?? ""} />{/if}
+              </div>{:else}<PptxViewer
+                document={doc}
+                source_uri={docUri ?? ""}
+                source_kind={isIworkDocument() ? "iwork" : "office"}
+              />{/if}
           </div>
         {/key}
-      {:else if doc.kind === "docx" && (officeExt() === "odt" || officeExt() === "ott" ? DocxViewer : DocxPreview)}
+      {:else if doc.kind === "docx" && (officeExt() === "odt" || officeExt() === "ott" || isIworkDocument() ? DocxViewer : DocxPreview)}
         {#key docUri}
           <div class="plugin-renderer-shell">
-            <div class="runtime-bar plugin-runtime-bar">
-              <button type="button" onclick={() => (officeRuntimeChooserOpen = true)}
-                >Runtime: {selectedOfficePlugin?.name ?? "Office Universal"}</button
-              >
-              {#if officePluginNotice}<span>{officePluginNotice}</span>{/if}
-              {#if officeFidelity}<span class="fidelity">{officeFidelity}</span>{/if}
-              {#if officeWarnings.length > 0}<details class="warnings">
-                  <summary>{officeWarnings.length} warning(s)</summary>
-                  <ul>
-                    {#each officeWarnings as w}<li>{w}</li>{/each}
-                  </ul>
-                </details>{/if}
-            </div>
-            {#if officeExt() === "odt" || officeExt() === "ott"}
+            {#if isIworkDocument()}
+              <div class="runtime-bar plugin-runtime-bar">
+                <strong>{iworkLabel()}</strong>
+                <span>Best-effort partial preview from the iWork package.</span>
+              </div>
+            {:else}
+              <div class="runtime-bar plugin-runtime-bar">
+                <button type="button" onclick={() => (officeRuntimeChooserOpen = true)}
+                  >Runtime: {selectedOfficePlugin?.name ?? "Office Universal"}</button
+                >
+                {#if officePluginNotice}<span>{officePluginNotice}</span>{/if}
+                {#if officeFidelity}<span class="fidelity">{officeFidelity}</span>{/if}
+                {#if officeWarnings.length > 0}<details class="warnings">
+                    <summary>{officeWarnings.length} warning(s)</summary>
+                    <ul>
+                      {#each officeWarnings as w}<li>{w}</li>{/each}
+                    </ul>
+                  </details>{/if}
+              </div>
+            {/if}
+            {#if officeExt() === "odt" || officeExt() === "ott" || isIworkDocument()}
               <DocxViewer document={doc} />
             {:else}
               <DocxPreview source_uri={docUri ?? ""} />
@@ -1344,19 +1383,26 @@
       {:else if doc.kind === "xlsx" && XlsxViewer}
         {#key docUri}
           <div class:plugin-renderer-shell={isPluginRendered()}>
-            <div class="runtime-bar" class:plugin-runtime-bar={isPluginRendered()}>
-              <button type="button" onclick={() => (officeRuntimeChooserOpen = true)}
-                >Runtime: {selectedOfficePlugin?.name ?? "Built-in lightweight viewer"}</button
-              >
-              {#if officePluginNotice}<span>{officePluginNotice}</span>{/if}
-              {#if officeFidelity}<span class="fidelity">{officeFidelity}</span>{/if}
-              {#if officeWarnings.length > 0}<details class="warnings">
-                  <summary>{officeWarnings.length} warning(s)</summary>
-                  <ul>
-                    {#each officeWarnings as w}<li>{w}</li>{/each}
-                  </ul>
-                </details>{/if}
-            </div>
+            {#if isIworkDocument()}
+              <div class="runtime-bar plugin-runtime-bar">
+                <strong>{iworkLabel()}</strong>
+                <span>Best-effort partial preview from the iWork package.</span>
+              </div>
+            {:else}
+              <div class="runtime-bar" class:plugin-runtime-bar={isPluginRendered()}>
+                <button type="button" onclick={() => (officeRuntimeChooserOpen = true)}
+                  >Runtime: {selectedOfficePlugin?.name ?? "Built-in lightweight viewer"}</button
+                >
+                {#if officePluginNotice}<span>{officePluginNotice}</span>{/if}
+                {#if officeFidelity}<span class="fidelity">{officeFidelity}</span>{/if}
+                {#if officeWarnings.length > 0}<details class="warnings">
+                    <summary>{officeWarnings.length} warning(s)</summary>
+                    <ul>
+                      {#each officeWarnings as w}<li>{w}</li>{/each}
+                    </ul>
+                  </details>{/if}
+              </div>
+            {/if}
             {#if (doc as any).html}<div class="plugin-html-surface">
                 {@html (doc as any).html}
               </div>{:else}<XlsxViewer document={doc} />{/if}

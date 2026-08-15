@@ -64,6 +64,26 @@ export const NON_ARCHIVE_BUNDLE_EXTS = new Set([
   "key-template",
 ]);
 
+export type IworkFormat = "pages" | "numbers" | "key";
+
+export function resolveIworkFormat(
+  ext: string | null | undefined,
+  sourceFormat?: unknown,
+): IworkFormat | null {
+  for (const value of [sourceFormat, ext]) {
+    if (typeof value !== "string") continue;
+    const normalized = value
+      .trim()
+      .toLowerCase()
+      .replace(/^iwork-/, "")
+      .replace(/^\./, "");
+    if (normalized === "pages" || normalized === "numbers" || normalized === "key") {
+      return normalized;
+    }
+  }
+  return null;
+}
+
 export function pluginSupportsFormat(plugin: PluginInfo, ext: string): boolean {
   return providerSupportsFormat(plugin, ext);
 }

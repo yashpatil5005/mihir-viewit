@@ -5,9 +5,11 @@
   let {
     document: docProp = {},
     source_uri = "",
+    source_kind = "office",
   }: {
     document?: { asset_path?: string; slides?: PptxSlide[] };
     source_uri?: string;
+    source_kind?: "office" | "iwork";
   } = $props();
 
   type PptxParagraph = {
@@ -273,9 +275,13 @@
     {#if status === "ready"}
       <p class="muted">
         Offline · {hasLayout(preParsedSlides[idx])
-          ? "rendered via enhanced Office layout extraction"
+          ? source_kind === "iwork"
+            ? "rendered via iWork package preview extraction"
+            : "rendered via enhanced Office layout extraction"
           : preParsedSlides.length > 0
-            ? "rendered via enhanced Office text extraction"
+            ? source_kind === "iwork"
+              ? "rendered via iWork package text extraction"
+              : "rendered via enhanced Office text extraction"
             : "rendered via Canvas"} (no PowerPoint animations).
       </p>
     {/if}

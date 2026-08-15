@@ -3,6 +3,7 @@ import type { PluginInfo } from "../src/pluginBridge";
 import {
   NON_ARCHIVE_BUNDLE_EXTS,
   hasPptxJsRenderer,
+  resolveIworkFormat,
   selectBasePlugin,
   selectDetectedOfficePlugin,
   selectNativeOfficePlugin,
@@ -22,6 +23,13 @@ describe("format plugin routing", () => {
   it("keeps iWork bundles out of generic archive sniff fallback", () => {
     expect(NON_ARCHIVE_BUNDLE_EXTS.has("pages")).toBe(true);
     expect(NON_ARCHIVE_BUNDLE_EXTS.has("numbers-template")).toBe(true);
+  });
+
+  it("recognizes iWork provenance from either the source document or extension", () => {
+    expect(resolveIworkFormat("pages")).toBe("pages");
+    expect(resolveIworkFormat(".NUMBERS")).toBe("numbers");
+    expect(resolveIworkFormat("blob", "iwork-key")).toBe("key");
+    expect(resolveIworkFormat("docx")).toBeNull();
   });
 });
 

@@ -223,8 +223,13 @@ fn sniff_magic(bytes: &[u8], ext: &str) -> Option<Format> {
                 Format::ImageTiff
             }
         }
-        // ICO
-        [0x00, 0x00, 0x01, 0x00, ..] => Format::ImagePng,
+        // ICO / ICNS
+        [0x00, 0x00, 0x01, 0x00, ..] | [0x69, 0x63, 0x6E, 0x73, ..] => Format::ImagePng,
+        // Apple CAF: "caff"
+        [0x63, 0x61, 0x66, 0x66, ..] => Format::Audio,
+        // AIFF: "FORM....AIFF" or "FORM....AIFC"
+        [0x46, 0x4F, 0x52, 0x4D, _, _, _, _, 0x41, 0x49, 0x46, 0x46, ..]
+        | [0x46, 0x4F, 0x52, 0x4D, _, _, _, _, 0x41, 0x49, 0x46, 0x43, ..] => Format::Audio,
         // FLV: "FLV\x01"
         [0x46, 0x4C, 0x56, 0x01, ..] => Format::Video,
         // OGG container (OggS)

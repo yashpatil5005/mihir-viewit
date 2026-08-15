@@ -18,8 +18,13 @@ async function loadWasm(): Promise<void> {
 export async function openIwork(bytes: Uint8Array, name: string, ext: string): Promise<Document> {
   await loadWasm();
   if (!wasmModule) throw new Error("iWork WASM not loaded");
-  const json = wasmModule.render(bytes, ext.toLowerCase());
-  return JSON.parse(json) as Document;
+  const sourceFormat = ext.toLowerCase();
+  const json = wasmModule.render(bytes, sourceFormat);
+  return {
+    ...(JSON.parse(json) as Document),
+    name,
+    source_format: sourceFormat,
+  };
 }
 
 export function isIworkExt(ext: string): boolean {
