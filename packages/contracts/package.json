@@ -5,7 +5,9 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./resolver": "./src/resolver.ts"
+    "./resolver": "./src/resolver.ts",
+    "./activation-scope": "./src/activationScope.ts",
+    "./request-registry": "./src/requestRegistry.ts"
   },
   "dependencies": {
     "ajv": "^8.20.0"
