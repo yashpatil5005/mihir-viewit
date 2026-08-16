@@ -57,16 +57,15 @@ class MainActivity : TauriActivity() {
     const val ACTION_DEBUG_INSTALL_PLUGIN = "ai.viewit.app.action.DEBUG_INSTALL_PLUGIN"
   }
 
-  private fun dispatchEnvelope(webView: WebView, envelope: JSONObject, legacyScript: String? = null) {
+  private fun dispatchEnvelope(webView: WebView, envelope: JSONObject) {
     webView.evaluateJavascript(
       "window.__viewitBridgeDispatch ? window.__viewitBridgeDispatch($envelope) : " +
         "(window.__viewitBridgeQueue = window.__viewitBridgeQueue || []).push($envelope)",
       null,
     )
-    if (legacyScript != null) webView.evaluateJavascript(legacyScript, null)
   }
 
-  private fun dispatchResult(webView: WebView, payload: JSONObject, legacyScript: String? = null) {
+  private fun dispatchResult(webView: WebView, payload: JSONObject) {
     val failed = payload.has("error") || (payload.has("ok") && !payload.optBoolean("ok"))
     val envelope = JSONObject().apply {
       put("id", payload.getString("id"))
@@ -74,7 +73,7 @@ class MainActivity : TauriActivity() {
       if (failed) put("error", payload.optString("error", "Operation failed"))
       else put("result", payload)
     }
-    dispatchEnvelope(webView, envelope, legacyScript)
+    dispatchEnvelope(webView, envelope)
   }
 
   override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -97,7 +96,7 @@ class MainActivity : TauriActivity() {
         }
       }
       webView.post {
-        dispatchResult(webView, payload, "window._editorSaveCallback && window._editorSaveCallback($payload)")
+        dispatchResult(webView, payload)
       }
       return
     }
@@ -110,7 +109,7 @@ class MainActivity : TauriActivity() {
         payload.put("ok", false)
         payload.put("error", "Extract cancelled")
         webView.post {
-          dispatchResult(webView, payload, "window._pluginArchiveCallback && window._pluginArchiveCallback($payload)")
+          dispatchResult(webView, payload)
         }
         return
       }
@@ -137,7 +136,7 @@ class MainActivity : TauriActivity() {
           payload.put("error", e.message ?: e.javaClass.simpleName)
         }
         webView.post {
-          dispatchResult(webView, payload, "window._pluginArchiveCallback && window._pluginArchiveCallback($payload)")
+          dispatchResult(webView, payload)
         }
       }.start()
       return
@@ -151,7 +150,7 @@ class MainActivity : TauriActivity() {
       payload.put("ok", false)
       payload.put("error", "Save cancelled")
       webView.post {
-        dispatchResult(webView, payload, "window._pluginArchiveCallback && window._pluginArchiveCallback($payload)")
+        dispatchResult(webView, payload)
       }
       return
     }
@@ -177,7 +176,7 @@ class MainActivity : TauriActivity() {
         payload.put("error", e.message ?: e.javaClass.simpleName)
       }
       webView.post {
-        dispatchResult(webView, payload, "window._pluginArchiveCallback && window._pluginArchiveCallback($payload)")
+        dispatchResult(webView, payload)
       }
     }.start()
   }
@@ -451,8 +450,8 @@ class MainActivity : TauriActivity() {
   }
 
   inner class AndroidBridge(private val webView: WebView) {
-    private fun dispatchBridge(payload: JSONObject, legacyScript: String? = null) {
-      dispatchEnvelope(webView, payload, legacyScript)
+    private fun dispatchBridge(payload: JSONObject) {
+      dispatchEnvelope(webView, payload)
     }
 
     @JavascriptInterface
@@ -590,7 +589,7 @@ class MainActivity : TauriActivity() {
           put("error", "Local plugin installation is disabled in production builds")
         }
         runOnUiThread {
-          dispatchBridge(msg, "window._pluginCallback && window._pluginCallback($msg)")
+          dispatchBridge(msg)
         }
         return
       }
@@ -604,7 +603,7 @@ class MainActivity : TauriActivity() {
               put("progress", progress)
             }
             runOnUiThread {
-              dispatchBridge(msg, "window._pluginCallback && window._pluginCallback($msg)")
+              dispatchBridge(msg)
             }
           }
           val msg = JSONObject().apply {
@@ -617,7 +616,7 @@ class MainActivity : TauriActivity() {
             }
           }
           runOnUiThread {
-            dispatchBridge(msg, "window._pluginCallback && window._pluginCallback($msg)")
+            dispatchBridge(msg)
           }
         } catch (e: Exception) {
           android.util.Log.e("ViewIt", "Local plugin install error", e)
@@ -627,7 +626,7 @@ class MainActivity : TauriActivity() {
             put("error", e.message ?: e.javaClass.simpleName)
           }
           runOnUiThread {
-            dispatchBridge(msg, "window._pluginCallback && window._pluginCallback($msg)")
+            dispatchBridge(msg)
           }
         }
       }.start()
@@ -665,7 +664,7 @@ class MainActivity : TauriActivity() {
               put("progress", progress)
             }
             runOnUiThread {
-              dispatchBridge(msg, "window._pluginCallback && window._pluginCallback($msg)")
+              dispatchBridge(msg)
             }
           }
           if (result.isSuccess) {
@@ -675,7 +674,7 @@ class MainActivity : TauriActivity() {
               put("event", "complete")
             }
             runOnUiThread {
-              dispatchBridge(msg, "window._pluginCallback && window._pluginCallback($msg)")
+              dispatchBridge(msg)
             }
             } else {
               val failure = result.exceptionOrNull()
@@ -687,7 +686,7 @@ class MainActivity : TauriActivity() {
               put("error", reason)
             }
             runOnUiThread {
-              dispatchBridge(msg, "window._pluginCallback && window._pluginCallback($msg)")
+              dispatchBridge(msg)
             }
           }
         } catch (e: Exception) {
@@ -698,7 +697,7 @@ class MainActivity : TauriActivity() {
             put("error", e.message ?: e.javaClass.simpleName)
           }
           runOnUiThread {
-            dispatchBridge(msg, "window._pluginCallback && window._pluginCallback($msg)")
+            dispatchBridge(msg)
           }
         }
       }.start()
@@ -758,12 +757,6 @@ class MainActivity : TauriActivity() {
             }
           }
           dispatchBridge(payload)
-          val json = plugins.toString()
-          val escaped = json.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n")
-          webView.evaluateJavascript(
-            "window._catalogCallback && window._catalogCallback('$callbackId', '$escaped')",
-            null
-          )
         }
       }.start()
     }
@@ -813,15 +806,6 @@ class MainActivity : TauriActivity() {
             }
           }
           dispatchBridge(payload)
-          val legacy = JSONObject().apply {
-            put("id", callbackId)
-            if (result.isSuccess) put("plugins", plugins)
-            else put("error", result.exceptionOrNull()?.message ?: "Failed to fetch catalog")
-          }
-          webView.evaluateJavascript(
-            "window._customCatalogCallback && window._customCatalogCallback($legacy)",
-            null
-          )
         }
       }.start()
     }
@@ -851,11 +835,7 @@ class MainActivity : TauriActivity() {
           payload.put("error", e.message ?: e.javaClass.simpleName)
         }
         runOnUiThread {
-          val jsonStr = payload.toString()
-          webView.evaluateJavascript(
-            AndroidCallbackScripts.documentPlugin(jsonStr),
-            null
-          )
+          dispatchResult(webView, payload)
         }
       }.start()
     }
@@ -882,11 +862,7 @@ class MainActivity : TauriActivity() {
 
     private fun emitArchiveCallback(payload: JSONObject) {
       runOnUiThread {
-        dispatchResult(
-          webView,
-          payload,
-          "window._pluginArchiveCallback && window._pluginArchiveCallback($payload)",
-        )
+        dispatchResult(webView, payload)
       }
     }
 
@@ -1005,11 +981,7 @@ class MainActivity : TauriActivity() {
             put("ok", false)
             put("error", e.message ?: e.javaClass.simpleName)
           }
-          dispatchResult(
-            webView,
-            payload,
-            "window._editorSaveCallback && window._editorSaveCallback($payload)",
-          )
+          dispatchResult(webView, payload)
         }
       }
     }

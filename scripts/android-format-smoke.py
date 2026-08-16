@@ -228,25 +228,31 @@ PREVIEW_SHA_JS = """(async () => {
   const entryName = drill.getAttribute('aria-label').replace(/^Open\\s+/, '');
   const id = 'smoke_preview_' + Date.now();
   return await new Promise((resolve) => {
-    const prev = window._pluginArchiveCallback;
+    const prev = window.__viewitBridgeDispatch;
     let settled = false;
     const done = (result) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      window._pluginArchiveCallback = prev;
+      window.__viewitBridgeDispatch = prev;
       resolve(result);
     };
     const timer = setTimeout(() => done({ ok: false, reason: 'preview timed out', entry: entryName }), 15000);
-    window._pluginArchiveCallback = (payload) => {
+    window.__viewitBridgeDispatch = (payload) => {
+      const handled = prev?.(payload) ?? false;
       if (!payload || payload.id !== id) {
-        if (prev) prev(payload);
-        return;
+        return handled;
       }
+      if (payload.event === 'error') {
+        done({ ok: false, reason: payload.error || 'archive request failed', entry: entryName });
+        return true;
+      }
+      payload = payload.result || payload;
       if (!payload.base64) {
         done({ ok: false, reason: payload.error || 'no base64 payload', tooLarge: !!payload.tooLarge, entry: entryName });
-        return;
+        return true;
       }
+      return true;
       try {
         const raw = atob(payload.base64);
         const bytes = new Uint8Array(raw.length);

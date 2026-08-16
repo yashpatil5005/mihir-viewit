@@ -207,18 +207,20 @@ def install_expression(remote_path: str, callback_id: str, timeout_ms: int = 90_
     return f"""new Promise(resolve => {{
       const id = {json.dumps(callback_id)};
       const events = [];
-      const previous = window._pluginCallback;
+      const previous = window.__viewitBridgeDispatch;
       const finish = terminal => {{
         clearTimeout(timer);
-        window._pluginCallback = previous;
-        resolve({{ terminal, events, callbackRestored: window._pluginCallback === previous }});
+        window.__viewitBridgeDispatch = previous;
+        resolve({{ terminal, events, callbackRestored: window.__viewitBridgeDispatch === previous }});
       }};
       const timer = setTimeout(() => finish({{ event: 'timeout', error: 'bridge callback timeout' }}), {timeout_ms});
-      window._pluginCallback = event => {{
-        if (event.id !== id) {{ previous?.(event); return; }}
+      window.__viewitBridgeDispatch = event => {{
+        const handled = previous?.(event) ?? false;
+        if (event.id !== id) return handled;
         const copy = JSON.parse(JSON.stringify(event));
         events.push(copy);
-        if (copy.event === 'complete' || copy.event === 'error') finish(copy);
+        if (copy.event === 'complete' || copy.event === 'error' || copy.event === 'restart-required') finish(copy);
+        return true;
       }};
       try {{
         window.AndroidBridge.installPluginLocal({json.dumps(remote_path)}, id);
@@ -231,14 +233,18 @@ def install_expression(remote_path: str, callback_id: str, timeout_ms: int = 90_
 def render_expression(document_uri: str, timeout_ms: int = 60_000) -> str:
     return f"""new Promise(resolve => {{
       const id = 'render_' + Date.now() + '_' + Math.random().toString(36).slice(2);
-      const previous = window._documentPluginCallback;
+       const previous = window.__viewitBridgeDispatch;
       const finish = payload => {{
         clearTimeout(timer);
-        window._documentPluginCallback = previous;
-        resolve({{ payload, callbacksRestored: window._documentPluginCallback === previous }});
+         window.__viewitBridgeDispatch = previous;
+         resolve({{ payload, callbacksRestored: window.__viewitBridgeDispatch === previous }});
       }};
       const timer = setTimeout(() => finish({{ id, error: 'document callback timeout' }}), {timeout_ms});
-      window._documentPluginCallback = payload => {{ if (payload.id === id) finish(JSON.parse(JSON.stringify(payload))); }};
+       window.__viewitBridgeDispatch = payload => {{
+         const handled = previous?.(payload) ?? false;
+         if (payload.id === id) finish(JSON.parse(JSON.stringify(payload)));
+         return payload.id === id || handled;
+       }};
       window.AndroidBridge.renderDocumentWithPlugin('office-universal', {json.dumps(document_uri)}, 'docx', id);
     }})"""
 
@@ -382,7 +388,7 @@ def main() -> int:
         rendered = evaluate(render_expression(f"file://{args.document}"), timeout=70)
         payload = rendered["payload"]
         check(
-            "_documentPluginCallback receives rendered document",
+            "unified bridge dispatcher receives rendered document",
             rendered["callbacksRestored"] and "document" in payload and "error" not in payload,
             "document payload with restored callback",
             payload.get("error") or {"keys": list(payload.keys()), "callbacksRestored": rendered["callbacksRestored"]},

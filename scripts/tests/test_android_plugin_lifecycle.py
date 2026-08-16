@@ -49,7 +49,7 @@ class AndroidPluginLifecycleTests(unittest.TestCase):
 
     def test_render_expression_restores_document_callback(self):
         expression = runner.render_expression("file:///sample.docx")
-        self.assertIn("window._documentPluginCallback = previous", expression)
+        self.assertIn("window.__viewitBridgeDispatch = previous", expression)
         self.assertIn("renderDocumentWithPlugin", expression)
         self.assertIn("callbacksRestored", expression)
 
