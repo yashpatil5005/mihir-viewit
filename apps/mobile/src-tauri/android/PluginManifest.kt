@@ -24,4 +24,27 @@ data class PluginManifest(
     val jsEntry: String = "web/index.js",
     /** Optional relative path of a CSS asset for runtime=js plugins. */
     val cssEntry: String = "",
+    val schemaVersion: Int = 0,
+    val publisher: String = "",
+    val providers: List<PluginProviderManifest> = emptyList(),
+)
+
+data class PluginProviderManifest(
+    val id: String,
+    val packageId: String,
+    val service: String,
+    val contractVersion: Int,
+    val runtime: String,
+    val trustClass: String,
+    val formats: List<String> = emptyList(),
+    val mimeTypes: List<String> = emptyList(),
+    val priority: Int = 0,
+    val requires: List<PluginProviderRequirement> = emptyList(),
+    val optional: List<PluginProviderRequirement> = emptyList(),
+    val hostGrants: List<String> = emptyList(),
+)
+
+data class PluginProviderRequirement(
+    val service: String,
+    val contractVersion: Int,
 )

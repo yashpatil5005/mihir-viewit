@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "font-universal",
+  "name": "Font Universal Plugin",
+  "version": "0.1.3",
+  "description": "Font metadata viewer for TTF, OTF, WOFF, and TTC.",
+  "publisher": "viewit",
+  "minAppVersion": 1,
+  "runtime": "android-dex-jni",
+  "entryClass": "ai.viewit.plugins.fontuniversal.FontUniversalPlugin",
+  "abi": "arm64-v8a",
+  "abiVersion": 1,
+  "providers": [
+    {
+      "id": "font-universal.inspect",
+      "packageId": "font-universal",
+      "service": "viewit.font.inspect",
+      "contractVersion": 1,
+      "runtime": "android-dex-jni",
+      "trustClass": "trusted-in-process",
+      "formats": [
+        "ttf",
+        "otf",
+        "woff",
+        "ttc"
+      ]
+    }
+  ]
+}

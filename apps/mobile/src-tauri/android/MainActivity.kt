@@ -354,6 +354,23 @@ class MainActivity : TauriActivity() {
     return result
   }
 
+  private fun pluginProvidersJson(providers: List<PluginProviderManifest>): JSONArray = JSONArray().apply {
+    providers.forEach { provider ->
+      put(JSONObject().apply {
+        put("id", provider.id)
+        put("packageId", provider.packageId)
+        put("service", provider.service)
+        put("contractVersion", provider.contractVersion)
+        put("runtime", provider.runtime)
+        put("trustClass", provider.trustClass)
+        if (provider.formats.isNotEmpty()) put("formats", JSONArray(provider.formats))
+        if (provider.mimeTypes.isNotEmpty()) put("mimeTypes", JSONArray(provider.mimeTypes))
+        if (provider.priority != 0) put("priority", provider.priority)
+        if (provider.hostGrants.isNotEmpty()) put("hostGrants", JSONArray(provider.hostGrants))
+      })
+    }
+  }
+
   private fun grantWithDisplayName(uri: Uri, mimeType: String?): String {
     try {
       val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -479,6 +496,9 @@ class MainActivity : TauriActivity() {
           put("minAppVersion", p.manifest.minAppVersion)
           put("capabilities", JSONArray(p.manifest.capabilities))
           put("runtime", p.manifest.runtime.ifBlank { "native" })
+          put("schemaVersion", p.manifest.schemaVersion)
+          if (p.manifest.publisher.isNotEmpty()) put("publisher", p.manifest.publisher)
+          if (p.manifest.providers.isNotEmpty()) put("providers", pluginProvidersJson(p.manifest.providers))
           if (p.manifest.base.isNotEmpty() && p.manifest.base != "view") put("base", p.manifest.base)
           if (p.manifest.runtime == "js" || p.manifest.jsEntry.isNotBlank()) put("jsEntry", p.manifest.jsEntry)
           if (p.manifest.cssEntry.isNotEmpty()) put("cssEntry", p.manifest.cssEntry)
@@ -677,6 +697,9 @@ class MainActivity : TauriActivity() {
               put("base", m.base)
               put("capabilities", JSONArray(m.capabilities))
               put("runtime", m.runtime.ifBlank { "native" })
+              put("schemaVersion", m.schemaVersion)
+              if (m.publisher.isNotEmpty()) put("publisher", m.publisher)
+              if (m.providers.isNotEmpty()) put("providers", pluginProvidersJson(m.providers))
               if (m.jsEntry.isNotBlank()) put("jsEntry", m.jsEntry)
               if (m.cssEntry.isNotBlank()) put("cssEntry", m.cssEntry)
             })
@@ -721,6 +744,9 @@ class MainActivity : TauriActivity() {
               put("base", m.base)
               put("capabilities", JSONArray(m.capabilities))
               put("runtime", m.runtime.ifBlank { "native" })
+              put("schemaVersion", m.schemaVersion)
+              if (m.publisher.isNotEmpty()) put("publisher", m.publisher)
+              if (m.providers.isNotEmpty()) put("providers", pluginProvidersJson(m.providers))
               if (m.jsEntry.isNotBlank()) put("jsEntry", m.jsEntry)
               if (m.cssEntry.isNotBlank()) put("cssEntry", m.cssEntry)
             })

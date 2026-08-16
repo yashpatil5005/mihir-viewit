@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "iwork-universal",
+  "name": "iWork Universal",
+  "version": "0.1.0",
+  "description": "Enhanced offline Apple iWork renderer for Pages, Numbers, and Keynote.",
+  "publisher": "viewit",
+  "minAppVersion": 1,
+  "runtime": "android-dex-jni",
+  "entryClass": "ai.viewit.plugins.iworkuniversal.IworkUniversalPlugin",
+  "abi": "arm64-v8a",
+  "abiVersion": 1,
+  "providers": [
+    {
+      "id": "iwork-universal.parse",
+      "packageId": "iwork-universal",
+      "service": "viewit.document.parse",
+      "contractVersion": 1,
+      "runtime": "android-dex-jni",
+      "trustClass": "trusted-in-process",
+      "formats": [
+        "pages",
+        "numbers",
+        "key"
+      ],
+      "priority": 100
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "id": "office-universal",
+  "name": "Office Universal Plugin",
+  "version": "0.1.5",
+  "description": "Unified parser for all Office formats: OOXML (docx/xlsx/pptx + templates), Legacy Binary (doc/ppt), OpenDocument (odt/ods/odp + templates)",
+  "publisher": "viewit",
+  "minAppVersion": 1,
+  "runtime": "android-dex-jni",
+  "entryClass": "ai.viewit.plugins.officeuniversal.OfficeUniversalPlugin",
+  "jsEntry": "index.js",
+  "abi": "arm64-v8a",
+  "abiVersion": 1,
+  "providers": [
+    {
+      "id": "office-universal.parse",
+      "packageId": "office-universal",
+      "service": "viewit.document.parse",
+      "contractVersion": 1,
+      "runtime": "android-dex-jni",
+      "trustClass": "trusted-in-process",
+      "formats": [
+        "docx",
+        "docm",
+        "dotx",
+        "dotm",
+        "xlsx",
+        "xlsm",
+        "xlsb",
+        "xls",
+        "pptx",
+        "pptm",
+        "potx",
+        "odt",
+        "ott",
+        "ods",
+        "ots",
+        "odp",
+        "otp",
+        "doc",
+        "ppt"
+      ],
+      "priority": 100
+    }
+  ]
+}

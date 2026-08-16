@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "pptx-vanilla",
+  "name": "PPTX Vanilla Viewer",
+  "version": "1.0.1",
+  "description": "High-fidelity PPTX viewing directly in the WebView via pptx-vanilla-viewer — real HTML/CSS slide rendering, no server, no conversion.",
+  "publisher": "viewit",
+  "minAppVersion": 1,
+  "runtime": "webview-js",
+  "jsEntry": "index.js",
+  "cssEntry": "styles.css",
+  "abiVersion": 1,
+  "providers": [
+    {
+      "id": "pptx-vanilla.render",
+      "packageId": "pptx-vanilla",
+      "service": "viewit.document.render",
+      "contractVersion": 1,
+      "runtime": "webview-js",
+      "trustClass": "trusted-in-process",
+      "formats": [
+        "pptx"
+      ],
+      "requires": [
+        {
+          "service": "viewit.document.parse",
+          "contractVersion": 1
+        }
+      ],
+      "priority": 100
+    }
+  ]
+}

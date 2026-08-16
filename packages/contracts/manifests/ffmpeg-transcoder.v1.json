@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "id": "ffmpeg-transcoder",
+  "name": "FFmpeg Transcoder",
+  "version": "1.0.0",
+  "description": "Adds transcoding support for unsupported video and audio formats. Converts legacy containers/codecs to MP4 using FFmpeg.",
+  "publisher": "viewit",
+  "minAppVersion": 1,
+  "runtime": "android-dex-jni",
+  "entryClass": "ai.viewit.plugins.ffmpeg_transcoder.Plugin",
+  "abi": "arm64-v8a",
+  "abiVersion": 1,
+  "providers": [
+    {
+      "id": "ffmpeg-transcoder.transcode",
+      "packageId": "ffmpeg-transcoder",
+      "service": "viewit.media.transcode",
+      "contractVersion": 1,
+      "runtime": "android-dex-jni",
+      "trustClass": "trusted-in-process",
+      "formats": [
+        "avi",
+        "mkv",
+        "mov",
+        "webm",
+        "3gp",
+        "flv",
+        "asf",
+        "wmv",
+        "wma",
+        "swf",
+        "mxf",
+        "mpg",
+        "mpeg",
+        "ts",
+        "m2ts",
+        "mts"
+      ]
+    }
+  ]
+}

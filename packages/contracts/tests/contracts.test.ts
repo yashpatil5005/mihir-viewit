@@ -7,11 +7,16 @@ import {
 } from "../src/index";
 import providers from "../catalog/providers.v1.json" with { type: "json" };
 import services from "../catalog/services.v1.json" with { type: "json" };
+import officeManifest from "../manifests/office-universal.v1.json" with { type: "json" };
 
 describe("canonical ViewIt contracts", () => {
   it("validates every registered service and provider", () => {
     expect(services.map(parseServiceDescriptorV1)).toHaveLength(11);
     expect(providers.map(parseProviderDescriptorV1)).toHaveLength(10);
+  });
+
+  it("validates generated canonical package manifests", () => {
+    expect(parsePluginPackageManifestV1(officeManifest).providers).toHaveLength(1);
   });
   it("accepts versioned service and provider descriptors", () => {
     expect(

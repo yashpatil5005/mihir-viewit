@@ -1,4 +1,5 @@
 import { providerSupportsFormat, resolveFormatCapability } from "@viewit/platform";
+import type { ProviderDescriptorV1 } from "@viewit/contracts";
 
 export interface PluginInfo {
   id: string;
@@ -30,6 +31,9 @@ export interface PluginInfo {
   cssEntry?: string;
   /** Documented storage-permission scope (for extraction-capable plugins). */
   storageScope?: string;
+  schemaVersion?: number;
+  publisher?: string;
+  providers?: ProviderDescriptorV1[];
 }
 
 export interface PluginCatalogSource {
@@ -105,6 +109,9 @@ function normalizeCatalogPlugin(raw: any): PluginInfo | null {
     jsEntry: raw.jsEntry ? String(raw.jsEntry) : undefined,
     cssEntry: raw.cssEntry ? String(raw.cssEntry) : undefined,
     capabilities: Array.isArray(raw.capabilities) ? raw.capabilities.map(String) : undefined,
+    schemaVersion: Number(raw.schemaVersion ?? 0),
+    publisher: raw.publisher ? String(raw.publisher) : undefined,
+    providers: Array.isArray(raw.providers) ? raw.providers : undefined,
   };
 }
 
@@ -422,6 +429,9 @@ export function installManifest(plugin: PluginInfo) {
     abiVersion: plugin.abiVersion ?? 1,
     base: plugin.base ?? "view",
     capabilities: plugin.capabilities ?? [],
+    schemaVersion: plugin.schemaVersion ?? 0,
+    publisher: plugin.publisher ?? "",
+    providers: plugin.providers ?? [],
     runtime: plugin.runtime ?? "native",
     jsEntry: plugin.runtime === "js" ? (plugin.jsEntry ?? "web/index.js") : "",
     cssEntry: plugin.runtime === "js" ? (plugin.cssEntry ?? "") : "",

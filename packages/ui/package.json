@@ -38,6 +38,7 @@
   },
   "dependencies": {
     "@silurus/ooxml": "^0.72.2",
+    "@viewit/contracts": "*",
     "@viewit/platform": "*",
     "docx-preview": "^0.4.0",
     "jszip": "^3.10.1",

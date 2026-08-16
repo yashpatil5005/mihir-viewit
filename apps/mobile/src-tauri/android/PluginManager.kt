@@ -31,36 +31,86 @@ class PluginManager(private val context: Context) {
         private const val CATALOG_PUBLIC_KEY_B64 = "hrnfmcarRcPC5tuEXGcdEIMf1a9gaXtf+DCJl0ftoTE="
 
         fun fetchManifestFromJson(obj: JSONObject): PluginManifest {
+            val manifestObj = obj.optJSONObject("manifest") ?: obj
+            val artifactObj = obj.optJSONObject("artifact")
             val formats = mutableListOf<String>()
-            val arr = obj.optJSONArray("supportedFormats") ?: obj.optJSONArray("formats")
+            val arr = manifestObj.optJSONArray("supportedFormats") ?: manifestObj.optJSONArray("formats")
             if (arr != null) {
                 for (i in 0 until arr.length()) formats.add(arr.getString(i))
             }
             val caps = mutableListOf<String>()
-            val capsArr = obj.optJSONArray("capabilities")
+            val capsArr = manifestObj.optJSONArray("capabilities")
             if (capsArr != null) {
                 for (i in 0 until capsArr.length()) caps.add(capsArr.getString(i))
             }
+            val providers = parseProviders(manifestObj.optJSONArray("providers"))
+            val canonicalFormats = if (formats.isNotEmpty()) formats else providers.flatMap { it.formats }.distinct()
             return PluginManifest(
-                id = obj.getString("id"),
-                name = obj.getString("name"),
-                version = obj.getString("version"),
-                description = obj.optString("description", ""),
-                minAppVersion = obj.optInt("minAppVersion", 1),
-                entryClass = obj.optString("entryClass", ""),
-                supportedFormats = formats,
-                downloadUrl = obj.getString("downloadUrl"),
-                sizeBytes = obj.optLong("sizeBytes", 0),
-                installedSizeBytes = obj.optLong("installedSizeBytes", 0),
-                checksum = obj.optString("checksum", ""),
-                abi = obj.optString("abi", ""),
-                abiVersion = obj.optInt("abiVersion", 1),
+                id = manifestObj.getString("id"),
+                name = manifestObj.getString("name"),
+                version = manifestObj.getString("version"),
+                description = manifestObj.optString("description", ""),
+                minAppVersion = manifestObj.optInt("minAppVersion", 1),
+                entryClass = manifestObj.optString("entryClass", ""),
+                supportedFormats = canonicalFormats,
+                downloadUrl = artifactObj?.optString("url", "") ?: manifestObj.optString("downloadUrl", ""),
+                sizeBytes = artifactObj?.optLong("sizeBytes", 0) ?: manifestObj.optLong("sizeBytes", 0),
+                installedSizeBytes = artifactObj?.optLong("installedSizeBytes", 0) ?: manifestObj.optLong("installedSizeBytes", 0),
+                checksum = artifactObj?.optString("sha256", "") ?: manifestObj.optString("checksum", ""),
+                abi = manifestObj.optString("abi", ""),
+                abiVersion = manifestObj.optInt("abiVersion", 1),
                 capabilities = caps,
-                base = obj.optString("base", "view"),
-                runtime = obj.optString("runtime", ""),
-                jsEntry = obj.optString("jsEntry", "web/index.js"),
-                cssEntry = obj.optString("cssEntry", ""),
+                base = manifestObj.optString("base", "view"),
+                runtime = operationalRuntime(manifestObj.optString("runtime", "")),
+                jsEntry = manifestObj.optString("jsEntry", "web/index.js"),
+                cssEntry = manifestObj.optString("cssEntry", ""),
+                schemaVersion = manifestObj.optInt("schemaVersion", 0),
+                publisher = manifestObj.optString("publisher", ""),
+                providers = providers,
             )
+        }
+
+        private fun parseProviders(array: JSONArray?): List<PluginProviderManifest> {
+            if (array == null) return emptyList()
+            return (0 until array.length()).map { index ->
+                val provider = array.getJSONObject(index)
+                PluginProviderManifest(
+                    id = provider.getString("id"),
+                    packageId = provider.getString("packageId"),
+                    service = provider.getString("service"),
+                    contractVersion = provider.getInt("contractVersion"),
+                    runtime = provider.getString("runtime"),
+                    trustClass = provider.getString("trustClass"),
+                    formats = jsonStrings(provider.optJSONArray("formats")),
+                    mimeTypes = jsonStrings(provider.optJSONArray("mimeTypes")),
+                    priority = provider.optInt("priority", 0),
+                    requires = parseRequirements(provider.optJSONArray("requires")),
+                    optional = parseRequirements(provider.optJSONArray("optional")),
+                    hostGrants = jsonStrings(provider.optJSONArray("hostGrants")),
+                )
+            }
+        }
+
+        private fun parseRequirements(array: JSONArray?): List<PluginProviderRequirement> {
+            if (array == null) return emptyList()
+            return (0 until array.length()).map { index ->
+                val requirement = array.getJSONObject(index)
+                PluginProviderRequirement(
+                    service = requirement.getString("service"),
+                    contractVersion = requirement.getInt("contractVersion"),
+                )
+            }
+        }
+
+        private fun jsonStrings(array: JSONArray?): List<String> {
+            if (array == null) return emptyList()
+            return (0 until array.length()).map(array::getString)
+        }
+
+        private fun operationalRuntime(runtime: String): String = when (runtime) {
+            "webview-js" -> "js"
+            "android-dex", "android-dex-jni" -> "native"
+            else -> runtime
         }
 
         fun validateManifest(manifest: PluginManifest): List<String> {
@@ -677,11 +727,42 @@ class PluginManager(private val context: Context) {
             if (manifest.runtime.isNotEmpty()) put("runtime", manifest.runtime)
             if (manifest.runtime == "js") put("jsEntry", manifest.jsEntry)
             if (manifest.runtime == "js" && manifest.cssEntry.isNotEmpty()) put("cssEntry", manifest.cssEntry)
+            if (manifest.schemaVersion > 0) put("schemaVersion", manifest.schemaVersion)
+            if (manifest.publisher.isNotEmpty()) put("publisher", manifest.publisher)
+            if (manifest.providers.isNotEmpty()) put("providers", providersJson(manifest.providers))
         }
         File(dir, "plugin.json").writeText(obj.toString(2))
     }
 
     private fun parseManifest(obj: JSONObject): PluginManifest {
         return fetchManifestFromJson(obj)
+    }
+
+    private fun providersJson(providers: List<PluginProviderManifest>): JSONArray = JSONArray().apply {
+        providers.forEach { provider ->
+            put(JSONObject().apply {
+                put("id", provider.id)
+                put("packageId", provider.packageId)
+                put("service", provider.service)
+                put("contractVersion", provider.contractVersion)
+                put("runtime", provider.runtime)
+                put("trustClass", provider.trustClass)
+                if (provider.formats.isNotEmpty()) put("formats", JSONArray(provider.formats))
+                if (provider.mimeTypes.isNotEmpty()) put("mimeTypes", JSONArray(provider.mimeTypes))
+                if (provider.priority != 0) put("priority", provider.priority)
+                if (provider.requires.isNotEmpty()) put("requires", requirementsJson(provider.requires))
+                if (provider.optional.isNotEmpty()) put("optional", requirementsJson(provider.optional))
+                if (provider.hostGrants.isNotEmpty()) put("hostGrants", JSONArray(provider.hostGrants))
+            })
+        }
+    }
+
+    private fun requirementsJson(requirements: List<PluginProviderRequirement>): JSONArray = JSONArray().apply {
+        requirements.forEach { requirement ->
+            put(JSONObject().apply {
+                put("service", requirement.service)
+                put("contractVersion", requirement.contractVersion)
+            })
+        }
     }
 }
