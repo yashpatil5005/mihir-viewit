@@ -27,6 +27,7 @@ export interface ProviderRequirementV1 {
 
 export interface ProviderDescriptorV1 {
   id: string;
+  packageId: string;
   service: `viewit.${string}`;
   contractVersion: number;
   runtime: ProviderRuntime;

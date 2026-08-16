@@ -7,6 +7,18 @@ import org.junit.Test
 
 class RuntimeBuildPolicyTest {
     @Test
+    fun `generated provider contracts reference registered services`() {
+        assertTrue(ViewItContractCatalog.FINGERPRINT.matches(Regex("[a-f0-9]{64}")))
+        ViewItContractCatalog.providers.forEach { provider ->
+            assertTrue(
+                "${provider.id} references ${provider.service}",
+                ViewItContractCatalog.serviceIds.contains(provider.service),
+            )
+            assertTrue(provider.contractVersion > 0)
+        }
+    }
+
+    @Test
     fun `development enables local diagnostics and unsigned catalogs`() {
         assertTrue(RuntimeBuildPolicy.enablesWebViewDebugging(RuntimeBuildPolicy.DEVELOPMENT))
         assertTrue(RuntimeBuildPolicy.enablesLocalPluginInstall(RuntimeBuildPolicy.DEVELOPMENT))

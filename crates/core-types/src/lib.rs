@@ -4,6 +4,8 @@
 //! `viewit-core` itself, which would create a cycle.
 
 use serde::{Deserialize, Serialize};
+
+pub mod contracts_generated;
 use thiserror::Error as ThiserrorError;
 
 /// Format identifier, sniffed from magic bytes + extension. Each variant routes
@@ -271,6 +273,24 @@ pub enum Document {
 pub enum Suggestion {
     OpenWithExternal,
     None,
+}
+
+#[cfg(test)]
+mod contract_catalog_tests {
+    use super::contracts_generated::{PROVIDERS, SERVICE_IDS};
+
+    #[test]
+    fn generated_provider_services_are_registered() {
+        for provider in PROVIDERS {
+            assert!(
+                SERVICE_IDS.contains(&provider.service),
+                "provider {} references unknown service {}",
+                provider.id,
+                provider.service
+            );
+            assert!(provider.contract_version > 0);
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

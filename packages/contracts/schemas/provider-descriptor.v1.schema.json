@@ -4,9 +4,10 @@
   "title": "ViewIt Provider Descriptor v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "service", "contractVersion", "runtime", "trustClass"],
+  "required": ["id", "packageId", "service", "contractVersion", "runtime", "trustClass"],
   "properties": {
     "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$" },
+    "packageId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$" },
     "service": { "type": "string", "pattern": "^viewit\\.[a-z][a-z0-9.-]*$" },
     "contractVersion": { "type": "integer", "minimum": 1 },
     "runtime": { "enum": ["builtin", "android-dex", "android-dex-jni", "webview-js", "wasm", "external-worker"] },

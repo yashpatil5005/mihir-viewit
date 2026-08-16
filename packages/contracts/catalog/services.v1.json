@@ -1,0 +1,100 @@
+[
+  {
+    "id": "viewit.document.parse",
+    "contractVersion": 1,
+    "requestSchema": "viewit://schemas/document-parse-request.v1",
+    "responseSchema": "viewit://schemas/document.v1",
+    "cardinality": "single",
+    "scope": "operation",
+    "defaultTimeoutMs": 30000
+  },
+  {
+    "id": "viewit.document.render",
+    "contractVersion": 1,
+    "requestSchema": "viewit://schemas/document-render-request.v1",
+    "responseSchema": "viewit://schemas/document-render-result.v1",
+    "cardinality": "single",
+    "scope": "document",
+    "defaultTimeoutMs": 30000
+  },
+  {
+    "id": "viewit.document.edit",
+    "contractVersion": 1,
+    "requestSchema": "viewit://schemas/document-edit-request.v1",
+    "responseSchema": "viewit://schemas/document-edit-result.v1",
+    "cardinality": "single",
+    "scope": "document",
+    "defaultTimeoutMs": 30000
+  },
+  {
+    "id": "viewit.archive.list",
+    "contractVersion": 1,
+    "requestSchema": "viewit://schemas/archive-list-request.v1",
+    "responseSchema": "viewit://schemas/archive-list-result.v1",
+    "cardinality": "single",
+    "scope": "operation",
+    "defaultTimeoutMs": 30000
+  },
+  {
+    "id": "viewit.archive.read-entry",
+    "contractVersion": 1,
+    "requestSchema": "viewit://schemas/archive-read-entry-request.v1",
+    "responseSchema": "viewit://schemas/archive-read-entry-result.v1",
+    "cardinality": "single",
+    "scope": "operation",
+    "defaultTimeoutMs": 30000
+  },
+  {
+    "id": "viewit.archive.extract",
+    "contractVersion": 1,
+    "requestSchema": "viewit://schemas/archive-extract-request.v1",
+    "responseSchema": "viewit://schemas/archive-extract-result.v1",
+    "cardinality": "single",
+    "scope": "operation",
+    "defaultTimeoutMs": 120000
+  },
+  {
+    "id": "viewit.font.inspect",
+    "contractVersion": 1,
+    "requestSchema": "viewit://schemas/font-inspect-request.v1",
+    "responseSchema": "viewit://schemas/document.v1",
+    "cardinality": "single",
+    "scope": "operation",
+    "defaultTimeoutMs": 30000
+  },
+  {
+    "id": "viewit.media.play",
+    "contractVersion": 1,
+    "requestSchema": "viewit://schemas/media-play-request.v1",
+    "responseSchema": "viewit://schemas/media-play-result.v1",
+    "cardinality": "single",
+    "scope": "document"
+  },
+  {
+    "id": "viewit.media.inspect",
+    "contractVersion": 1,
+    "requestSchema": "viewit://schemas/media-inspect-request.v1",
+    "responseSchema": "viewit://schemas/media-inspect-result.v1",
+    "cardinality": "single",
+    "scope": "operation",
+    "defaultTimeoutMs": 30000
+  },
+  {
+    "id": "viewit.media.transcode",
+    "contractVersion": 1,
+    "requestSchema": "viewit://schemas/media-transcode-request.v1",
+    "responseSchema": "viewit://schemas/media-transcode-result.v1",
+    "cardinality": "single",
+    "scope": "operation",
+    "defaultTimeoutMs": 300000
+  },
+  {
+    "id": "viewit.host.save-as",
+    "contractVersion": 1,
+    "requestSchema": "viewit://schemas/save-as-request.v1",
+    "responseSchema": "viewit://schemas/save-as-result.v1",
+    "cardinality": "single",
+    "scope": "operation",
+    "defaultTimeoutMs": 120000
+  }
+]

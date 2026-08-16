@@ -1,0 +1,98 @@
+[
+  {
+    "id": "office-universal.parse",
+    "packageId": "office-universal",
+    "service": "viewit.document.parse",
+    "contractVersion": 1,
+    "runtime": "android-dex-jni",
+    "trustClass": "trusted-in-process",
+    "formats": ["docx", "docm", "dotx", "dotm", "xlsx", "xlsm", "xlsb", "xls", "pptx", "pptm", "potx", "odt", "ott", "ods", "ots", "odp", "otp", "doc", "ppt"],
+    "priority": 100
+  },
+  {
+    "id": "pptx-vanilla.render",
+    "packageId": "pptx-vanilla",
+    "service": "viewit.document.render",
+    "contractVersion": 1,
+    "runtime": "webview-js",
+    "trustClass": "trusted-in-process",
+    "formats": ["pptx"],
+    "requires": [{ "service": "viewit.document.parse", "contractVersion": 1 }],
+    "priority": 100
+  },
+  {
+    "id": "compression-universal.list",
+    "packageId": "compression-universal",
+    "service": "viewit.archive.list",
+    "contractVersion": 1,
+    "runtime": "android-dex-jni",
+    "trustClass": "trusted-in-process",
+    "formats": ["zip", "7z", "rar", "tar", "gz", "tgz", "bz2", "tbz2", "xz", "txz", "zst", "tzst", "lz4", "lzma", "tlz", "tar.gz", "tar.bz2", "tar.xz", "tar.zst", "tar.lz4", "tar.lzma"]
+  },
+  {
+    "id": "compression-universal.read-entry",
+    "packageId": "compression-universal",
+    "service": "viewit.archive.read-entry",
+    "contractVersion": 1,
+    "runtime": "android-dex-jni",
+    "trustClass": "trusted-in-process",
+    "formats": ["zip", "7z", "rar", "tar", "gz", "tgz", "bz2", "tbz2", "xz", "txz", "zst", "tzst", "lz4", "lzma", "tlz", "tar.gz", "tar.bz2", "tar.xz", "tar.zst", "tar.lz4", "tar.lzma"]
+  },
+  {
+    "id": "compression-universal.extract",
+    "packageId": "compression-universal",
+    "service": "viewit.archive.extract",
+    "contractVersion": 1,
+    "runtime": "android-dex-jni",
+    "trustClass": "trusted-in-process",
+    "formats": ["zip", "7z", "rar", "tar", "gz", "tgz", "bz2", "tbz2", "xz", "txz", "zst", "tzst", "lz4", "lzma", "tlz", "tar.gz", "tar.bz2", "tar.xz", "tar.zst", "tar.lz4", "tar.lzma"],
+    "hostGrants": ["viewit.host.save-as"]
+  },
+  {
+    "id": "font-universal.inspect",
+    "packageId": "font-universal",
+    "service": "viewit.font.inspect",
+    "contractVersion": 1,
+    "runtime": "android-dex-jni",
+    "trustClass": "trusted-in-process",
+    "formats": ["ttf", "otf", "woff", "ttc"]
+  },
+  {
+    "id": "iwork-universal.parse",
+    "packageId": "iwork-universal",
+    "service": "viewit.document.parse",
+    "contractVersion": 1,
+    "runtime": "android-dex-jni",
+    "trustClass": "trusted-in-process",
+    "formats": ["pages", "numbers", "key"],
+    "priority": 100
+  },
+  {
+    "id": "player-base.play",
+    "packageId": "player-base",
+    "service": "viewit.media.play",
+    "contractVersion": 1,
+    "runtime": "webview-js",
+    "trustClass": "trusted-in-process",
+    "formats": ["mp4", "webm", "mkv", "mov", "avi", "m4v", "3gp", "mpg", "mpeg", "wmv", "mp3", "m4a", "aac", "flac", "ogg", "wav", "opus"]
+  },
+  {
+    "id": "editor-base.edit",
+    "packageId": "editor-base",
+    "service": "viewit.document.edit",
+    "contractVersion": 1,
+    "runtime": "webview-js",
+    "trustClass": "trusted-in-process",
+    "formats": ["md", "markdown", "mdown", "txt", "text", "json", "yaml", "yml", "srt"],
+    "hostGrants": ["viewit.host.save-as"]
+  },
+  {
+    "id": "ffmpeg-transcoder.transcode",
+    "packageId": "ffmpeg-transcoder",
+    "service": "viewit.media.transcode",
+    "contractVersion": 1,
+    "runtime": "android-dex-jni",
+    "trustClass": "trusted-in-process",
+    "formats": ["avi", "mkv", "mov", "webm", "3gp", "flv", "asf", "wmv", "wma", "swf", "mxf", "mpg", "mpeg", "ts", "m2ts", "mts"]
+  }
+]

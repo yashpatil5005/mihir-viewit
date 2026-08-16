@@ -5,8 +5,14 @@ import {
   parseProviderDescriptorV1,
   parseServiceDescriptorV1,
 } from "../src/index";
+import providers from "../catalog/providers.v1.json" with { type: "json" };
+import services from "../catalog/services.v1.json" with { type: "json" };
 
 describe("canonical ViewIt contracts", () => {
+  it("validates every registered service and provider", () => {
+    expect(services.map(parseServiceDescriptorV1)).toHaveLength(11);
+    expect(providers.map(parseProviderDescriptorV1)).toHaveLength(10);
+  });
   it("accepts versioned service and provider descriptors", () => {
     expect(
       parseServiceDescriptorV1({
@@ -22,6 +28,7 @@ describe("canonical ViewIt contracts", () => {
     expect(
       parseProviderDescriptorV1({
         id: "office-universal.parse",
+        packageId: "office-universal",
         service: "viewit.document.parse",
         contractVersion: 1,
         runtime: "android-dex-jni",

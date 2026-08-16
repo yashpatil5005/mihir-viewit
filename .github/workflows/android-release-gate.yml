@@ -65,7 +65,7 @@ jobs:
         run: npm run build --workspace apps/mobile
 
       - name: Contract schema validation
-        run: npm run test:contracts
+        run: npm run check:contracts
 
       - name: Android release + 16 KB verifier
         env:
