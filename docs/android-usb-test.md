@@ -1,20 +1,22 @@
-# Android USB test (full build)
+# Android USB Device Test
+
+These commands create a `device-test` distribution. It uses optimized Gradle release-mode code but is not a ViewIt production release.
 
 ## Build (Linux)
 
 Default **lite** (no pdfium, WebView PDF/video stream):
 
 ```bash
-BUILD_PROFILE=lite JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 npm run build:android-release
+VIEWIT_APP_PROFILE=device-test BUILD_PROFILE=lite JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 npm run build:android-release
 ```
 
 Full raster PDF (`libpdfium`):
 
 ```bash
-BUILD_PROFILE=full JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 npm run build:android-release
+VIEWIT_APP_PROFILE=device-test BUILD_PROFILE=full JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 npm run build:android-release
 ```
 
-Output: `dist/viewit-android-universal-debug.apk` (debug-signed, `adb install` OK).
+Output: `dist/viewit-android-arm64-release.apk` (locally/debug signed unless production signing is explicitly enabled).
 
 ## Phone setup
 
@@ -24,7 +26,14 @@ Output: `dist/viewit-android-universal-debug.apk` (debug-signed, `adb install` O
 ## Install & launch
 
 ```bash
-adb install -r dist/viewit-android-universal-debug.apk
+adb install -r dist/viewit-android-arm64-release.apk
+adb shell am start -n ai.viewit.app/.MainActivity
+```
+
+For a clean architecture/plugin test, Android backup restore may reintroduce old app-private plugin state after reinstall. Clear data after installation:
+
+```bash
+adb shell pm clear ai.viewit.app
 adb shell am start -n ai.viewit.app/.MainActivity
 ```
 
@@ -62,7 +71,7 @@ Or from `apps/mobile`:
 TAURI_DEV_HOST=$(hostname -I | awk '{print $1}') npm run dev:android
 ```
 
-Uses Vite on `0.0.0.0:1421`; Tauri proxies dev URL to the phone. **Not** the same as release APK.
+Uses Vite on `0.0.0.0:1421`; Tauri proxies the dev URL to the phone. This is distinct from the optimized `device-test` APK.
 
 ## Performance (offline)
 
@@ -71,13 +80,13 @@ Uses Vite on `0.0.0.0:1421`; Tauri proxies dev URL to the phone. **Not** the sam
 - **Video (picker, large)**: blob URL + `<video>` without reading into Rust.
 - **Docs (txt/xlsx/…)**: share still reads once (≤32 MB); picker uses `open_bytes_b64`.
 
-## Release APK still blank / Internal Server Error?
+## Device-test APK still blank / Internal Server Error?
 
 Rebuild after protocol patch:
 
 ```bash
-JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 npm run build:android-release
-adb install -r dist/viewit-android-universal-debug.apk
+VIEWIT_APP_PROFILE=device-test JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 npm run build:android-release
+adb install -r dist/viewit-android-arm64-release.apk
 ```
 
 **No Chrome?** Use in-app **▸ log** (header) for open/stream errors, or PC:

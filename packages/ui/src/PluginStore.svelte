@@ -10,6 +10,7 @@
     removePlugin,
     restartApp,
     saveCustomCatalogUrls,
+    viewitBuildProfile,
     type PluginCatalogSource,
     type PluginInfo,
   } from "./pluginBridge";
@@ -36,15 +37,18 @@
   let wasOpen = $state(false);
 
   const isAndroid = $derived(hasAndroidBridge());
+  const buildProfile = viewitBuildProfile();
 
   const PRIVACY_TEXT = `Plugin Privacy & Security
 
 • Plugins are optional downloadable runtimes
-• Plugins run in a sandboxed process with no network access
+• Current downloadable plugins are trusted extensions that run inside the ViewIt app
 • Plugin code is verified via SHA-256 checksum against the signed catalog
 • No personal data is sent to plugin authors
-• Plugins cannot access files outside the document being viewed
-• Plugin failures fall back to the built-in viewer without crashing`;
+• Integrity verification does not sandbox plugin code or restrict it to one document
+• Install plugins only from catalogs and publishers you trust
+• ViewIt falls back to built-in viewers when a recoverable plugin operation fails
+• This app artifact uses the ${buildProfile} profile`;
 
   function acceptPrivacy() {
     acceptedPrivacy = true;

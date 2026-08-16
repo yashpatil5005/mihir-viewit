@@ -40,6 +40,13 @@ export interface PluginCatalogSource {
 
 const CUSTOM_CATALOGS_KEY = "viewit-plugin-custom-catalogs";
 
+export type ViewItBuildProfile = "development" | "device-test" | "production";
+
+export function viewitBuildProfile(): ViewItBuildProfile {
+  const profile = import.meta.env.VITE_VIEWIT_APP_PROFILE;
+  return profile === "production" || profile === "device-test" ? profile : "development";
+}
+
 export function isInstallablePlugin(plugin: PluginInfo): boolean {
   return Boolean(plugin.downloadUrl && plugin.checksum && (plugin.sizeBytes ?? 0) > 0);
 }

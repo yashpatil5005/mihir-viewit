@@ -13,11 +13,11 @@ with an on-device signed plugin catalog for format-specific parsers.
 ```
 apps/            per-target frontends (Svelte 5)
   desktop/       Tauri v2 desktop (src-tauri)
-  mobile/        Tauri v2 Android (src-tauri + bundled universal plugins)
+  mobile/        Tauri v2 Android (src-tauri + downloadable extension runtime)
   web/           static web build (WASM format parsers)
 crates/          Rust workspace — format parsers (fmt-*), core, core-types
 packages/        shared TS/Svelte
-  platform/      single seam between UI and backend (Tauri IPC / WASM)
+  platform/      shared file/platform access (Tauri IPC / WASM)
   ui/            shared viewers, theme, search
 plugins/         distributable plugin catalog + signed catalog.signed.json
 scripts/         build/smoke/dev automation (e.g. android-release.sh)
@@ -41,7 +41,7 @@ npm install        # workspace deps (npm workspaces: packages/*, apps/*)
 npm run dev:web       # run the web app in the browser
 npm run dev:desktop   # Tauri desktop (dev)
 npm run build:web     # build web + WASM format parsers
-bash scripts/android-release.sh   # build + install the Android APK
+VIEWIT_APP_PROFILE=device-test bash scripts/android-release.sh  # optimized test APK/AAB
 ```
 
 ## Tasks
@@ -58,6 +58,14 @@ operations (`make test`, `make lint`, `make build-android`, `make deny`, …).
   `python3 scripts/android-format-smoke.py` (see `scripts/`).
 - CI runs these plus `cargo fmt --check`, `clippy -D warnings`, and reverifies
   the plugin catalog signature on every PR.
+
+## Android build profiles
+
+- `development`: local/debug catalog and diagnostic workflows.
+- `device-test`: optimized connected-device artifact; the default for `android-release.sh`.
+- `production`: production signing required and debug/local-install surfaces disabled.
+
+Gradle's `release` build type is an optimization/signing mechanism, not proof that an artifact is a ViewIt production release. No app, plugin, catalog, or tag is published unless explicitly requested.
 
 ## License
 

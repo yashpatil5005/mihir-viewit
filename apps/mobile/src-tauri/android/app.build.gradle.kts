@@ -12,8 +12,16 @@ val tauriProperties = Properties().apply {
 }
 val pluginCatalogUrl: String = providers.gradleProperty("viewitPluginCatalogUrl")
     .orElse(providers.environmentVariable("VIEWIT_PLUGIN_CATALOG_URL"))
-    .orElse("https://omnia.mihirpatil.co/catalog.signed.json")
+    .orElse("")
     .get()
+val viewitAppProfile: String = providers.gradleProperty("viewitAppProfile")
+    .orElse(providers.environmentVariable("VIEWIT_APP_PROFILE"))
+    .orElse("development")
+    .get()
+val supportedViewitProfiles = setOf("development", "device-test", "production")
+require(viewitAppProfile in supportedViewitProfiles) {
+    "VIEWIT_APP_PROFILE must be one of ${supportedViewitProfiles.joinToString()}; got $viewitAppProfile"
+}
 
 android {
     compileSdk = 36
@@ -26,6 +34,7 @@ android {
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
         buildConfigField("String", "VIEWIT_PLUGIN_CATALOG_URL", "\"${pluginCatalogUrl.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
+        buildConfigField("String", "VIEWIT_APP_PROFILE", "\"$viewitAppProfile\"")
     }
     buildTypes {
         getByName("debug") {

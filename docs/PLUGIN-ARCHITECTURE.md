@@ -1,230 +1,132 @@
-# ViewIt Plugin Architecture
+# ViewIt Extension And Provider Architecture
 
-ViewIt's moat is the smallest possible base app that can still view common daily files. Plugins must extend format coverage without turning the base APK into a universal codec/office suite bundle.
+ViewIt keeps common viewing capabilities in a small offline base app and distributes heavier or specialized implementations as optional packages. The architecture distinguishes the package that delivers code from the provider that implements one runtime service.
 
-## Goals
+## Current State
 
-- Keep the Android base APK under the published size gate.
-- Let users choose optional runtimes per format when a file is opened.
-- Support view plugins first, then write/export plugins with explicit permissions.
-- Make plugin download size and installed size visible before install.
-- Prefer small, format-specific plugins over broad runtime bundles.
-- Avoid dynamic-native designs that cannot be reliably loaded after install on Android.
+Android currently supports:
 
-## Runtime Selection
+- Dex/native extensions implementing app-owned Java/Kotlin interfaces;
+- WebView JavaScript bundles with conventional exported factories;
+- signed catalog delivery and SHA-256 artifact verification;
+- ABI and minimum-app-version filtering;
+- built-in fallback when recoverable plugin operations fail.
 
-When a file is opened, the resolver produces:
+Current selection still combines extension, format, runtime, base, user preference, interface casts, and some plugin-ID-specific rules. The provider runtime renewal replaces those overlapping mechanisms incrementally.
 
-- format id, such as `xlsx`, `docx`, `flv`, `asf`
-- MIME type
-- file name and extension
-- available built-in runtime
-- installed plugin runtimes
-- downloadable plugin runtimes from catalog
+## Target Modules
 
-If more than one runtime can handle the file, ViewIt shows a runtime chooser:
+### Distribution
 
-- Built-in viewer, when available
-- Installed plugin viewer
-- Downloadable plugin viewer, with compressed and installed size
-- External app fallback
+Owns catalog trust, package identity, compatibility, download, extraction, version slots, activation, rollback, and recovery. The frontend must not reconstruct signed manifests.
 
-The user's selection can be remembered per format, but must be reversible in settings.
+### Provider runtime
 
-## Plugin Manifest
+Owns service/provider registration, deterministic resolution, activation scopes, dependencies, health, quarantine, and fallback. Built-in implementations register as built-in providers without dynamic loading.
 
-Each plugin should declare:
+### Execution adapters
 
-```json
-{
-  "id": "office-xlsx-reader",
-  "name": "Excel Reader",
-  "version": "1.0.0",
-  "capabilities": ["view"],
-  "formats": ["xlsx", "xlsm"],
-  "mimeTypes": ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
-  "entry": {
-    "android": { "type": "dex", "class": "ai.viewit.plugins.xlsx.Plugin" },
-    "web": { "type": "esm", "module": "index.js" }
-  },
-  "sizeBytes": 1800000,
-  "installedSizeBytes": 4200000,
-  "permissions": ["read-file"],
-  "minAppVersion": 1
-}
-```
+Hide runtime-specific invocation for built-in Rust/platform code, Android Dex/native code, WebView JavaScript, and future isolated workers/processes.
 
-Write-capable plugins add explicit capabilities such as `write`, `export-pdf`, or `modify-in-place`; they must be prompted separately from view-only plugins.
+## Package Versus Provider
 
-## Android Execution Model
+A plugin package is a signed/downloaded distribution artifact. One package may expose multiple providers.
 
-Android plugins should use one of these models:
+A provider implements one versioned ViewIt service, for example:
 
-- Pure JVM/Dex plugin implementing ViewIt's stable app-owned interfaces.
-- JS/HTML/CSS plugin rendered in WebView and backed by a small host bridge.
-- Host-provided native service, where the base app owns the JNI/native binding and the plugin supplies configuration/assets/codecs that the host can safely load.
-- Out-of-process executable worker only where Android platform constraints allow it.
+- `viewit.document.parse`
+- `viewit.document.render`
+- `viewit.document.edit`
+- `viewit.archive.list`
+- `viewit.archive.read-entry`
+- `viewit.archive.extract`
+- `viewit.media.inspect`
+- `viewit.media.play`
+- `viewit.media.transcode`
 
-Avoid arbitrary JNI AARs inside dynamically loaded plugins. FFmpegKit showed why: Java classes can be loaded from `DexClassLoader`, but its native `JNI_OnLoad`/class lookup path still resolves through boot/system classloaders in this setup, causing runtime `NoClassDefFoundError`/`FindClass` failures even after dependency classes are present. The current player catches that linkage failure and keeps the app alive, but FFmpegKit is not a viable post-install plugin runtime in this form.
+Legacy `base` and `capabilities` fields remain descriptive migration metadata until canonical provider descriptors replace them. They are not host permissions.
 
-## Stable Plugin ABI
+## Contracts
 
-The plugin ABI must use ViewIt-owned types only. Do not expose desugared JDK interfaces such as `java.util.function.Consumer` in plugin method signatures, because R8/desugaring can rewrite app-side signatures in release builds.
+JSON Schema is the default authority for catalogs, package manifests, provider descriptors, lifecycle messages, bridge envelopes, and validated plugin output. Generated or mechanically validated Rust, Kotlin/Java, TypeScript, and Python representations must consume that authority.
 
-Current safe Android ABI shape:
+The stable interface must include:
 
-```kotlin
-interface ViewItPlugin {
-    val id: String
-    val version: String
-    val supportedFormats: List<String>
-    fun initialize(context: Context)
-    fun canHandle(mimeType: String): Boolean
-    fun canHandleExt(ext: String): Boolean
-    fun transcode(input: Uri, output: File, onProgress: PluginProgress): Boolean
-    fun cleanup()
-}
+- nominal service identity and contract version;
+- request/response schema fingerprints;
+- package/provider identity;
+- structured errors and progress;
+- platform, ABI, and app compatibility;
+- required provider dependencies;
+- trust class and requested host grants.
 
-interface PluginProgress {
-    fun update(progress: Float)
-}
-```
+## Trust Model
 
-R8 keep rules must preserve every app-owned plugin ABI name and member.
+Current downloaded extensions are trusted in-process code:
 
-## Size Policy
+- Dex/native extensions execute in the app process and receive host access required by the legacy interface.
+- JavaScript extensions execute in the main WebView.
+- Catalog signatures and checksums prove approved metadata and bytes; they do not sandbox execution.
 
-Every plugin card must show:
+The target trust classes are:
 
-- compressed download size
-- installed size after unzip
-- ABI coverage, such as `arm64-v8a only` or `universal`
-- optional dependency size
+- **built-in**: shipped with the app;
+- **trusted in-process extension**: approved code with app-process/WebView authority;
+- **isolated extension**: separate enforceable execution environment with narrow RPC and host grants.
 
-The Office OOXML runtime is published as ABI-specific ZIPs so users do not download native code their process cannot load:
+There is no requirement for a separate Android Activity per plugin. Isolation belongs behind an execution adapter and is introduced only where threat, feasibility, and product value justify it.
 
-- `office-ooxml-0.1.0-arm64-v8a.zip`: about 9.0 MB compressed / 25.2 MB installed
-- `office-ooxml-0.1.0-x86_64.zip`: about 9.8 MB compressed / 28.7 MB installed
+## Activation And Cleanup
 
-The catalog may contain multiple entries with the same plugin id and different `abi` values. Android filters catalog entries to the current process ABI before presenting runtimes. This matters on emulators because the device can advertise `x86_64` while an arm64-only APK runs translated as an `aarch64` process.
+The target runtime owns nested application, provider, document-session, and operation scopes. Scopes own callbacks, listeners, timers, styles, object URLs, temporary resources, progress, cancellation, and cleanup reports.
 
-Plugin catalog generation should publish per-ABI artifacts instead of universal ZIPs:
+Native libraries that Android cannot unload report restart-required residue. Cleanup must not pretend that deleting package files unloads in-process native code.
 
-- `ffmpeg-transcoder-android-arm64-v8a.zip`
-- `ffmpeg-transcoder-android-armeabi-v7a.zip`
-- `ffmpeg-transcoder-android-x86_64.zip`
+## Resolution
 
-## Office Plugins
+The resolver will select providers using:
 
-Office enhancement is a plugin concern, not a base-app concern. The base app should keep its lightweight DOCX/XLSX/PPTX previews and stay comfortably under the Android size budget. Heavier OOXML runtimes such as `ooxmlsdk`, layout-oriented renderers, and future editing/round-trip logic belong in optional Office plugins that users install only when they need richer fidelity.
+1. service and contract compatibility;
+2. platform/ABI/app compatibility;
+3. format/MIME/sniffed kind;
+4. provider health and dependency state;
+5. explicit user preference;
+6. trust/host-grant policy;
+7. provider priority/fidelity metadata;
+8. stable deterministic tie-break.
 
-The Android host has two plugin ABIs. Media plugins implement `ViewItPlugin` and expose `transcode(input, output, progress)`. Office/document plugins implement `ViewItDocumentPlugin`, which is separate so Office plugins do not pretend to be media transcoders.
+Every decision produces a trace. Directory, map, and catalog iteration order must not select behavior.
 
-Initial document-view ABI shape:
+## Current Plugin Families
 
-```kotlin
-interface ViewItDocumentPlugin {
-    val id: String
-    val version: String
-    val supportedFormats: List<String>
+- Office Universal: enhanced Office parser/renderer.
+- PPTX Vanilla: WebView PPTX renderer.
+- Compression Universal: archive list, preview, and extract operations.
+- Font Universal: font inspection/render metadata.
+- iWork Universal: enhanced Pages, Numbers, and Keynote handling.
+- Player Base: JavaScript media player experience.
+- Editor Base: JavaScript text/Markdown editing experience.
+- FFmpeg Transcoder: current arm64 Dex/JNI in-process media conversion provider.
 
-    fun initialize(context: Context)
-    fun canHandle(mimeType: String): Boolean
-    fun canHandleExt(ext: String): Boolean
-    fun render(input: Uri, ext: String): String
-    fun cleanup()
-}
-```
+FFmpeg is currently present in the default signed catalog and partially works on tested devices. Older text saying it is intentionally unpublished is obsolete. It remains a trusted in-process extension during migration; future isolation is an evidence-based execution-adapter decision.
 
-`render` returns ViewIt-owned `Document` JSON. Future iterations can add `inspect`, streaming extracted assets, render options, and safe write/export methods. Editing must use separate explicit methods such as `exportCopy` or `saveAs`, never silent in-place mutation.
+## Build Profiles
 
-The first optional Office package is `plugins/office-ooxml`, which keeps `ooxmlsdk` isolated outside the base workspace. It renders DOCX, XLSX, and PPTX into ViewIt-owned `Document` JSON through the document plugin ABI. The catalog ships ABI-specific ZIPs and pins SHA-256 checksums externally, because a ZIP cannot contain a stable checksum of itself.
+- `development`: diagnostics, local plugin install, and unsigned local catalog support.
+- `device-test`: optimized test artifact with diagnostics/local install, signed catalogs by default.
+- `production`: production signing required; WebView debugging, debug intents, and local plugin install disabled.
 
-## FFmpeg Direction
+No production publication is implied by Gradle's `release` build type.
 
-The in-process FFmpegKit Dex/JNI plugin is intentionally not published in the default catalog. It remains in `plugins/ffmpeg-transcoder` as a failed/prototype spike, but users should not be offered it until the runtime model changes.
+## Invariants
 
-The safe direction is a host-owned external media runtime, not arbitrary JNI inside a downloaded Dex plugin:
+- Base viewers remain useful without plugins or network.
+- Plugin failure falls back where the host can recover safely.
+- Signed policy metadata is never reconstructed by an untrusted/intermediate layer.
+- Failed updates never delete last-known-good packages.
+- Runtime behavior is selected by providers, not canonical plugin IDs.
+- Plugin output is validated before rendering.
+- Trust and isolation claims must match enforceable adapter behavior.
+- Heavy format engines remain optional when practical.
 
-- Desktop: spawn a bundled or user-configured `ffmpeg` executable through a tightly scoped transcoding command.
-- Android: prefer platform decoders/native player first; for unsupported formats, use an out-of-process bound service or app-extension package that owns its native libraries at install time.
-- Downloadable media packages should provide codecs/assets/configuration to a host-owned loader only when Android can load them deterministically for the current process ABI.
-- The UI should continue to expose `Open with another app` for unsupported legacy media until a safe runtime is available.
-
-This avoids the observed FFmpegKit failure mode where Java code loads through `DexClassLoader`, but native class lookup from FFmpegKit resolves through boot/system classloaders and crashes or fails with `NoClassDefFoundError`.
-
-### Excel Reader
-
-The XLSX plugin should parse Office Open XML as a workbook, not as CSV.
-
-Required reader features:
-
-- sheet tabs
-- cells, merged cells, row/column dimensions
-- number/date formatting
-- formulas as displayed cached values, with formula text available
-- styles, fills, borders, alignment
-- images anchored to cells
-- charts rendered as placeholders first, then chart model rendering
-- comments and hyperlinks
-- freeze panes and basic filters
-
-Recommended implementation path:
-
-- Optional Office OOXML plugin using `ooxmlsdk` for package/relationship/schema access, with `calamine` still allowed where it is smaller or better for raw cell values.
-- Svelte renderer for polished spreadsheet UI with virtualized rows/columns.
-- Keep advanced chart rendering separate and lazy-loaded.
-
-### Word Reader
-
-The DOCX plugin should parse WordprocessingML structurally.
-
-Required reader features:
-
-- paragraphs and runs
-- headings and styles
-- tables
-- images and captions
-- hyperlinks
-- lists
-- footnotes/endnotes as follow-up sections
-- page breaks and section breaks as visual separators
-- comments and tracked changes as optional annotations
-
-Recommended implementation path:
-
-- Optional Office OOXML plugin using `ooxmlsdk` for package/relationship/schema access.
-- Keep the base app's built-in DOCX path lightweight and best-effort.
-- Svelte renderer that maps blocks to semantic HTML with document-width layout.
-- Keep editing/writing separate from reading; writing requires a stricter model and ZIP relationship preservation.
-
-## Write Plugins
-
-Write plugins are higher-risk than readers. They need:
-
-- explicit user consent per write/export action
-- dry-run validation
-- backups or save-as by default
-- declared output formats
-- an integrity report for unsupported features that may be dropped
-
-For Office formats, write support should preserve unknown OOXML parts and relationships instead of round-tripping through a lossy simplified model.
-
-## Multi-Stream Media Handling
-
-Media plugins must report stream inventory before transcoding:
-
-- video present/missing
-- audio present/missing
-- subtitles present/missing
-- duration
-- codec list
-
-The player UI must handle:
-
-- video-only media: play video without audio warning noise
-- audio-only media: route to audio player UI
-- no audio and no video: show unsupported/corrupt media message
-- transcode failure: show plugin log summary and keep the install/open-plugin action available
-
-This should be a host-level contract, not ad hoc plugin behavior.
+See [`PLUGIN-DISTRIBUTION.md`](PLUGIN-DISTRIBUTION.md) for current operations and [`architecture/README.md`](architecture/README.md) for the full file flow.

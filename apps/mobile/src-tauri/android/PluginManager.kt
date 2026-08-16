@@ -73,7 +73,9 @@ class PluginManager(private val context: Context) {
 
         fun getCatalogUrl(): String {
             val configured = BuildConfig.VIEWIT_PLUGIN_CATALOG_URL
-            return if (configured.isNotBlank()) configured else if (BuildConfig.DEBUG) CATALOG_URL_DEBUG else CATALOG_URL_RELEASE
+            return if (configured.isNotBlank()) configured
+            else if (BuildConfig.VIEWIT_APP_PROFILE == RuntimeBuildPolicy.DEVELOPMENT) CATALOG_URL_DEBUG
+            else CATALOG_URL_RELEASE
         }
     }
 
@@ -377,7 +379,7 @@ class PluginManager(private val context: Context) {
                 }
                 Result.success(list)
             } else {
-                if (!PluginRuntimePolicy.acceptsUnsignedCatalog(BuildConfig.DEBUG)) {
+                if (!RuntimeBuildPolicy.acceptsUnsignedCatalog(BuildConfig.VIEWIT_APP_PROFILE)) {
                     return Result.failure(Exception("Plugin catalog signature is required"))
                 }
                 Log.w(TAG, "Catalog is not signed - accepting for debug/dev")

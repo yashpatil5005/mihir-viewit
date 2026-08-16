@@ -1,86 +1,46 @@
-# Publish ViewIt to Google Play
+# Google Play Publication Reference
 
-This doc is the single source of truth for the **one manual, account-bound step**
-in shipping ViewIt to Google Play. Everything machine-verifiable is already done
-by the release tooling; the remaining steps require your Google identity and card
-and cannot be automated.
+ViewIt is not currently production-ready. This document records the future account-bound Play Console procedure; it is not an instruction to publish the current device-test artifact.
 
-## What is ready (automated)
+The standard `scripts/android-release.sh` output uses the `device-test` profile unless `VIEWIT_APP_PROFILE=production` is explicitly set. Gradle release-mode optimization and an AAB do not establish production readiness.
 
-| Artifact | Where | How it's produced |
-|---|---|---|
-| Upload keystore `.jks` | `~/.android/viewit-upload.jks` (outside repo) | `keytool`, RSA 3072, alias `viewit-upload`, 30 yr |
-| Upload credentials | `~/.android/viewit-upload.env` (mode `0600`) | store/key pass (random, non-secret-committed) |
-| Upload cert SHA-256 | `85:9C:E4:90:B9:75:22:A8:40:60:14:58:59:EB:9A:6B:CB:A5:FC:3E:67:BE:6B:F4:AF:25:0A:CF:C0:5E:D4:02` | paste into Play Console |
-| AAB (upload package) | `dist/viewit-android-arm64-release.aab` | `android-release.sh` `:app:bundleArm64Release` + sign |
-| APK (optional install) | `dist/viewit-android-arm64-release.apk` | `android-release.sh` (zipalign -P16 + v2/v3) |
-| GitHub release | repo `mihir0209/ViewIt` tag `v0.2.0` | `gh release create` + upload AAB/APK |
+## Blocking Gate
 
-The catalog download URLs point at `https://omnia.mihirpatil.co/plugins/*.zip`
-(your Pages custom domain) and already resolve with HTTP 200 — plugins do **not**
-depend on GitHub Releases.
+Complete [`ANDROID-RELEASE-CHECKLIST.md`](ANDROID-RELEASE-CHECKLIST.md) and obtain explicit user approval before performing any remote upload, release creation, catalog publication, or Play rollout.
 
-## Why an upload key?
-
-Google Play uses **Play App Signing** hosted on their side. For a **new app** you
-submit the AAB signed with an "upload key"; Google strips it and re-signs the
-installable APKs with a separate app-signing key they hold. You must register your
-upload certificate once. The keystore is already generated — you only paste its
-SHA-256 fingerprint.
-
-> Do not lose `~/.android/viewit-upload.jks`. If it is lost, you cannot update the
-> app without re-registering keys in Play Console. Back it up to a trusted vault.
-
-## The manual steps (needs your Google account + $25)
-
-### 1. Create the Play Console developer account
-1. Go to https://play.google.com/console and sign in with a Google account you
-   keep (the app will be tied to it).
-2. Choose **Create app** → accept the Developer Distribution Agreement.
-3. Pay the one-time **$25** developer registration fee if your account hasn't.
-4. Set your developer name, contact email, and the **Privacy Policy** URL to the
-   hosted `docs/PRIVACY.md` or the site you publish it to.
-
-### 2. Create the app
-1. **Create app** → App name: **ViewIt** · default language: English · app or game:
-   **App** · Free or paid: `Free`.
-2. Complete the **Dashboard** checklists for the store listing, content rating,
-   target audience, and data safety (copy from `docs/STORE-LISTING.md` and
-   `docs/PRIVACY.md`).
-
-### 3. Register the upload key
-In the Play Console for ViewIt:
-1. **Setup → App integrity → App signing**.
-2. Choose **Upload key** → **Export and upload a key from Java keystore** (this is
-   the recommended path for a directly-managed key).
-3. Paste the fingerprint above, or upload `~/.android/viewit-upload.jks` when
-   prompted (see `viewit-upload.env` for the store/key password).
-4. Save. Google records your upload cert; from now on you sign AABs with this key.
-
-### 4. Upload the AAB
-1. **Production → Create new release**.
-2. Upload the AAB: `dist/viewit-android-arm64-release.aab`.
-3. Fill the release notes from the GitHub release notes (`CHANGELOG.md` / `v0.2.0`).
-4. Save → Review → **Start rollout to Production**.
-
-### 5. About the Play App Signing key
-Once your app is live, Google holds the **app-signing key** and upgrades from its
-default to Play App Signing automatically (new apps use it by default). If you
-ever need to sign a download directly (e.g., a side-loaded APK), that key is
-managed in **Setup → App integrity → App signing** in the console; do not upload
-it anywhere.
-
-## Verify before upload
+## Future Production Build
 
 ```bash
-bash scripts/quality-gate.sh                      # 10/10 must pass
-bash scripts/android-release.sh                   # produces dist/**AAB + APK
-bash scripts/check-catalog.sh https://omnia.mihirpatil.co   # ALL PLUGINS OK
-apksigner verify --verbose dist/viewit-android-arm64-release.aab
+VIEWIT_APP_PROFILE=production \
+VIEWIT_PRODUCTION_SIGNING=1 \
+ANDROID_SIGNING_KEYSTORE=/secure/path/viewit-upload.jks \
+ANDROID_SIGNING_STORE_PASS=... \
+ANDROID_SIGNING_KEY_PASS=... \
+ANDROID_SIGNING_KEY_ALIAS=... \
+bash scripts/android-release.sh
 ```
 
-## One-line summary
+The script must fail closed if production signing is absent. Verify resulting APK/AAB signatures and hashes according to the checklist.
 
-Everything is generated and built; the only remaining user action is the Play
-Console account + the ~$25 fee + pasting the upload fingerprint above and
-uploading `dist/viewit-android-arm64-release.aab`.
+## Play Account Steps
+
+After technical and user approval:
+
+1. Create or use the intended Google Play developer account.
+2. Create the ViewIt app entry with package `ai.viewit.app`.
+3. Enroll in Play App Signing and register the approved upload certificate.
+4. Complete store listing, privacy, data safety, content rating, and target audience.
+5. Upload the approved production-profile AAB to the intended test track first.
+6. Review automated/device reports and staged rollout behavior.
+7. Promote to production only through a separate explicit decision.
+
+## Key Custody
+
+- Never commit keystores or passwords.
+- Back up the upload key and credentials in a trusted vault.
+- Record certificate fingerprints from the actual approved key at release time; do not rely on stale fingerprints in documentation.
+- Document key rotation and compromise response before first production publication.
+
+## Plugin Catalog
+
+Plugin/catalog publication is a separate remote operation. Verify canonical metadata, signatures, artifact checksums, compatibility, update/rollback behavior, and catalog health before app rollout.

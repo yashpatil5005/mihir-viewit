@@ -16,6 +16,16 @@ GEN="$MOBILE/src-tauri/gen/android"
 NDK="${ANDROID_NDK_HOME:-${NDK_HOME:-$HOME/Android/Sdk/ndk/26.1.10909125}}"
 JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-21-openjdk-amd64}"
 export JAVA_HOME
+export VIEWIT_APP_PROFILE="${VIEWIT_APP_PROFILE:-device-test}"
+export VITE_VIEWIT_APP_PROFILE="$VIEWIT_APP_PROFILE"
+case "$VIEWIT_APP_PROFILE" in
+  development|device-test|production) ;;
+  *) echo "[android] invalid VIEWIT_APP_PROFILE=$VIEWIT_APP_PROFILE" >&2; exit 1 ;;
+esac
+if [[ "$VIEWIT_APP_PROFILE" == "production" && "${VIEWIT_PRODUCTION_SIGNING:-0}" != "1" ]]; then
+  echo "[android] production profile requires VIEWIT_PRODUCTION_SIGNING=1" >&2
+  exit 1
+fi
 export TMPDIR="${VIEWIT_TMPDIR:-$ROOT/build/tmp}"
 mkdir -p "$TMPDIR"
 export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} -Djava.io.tmpdir=$TMPDIR"
@@ -80,6 +90,7 @@ tauri.android.versionName=$APP_VERSION
 tauri.android.versionCode=$VERSION_CODE
 EOF
 echo "[android] version $APP_VERSION ($VERSION_CODE)"
+echo "[android] ViewIt profile $VIEWIT_APP_PROFILE"
 mark "android version"
 
 BUILD_PROFILE="${BUILD_PROFILE:-lite}"

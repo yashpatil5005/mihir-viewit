@@ -209,7 +209,9 @@ class MainActivity : TauriActivity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
-    WebView.setWebContentsDebuggingEnabled(true)
+    WebView.setWebContentsDebuggingEnabled(
+      RuntimeBuildPolicy.enablesWebViewDebugging(BuildConfig.VIEWIT_APP_PROFILE)
+    )
     super.onCreate(savedInstanceState)
     consumeIncomingIntent(intent)
   }
@@ -229,8 +231,9 @@ class MainActivity : TauriActivity() {
   private fun consumeIncomingIntent(intent: Intent?) {
     if (intent == null) return
     val action = intent.action ?: return
-    val isDebugOpen = action == ACTION_DEBUG_OPEN
-    val isDebugInstall = action == ACTION_DEBUG_INSTALL_PLUGIN
+    val debugIntentsEnabled = RuntimeBuildPolicy.enablesDebugIntents(BuildConfig.VIEWIT_APP_PROFILE)
+    val isDebugOpen = debugIntentsEnabled && action == ACTION_DEBUG_OPEN
+    val isDebugInstall = debugIntentsEnabled && action == ACTION_DEBUG_INSTALL_PLUGIN
     if (
       !isDebugOpen &&
       !isDebugInstall &&
@@ -508,6 +511,17 @@ class MainActivity : TauriActivity() {
 
     @JavascriptInterface
     fun installPluginLocal(zipPath: String, callbackId: String) {
+      if (!RuntimeBuildPolicy.enablesLocalPluginInstall(BuildConfig.VIEWIT_APP_PROFILE)) {
+        val msg = JSONObject().apply {
+          put("id", callbackId)
+          put("event", "error")
+          put("error", "Local plugin installation is disabled in production builds")
+        }
+        runOnUiThread {
+          webView.evaluateJavascript("window._pluginCallback && window._pluginCallback($msg)", null)
+        }
+        return
+      }
       val pm = (application as? ViewItApp)?.pluginManager ?: return
       Thread {
         try {

@@ -1,57 +1,27 @@
-# ViewIt Plugin Bases (architecture)
+# Legacy Plugin Bases
 
-The app ships a small built-in viewer capable of a **basic offline experience**
-for a large matrix of formats. Downloadable **plugins enrich it** — or take over
-whole experiences. A **base** is the kind of experience a plugin provides; it lets
-the WebView route work to the right add-on instead of hard-coding per plugin.
+`base` is current manifest/UI metadata with values such as `view`, `play`, `edit`, and `tool`. It groups whole user experiences, but it is not a sufficient runtime contract and does not grant authority.
 
-## Principles
+Current shipped examples include:
 
-1. The built-in viewer (fmt-*) always provides **something** for a format (basic
-   text/structure, offline). It is never a dead "Phase 1 scaffold" message.
-2. A plugin **enriches** (richer rendering — e.g. office-universal bundling
-   pptx-vanilla) or **takes over** a base when it declares that base.
-3. Plugins are **downloadable**, never baked into the APK, and work fully offline
-   after install. The APK stays under its size budget.
+- `view`: Office, archive, font, iWork, and PPTX viewing extensions;
+- `play`: Player Base;
+- `edit`: Editor Base;
+- tool-like behavior: archive extraction and media transcoding.
 
-## Bases
+Runtime code also uses format lists, runtime type, Java interface casts, JavaScript export conventions, user preferences, and some canonical plugin IDs. This overlap is being replaced by nominal versioned service and provider descriptors.
 
-| Base    | Meaning                                                        | Example |
-|---------|----------------------------------------------------------------|---------|
-| `view`  | Add/enrich a viewer for formats (default).                     | office-universal (pptx-vanilla for `.pptx`) |
-| `play`  | Playback experience — a **player base** can swap the built-in native media player with a custom UI/engine. | a future `player` plugin |
-| `edit`  | Transform/save experience; editing is the plugin's responsibility (round-trip the file). | a future `editor` plugin |
-| `tool`  | Utility for a capability (extract, transcode, …) reachable from a viewer. | compression-universal (extract), ffmpeg-transcoder |
+Target examples include:
 
-## Declaring a base
+- `viewit.document.parse`
+- `viewit.document.render`
+- `viewit.document.edit`
+- `viewit.archive.list`
+- `viewit.archive.read-entry`
+- `viewit.archive.extract`
+- `viewit.media.play`
+- `viewit.media.transcode`
 
-Each plugin manifest carries:
+`base` may remain as presentation/category metadata during migration. New runtime behavior must not depend on it as the provider interface.
 
-```json
-{
-  "id": "…",
-  "base": "play",            // default "view"
-  "runtime": "js" | "native",
-  "capabilities": [ "…" ],
-  "supportedFormats": [ "…" ]
-}
-```
-
-`base` is optional (defaults to `view`). It flows from the catalog →
-`PluginManifest` (Kotlin) → `PluginInfo` (TS), so the WebView can route by base.
-
-## Routing
-
-- Open a format → built-in viewer shows basic offline result.
-- If a plugin whose `supportedFormats` covers the format (and whose base applies:
-  `view`/`play` for display, `edit` when the user edits, `tool` for an action) is
-  installed → prefer the plugin's experience.
-- Missing plugin + online → one-tap **Install & reopen** (see `Viewer.svelte`).
-- Missing plugin + offline → clear message + install once back online.
-
-## Current status
-
-- `base` descriptor: added to `PluginManifest`, catalog, `PluginInfo`.
-- Today every shipped plugin is `view` (or `tool`-like via capabilities). The
-  **player base** and **editor base** are the natural next plugin families once
-  the download pipeline is stable (see `docs/` for release/deploy flow).
+See [`PLUGIN-ARCHITECTURE.md`](PLUGIN-ARCHITECTURE.md).

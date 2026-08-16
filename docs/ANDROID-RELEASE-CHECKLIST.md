@@ -1,35 +1,61 @@
-# Android Store Release Checklist
+# Android Production Release Checklist
+
+Production readiness is not inferred from `android-release.sh`, an AAB, or a Gradle `release` variant. The standard local script defaults to the `device-test` profile.
+
+## Current Status
+
+Production publication is blocked until the architecture renewal completes transactional updates, canonical contracts, provider lifecycle/health, trust review, and the final production dry run.
+
+## Required Profile And Signing
+
+- [ ] `VIEWIT_APP_PROFILE=production` is used.
+- [ ] `VIEWIT_PRODUCTION_SIGNING=1` is used.
+- [ ] Production keystore variables are supplied from secure storage.
+- [ ] Build fails when production profile uses debug signing.
+- [ ] WebView debugging is disabled.
+- [ ] Debug intents and local plugin installation are disabled.
+- [ ] Only signed HTTPS catalogs are accepted.
 
 ## Artifact
-- [ ] `bash scripts/android-release.sh` passes (APK ≤ 15 MB) and produces a signed AAB.
-- [ ] `bash scripts/verify-android-16kb.sh dist/viewit-android-arm64-release.apk` passes.
-- [ ] `apksigner verify --verbose dist/viewit-android-arm64-release.aab` passes.
-- [ ] Record `sha256sum dist/viewit-android-arm64-release.apk` and the `.aab` in release notes.
-- [ ] Build twice from a clean tree and compare APK hashes (or explain signing/timestamp drift).
 
-## Version/signing
-- [ ] Set `apps/mobile/src-tauri/tauri.conf.json` version and Android versionCode/versionName.
-- [ ] Use the production **upload key** at `~/.android/viewit-upload.jks` (never commit the keystore/password).
-- [ ] Back up `~/.android/viewit-upload.jks` + `~/.android/viewit-upload.env` to a trusted vault.
-- [ ] Register the upload cert SHA-256 in Play Console **Setup → App integrity → App signing**.
+- [ ] Full quality gate passes.
+- [ ] APK ≤ published size budget.
+- [ ] APK 16KB verification passes.
+- [ ] APK/AAB signatures verify with the intended upload key.
+- [ ] Version code/name are approved.
+- [ ] Clean rebuild reproducibility is measured and differences explained.
+- [ ] SHA-256 values are recorded.
 
-## Privacy/security copy
-- [ ] Plugin downloads are optional, signed (Ed25519 catalog) and checksum-verified.
-- [ ] No document content is uploaded; format parsing/rendering is local/offline after plugin install.
-- [ ] Disclose network use: plugin catalog/downloads and optional custom catalog URLs.
-- [ ] Confirm plugin storage scope and capabilities are visible in Plugin Store.
-- [ ] Link `SECURITY.md` and `docs/app-review-defense.md` in store-review material.
+## Extension Runtime
+
+- [ ] Canonical signed metadata reaches installer unchanged.
+- [ ] Failed update preserves last-known-good package.
+- [ ] Startup recovery and rollback pass.
+- [ ] Contract compatibility and output validation pass.
+- [ ] Provider health/quarantine and built-in fallback pass.
+- [ ] Trust classes and host grants match implementation.
+- [ ] Hosted catalog/artifacts pass exact checksum validation.
+- [ ] Key rotation/replay response is documented.
+
+## Privacy And Security
+
+- [ ] Plugin disclosure says trusted in-process where applicable; no false sandbox claim.
+- [ ] Network use and custom catalog policy are disclosed.
+- [ ] Document handling and temporary storage are documented.
+- [ ] Threat model and focused security review are complete.
+- [ ] Vulnerability and signing-key compromise response are documented.
 
 ## QA
-- [ ] `bash scripts/adb-release-qa.sh` on a physical arm64 device.
-- [ ] Fresh install: zero baked plugins.
-- [ ] Default signed catalog loads without manual URL.
-- [ ] Network install: office/compression/font/player/editor/iwork plugins.
-- [ ] Core matrix: text/image/pdf/media/docx/xlsx/pptx/archive/font/iWork.
-- [ ] Native update: staged + restart-to-apply.
-- [ ] Warm remove/reinstall: no native `.so` namespace failure.
+
+- [ ] Fresh production-profile install on supported physical devices.
+- [ ] Core format matrix.
+- [ ] Every published provider family install/open/update/remove/restart.
+- [ ] Failure, timeout, cancellation, rollback, and low-storage scenarios.
+- [ ] Upgrade from the last publicly distributed production version, when one exists.
 
 ## Distribution
-- [ ] `CLOUDFLARE_PAGES_PROJECT=viewit-plugin-catalog-temp bash scripts/publish-plugins.sh`.
-- [ ] `bash scripts/check-catalog.sh https://omnia.mihirpatil.co` → ALL PLUGINS OK.
-- [ ] Tag + release notes include app/APK hash and catalog signature date.
+
+- [ ] User explicitly approves remote publication.
+- [ ] Catalog/plugin publication is completed and health-checked.
+- [ ] Release notes include app hash, catalog signature/key identity, known limitations, and rollback instructions.
+- [ ] Play Console rollout is explicitly approved.

@@ -4,15 +4,17 @@
 
 ```bash
 adb devices   # must show "device"
-adb install -r dist/viewit-android-universal-debug.apk
+adb install -r dist/viewit-android-arm64-release.apk
 adb shell am start -n ai.viewit.app/.MainActivity
 ```
+
+Use `adb shell pm clear ai.viewit.app` after installation when a clean plugin/runtime state is required; Android backup restore can otherwise restore old app-private plugins.
 
 Rebuild + install:
 
 ```bash
-BUILD_PROFILE=lite JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 npm run build:android-release
-adb install -r dist/viewit-android-universal-debug.apk
+VIEWIT_APP_PROFILE=device-test BUILD_PROFILE=lite JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 npm run build:android-release
+adb install -r dist/viewit-android-arm64-release.apk
 ```
 
 ## On the phone

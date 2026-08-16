@@ -11,13 +11,15 @@ monitor, and version them.
   (`{"catalog":..., "signature":...}` over a canonical JSON; `ensure_ascii=False` so
   the Android app's `canonicalJson` verifies it).
 - **Host**: Cloudflare Pages project **`viewit-plugin-catalog-temp`**; the custom
-  domain **`omnia.mihirpatil.co`** proxies to it. The app's release catalog URL is
+  domain **`omnia.mihirpatil.co`** proxies to it. The app's hosted catalog URL is
   `https://omnia.mihirpatil.co/catalog.signed.json`.
 - **App verification**: `CATALOG_PUBLIC_KEY_B64` in `PluginManager.kt` must match the
   signer's public key (`scripts/.catalog-signing-key.pub`). Catalog entries that fail
   verification are dropped (default catalog shows nothing → users had to add a URL).
 
-## Release flow (one command)
+## Publish flow (explicit operation)
+
+Publishing changes remote state. Run it only when explicitly requested. Normal device-test app builds do not publish plugins or catalogs.
 
 ```bash
 CLOUDFLARE_PAGES_PROJECT=viewit-plugin-catalog-temp bash scripts/publish-plugins.sh
@@ -50,6 +52,12 @@ npx wrangler pages deploy build/plugin-pages --project-name viewit-plugin-catalo
   (`installZipPayload` → "Update downloaded. Restart the app to apply it."); the Plugin
   Store shows a **Restart to apply** button (bridge `restartApp()`).
 - Same-artifact reinstalls reuse the in-process loaded instance (Android can't `dlclose`).
+
+The current installer is being replaced with versioned package slots and last-known-good rollback. Until that work lands, treat plugin updates as development/test operations and retain exact package artifacts externally.
+
+## Trust
+
+Catalog signatures and artifact checksums verify metadata and bytes. Current Dex/native and WebView JavaScript extensions execute in-process and are not sandboxed. Install only extensions from trusted publishers/catalogs.
 
 ## Caching / stale content
 
