@@ -634,12 +634,13 @@ class MainActivity : TauriActivity() {
                 null
               )
             }
-          } else {
-            val reason = result.exceptionOrNull()?.message ?: "Install failed"
+            } else {
+              val failure = result.exceptionOrNull()
+              val reason = result.exceptionOrNull()?.message ?: "Install failed"
             android.util.Log.e("ViewIt", "Plugin install failed: $reason")
             val msg = JSONObject().apply {
               put("id", callbackId)
-              put("event", "error")
+              put("event", if (failure is PluginManager.RestartRequiredException) "restart-required" else "error")
               put("error", reason)
             }
             runOnUiThread {

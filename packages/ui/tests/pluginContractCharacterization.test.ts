@@ -1,7 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { installManifest, type PluginInfo } from "../src/pluginBridge";
+import {
+  installManifest,
+  isRestartToApplyError,
+  RestartRequiredError,
+  type PluginInfo,
+} from "../src/pluginBridge";
 
 describe("plugin install contract", () => {
+  it("uses a typed restart-required outcome instead of message matching", () => {
+    expect(isRestartToApplyError(new RestartRequiredError("apply after restart"))).toBe(true);
+    expect(isRestartToApplyError(new Error("restart the app to apply"))).toBe(false);
+  });
+
   it("preserves verified policy fields when the WebView projects an install manifest", () => {
     const plugin = {
       id: "characterization-plugin",

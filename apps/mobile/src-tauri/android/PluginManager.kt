@@ -3,6 +3,7 @@ package ai.viewit.app
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import android.util.AtomicFile
 import ai.viewit.app.ViewItDocumentPlugin
 import dalvik.system.DexClassLoader
 import org.json.JSONArray
@@ -19,6 +20,8 @@ import net.i2p.crypto.eddsa.spec.EdDSANamedCurveTable
 import net.i2p.crypto.eddsa.spec.EdDSAPublicKeySpec
 
 class PluginManager(private val context: Context) {
+
+    class RestartRequiredException(message: String) : Exception(message)
 
     companion object {
         private const val TAG = "PluginManager"
@@ -195,30 +198,11 @@ class PluginManager(private val context: Context) {
         }
 
         return try {
-            val dir = File(pluginsDir, manifest.id)
-            if (dir.exists()) {
-                val existing = installed[manifest.id]
-                if (existing?.manifest?.version == manifest.version) {
-                    return Result.success(existing)
-                }
-                val manifestFile = File(dir, "plugin.json")
-                if (manifestFile.exists()) {
-                    val existingManifest = parseManifest(JSONObject(manifestFile.readText()))
-                    if (existingManifest.version == manifest.version) {
-                        return loadPluginFromDir(dir)
-                            ?.let { plugin ->
-                                installed[manifest.id] = plugin
-                                Result.success(plugin)
-                            }
-                            ?: Result.failure(Exception("Failed to load existing plugin"))
-                    }
-                }
-                existing?.mediaPlugin?.cleanup()
-                if (existing?.documentPlugin !== existing?.mediaPlugin) {
-                    existing?.documentPlugin?.cleanup()
-                }
-                installed.remove(manifest.id)
-                dir.deleteRecursively()
+            val existing = installed[manifest.id]
+            if (existing?.manifest?.version == manifest.version &&
+                existing.manifest.checksum.equals(manifest.checksum, ignoreCase = true)
+            ) {
+                return Result.success(existing)
             }
 
             // Download to a temp OUTSIDE the staging dir: installZipPayload wipes
@@ -226,14 +210,16 @@ class PluginManager(private val context: Context) {
             // zip and made the subsequent unzip throw FileNotFoundException/ENOENT.
             val zipFile = java.io.File.createTempFile("pkg-${manifest.id}-", ".zip", context.cacheDir)
             try {
-                downloadFile(manifest.downloadUrl, zipFile, onProgress)
+                downloadFile(manifest.downloadUrl, zipFile, manifest.sizeBytes, onProgress)
                 installZipPayload(zipFile, manifest, onProgress)
             } finally {
                 zipFile.delete()
             }
         } catch (e: Throwable) {
             Log.e(TAG, "Install failed: ${manifest.id}", e)
-            File(pluginsDir, "${manifest.id}.staging").deleteRecursively()
+            val root = PluginSlotPolicy.pluginRoot(pluginsDir, manifest.id)
+            root.listFiles { file -> file.name.startsWith(".staging-") }
+                ?.forEach(File::deleteRecursively)
             Result.failure(Exception(e.message ?: e.javaClass.simpleName, e))
         }
     }
@@ -282,6 +268,11 @@ class PluginManager(private val context: Context) {
             // (reloading the .so into a fresh classloader would throw an
             // UnsatisfiedLinkError cross-loader).
             val warm = warmLoaded[manifest.id]
+            val pluginRoot = PluginSlotPolicy.pluginRoot(pluginsDir, manifest.id)
+            val slot = PluginSlotId.from(manifest)
+            val slotDir = PluginSlotPolicy.slotDir(pluginRoot, slot)
+            val stagingDir = File(pluginRoot, ".staging-${slot.directoryName}")
+            val currentState = readSlotState(pluginRoot)
             when (PluginRuntimePolicy.warmInstallAction(
                 warm?.manifest,
                 warm?.let { it.mediaPlugin != null || it.documentPlugin != null } == true,
@@ -289,14 +280,13 @@ class PluginManager(private val context: Context) {
             )) {
                 PluginRuntimePolicy.WarmInstallAction.REUSE -> {
                     checkNotNull(warm)
-                    val stagingDir = File(pluginsDir, "${manifest.id}.staging")
                     stagingDir.deleteRecursively()
                     stagingDir.mkdirs()
                     unzip(zipFile, stagingDir)
-                    val dir2 = File(pluginsDir, manifest.id)
-                    dir2.deleteRecursively()
-                    stagingDir.renameTo(dir2)
-                    val reinstalled = warm.copy(manifest = manifest, installDir = dir2)
+                    saveManifest(stagingDir, manifest)
+                    installSlot(stagingDir, slotDir)
+                    writeSlotState(pluginRoot, PluginSlotPolicy.activate(currentState, slot.directoryName))
+                    val reinstalled = warm.copy(manifest = manifest, installDir = slotDir)
                     installed[manifest.id] = reinstalled
                     onProgress(1f)
                     Log.i(TAG, "Reused warm-loaded plugin (native stays loaded): ${manifest.id} v${manifest.version}")
@@ -304,36 +294,19 @@ class PluginManager(private val context: Context) {
                 }
                 PluginRuntimePolicy.WarmInstallAction.STAGE_FOR_RESTART -> {
                     checkNotNull(warm)
-                    val stagingDir = File(pluginsDir, "${manifest.id}.staging")
                     stagingDir.deleteRecursively()
                     stagingDir.mkdirs()
                     unzip(zipFile, stagingDir)
                     saveManifest(stagingDir, manifest)
-                    val dir2 = File(pluginsDir, manifest.id)
-                    dir2.deleteRecursively()
-                    stagingDir.renameTo(dir2)
+                    installSlot(stagingDir, slotDir)
+                    writeSlotState(pluginRoot, PluginSlotPolicy.stage(currentState, slot.directoryName))
                     installed[manifest.id] = warm // keep this session working on the old loaded instance
                     Log.w(TAG, "Native plugin update staged; restart to apply: ${manifest.id} → v${manifest.version}")
-                    return Result.failure(Exception("Update downloaded. Restart the app to apply it."))
+                    return Result.failure(RestartRequiredException("Update downloaded. Restart the app to apply it."))
                 }
                 PluginRuntimePolicy.WarmInstallAction.LOAD -> Unit
             }
 
-            val dir = File(pluginsDir, manifest.id)
-            if (dir.exists()) {
-                val existing = installed[manifest.id]
-                if (existing?.manifest?.version == manifest.version) {
-                    return Result.success(existing)
-                }
-                existing?.mediaPlugin?.cleanup()
-                if (existing?.documentPlugin !== existing?.mediaPlugin) {
-                    existing?.documentPlugin?.cleanup()
-                }
-                installed.remove(manifest.id)
-                dir.deleteRecursively()
-            }
-
-            val stagingDir = File(pluginsDir, "${manifest.id}.staging")
             stagingDir.deleteRecursively()
             stagingDir.mkdirs()
 
@@ -347,25 +320,24 @@ class PluginManager(private val context: Context) {
                     return Result.failure(Exception("Failed to load plugin"))
                 }
 
-            // loadPluginFromDir records the staging path as installDir; point it at
-            // the final dir after the (possibly successful) rename so asset reads
-            // (loadPluginBundle/pluginAssetB64) work in the same process.
-            val moved = stagingDir.renameTo(dir)
-            if (!moved) Log.w(TAG, "Plugin dir rename failed; keeping staging path: ${manifest.id}")
-            val finalDir = if (moved) dir else stagingDir
+            installSlot(stagingDir, slotDir)
+            writeSlotState(pluginRoot, PluginSlotPolicy.activate(currentState, slot.directoryName))
 
-            val installedPlugin = plugin.copy(manifest = manifest, health = PluginHealth.LOADED, installDir = finalDir)
+            val installedPlugin = plugin.copy(manifest = manifest, health = PluginHealth.LOADED, installDir = slotDir)
+            val previous = installed[manifest.id]
             installed[manifest.id] = installedPlugin
             if (plugin.mediaPlugin != null || plugin.documentPlugin != null) {
                 // Native plugins are the warm-reuse case; JS plugins cheap to reload.
                 warmLoaded[manifest.id] = installedPlugin
             }
+            previous?.mediaPlugin?.cleanup()
+            if (previous?.documentPlugin !== previous?.mediaPlugin) previous?.documentPlugin?.cleanup()
             onProgress(1f)
             Log.i(TAG, "Installed plugin: ${manifest.id} v${manifest.version}")
             Result.success(installedPlugin)
         } catch (e: Throwable) {
             Log.e(TAG, "Install failed: ${manifest.id}", e)
-            File(pluginsDir, "${manifest.id}.staging").deleteRecursively()
+            File(PluginSlotPolicy.pluginRoot(pluginsDir, manifest.id), ".staging-${PluginSlotId.from(manifest).directoryName}").deleteRecursively()
             Result.failure(Exception(e.message ?: e.javaClass.simpleName, e))
         }
     }
@@ -496,14 +468,99 @@ class PluginManager(private val context: Context) {
     }
 
     private fun loadInstalledPlugins() {
-        val dirs = pluginsDir.listFiles() ?: return
-        for (dir in dirs) {
-            if (!dir.isDirectory) continue
-            val plugin = loadPluginFromDir(dir)
-            if (plugin != null) {
-                installed[plugin.manifest.id] = plugin
-                Log.i(TAG, "Loaded plugin: ${plugin.manifest.id}")
+        val roots = pluginsDir.listFiles() ?: return
+        for (root in roots) {
+            if (!root.isDirectory || root.name.startsWith(".")) continue
+            val stateFile = PluginSlotPolicy.stateFile(root)
+            if (!stateFile.isFile) {
+                loadLegacyPlugin(root)
+                continue
             }
+
+            var state = readSlotState(root)
+            val pendingSlot = state.pending
+            if (pendingSlot != null) {
+                val pendingDir = File(PluginSlotPolicy.versionsDir(root), pendingSlot)
+                state = if (pendingDir.isDirectory) {
+                    PluginSlotPolicy.activate(state, pendingSlot)
+                } else {
+                    Log.e(TAG, "Pending plugin slot missing: ${root.name}/$pendingSlot")
+                    state.copy(pending = null)
+                }
+                writeSlotState(root, state)
+            }
+
+            val active = state.active?.let { File(PluginSlotPolicy.versionsDir(root), it) }
+            var plugin = active?.takeIf(File::isDirectory)?.let(::loadPluginFromDir)
+            if (plugin == null && state.previous != null) {
+                val rolledBack = PluginSlotPolicy.rollback(state)
+                val previous = rolledBack?.active?.let { File(PluginSlotPolicy.versionsDir(root), it) }
+                plugin = previous?.takeIf(File::isDirectory)?.let(::loadPluginFromDir)
+                if (plugin != null && rolledBack != null) {
+                    state = rolledBack
+                    writeSlotState(root, state)
+                    Log.w(TAG, "Rolled back plugin after active slot failed: ${root.name}")
+                }
+            }
+            if (plugin != null) registerLoadedPlugin(plugin)
+        }
+    }
+
+    private fun loadLegacyPlugin(dir: File) {
+        if (!File(dir, "plugin.json").isFile) return
+        loadPluginFromDir(dir)?.let(::registerLoadedPlugin)
+    }
+
+    private fun registerLoadedPlugin(plugin: InstalledPlugin) {
+        installed[plugin.manifest.id] = plugin
+        if (plugin.mediaPlugin != null || plugin.documentPlugin != null) {
+            warmLoaded[plugin.manifest.id] = plugin
+        }
+        Log.i(TAG, "Loaded plugin: ${plugin.manifest.id} v${plugin.manifest.version}")
+    }
+
+    private fun installSlot(stagingDir: File, slotDir: File) {
+        slotDir.parentFile?.mkdirs()
+        if (slotDir.exists()) {
+            stagingDir.deleteRecursively()
+            return
+        }
+        if (!stagingDir.renameTo(slotDir)) {
+            throw IllegalStateException("Failed to promote plugin slot: ${slotDir.name}")
+        }
+    }
+
+    private fun readSlotState(pluginRoot: File): PluginSlotState {
+        val file = PluginSlotPolicy.stateFile(pluginRoot)
+        if (!file.isFile) return PluginSlotState()
+        return try {
+            val obj = JSONObject(file.readText())
+            PluginSlotState(
+                active = obj.optString("active").takeIf(String::isNotEmpty),
+                previous = obj.optString("previous").takeIf(String::isNotEmpty),
+                pending = obj.optString("pending").takeIf(String::isNotEmpty),
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Invalid plugin slot state: ${pluginRoot.name}", e)
+            PluginSlotState()
+        }
+    }
+
+    private fun writeSlotState(pluginRoot: File, state: PluginSlotState) {
+        pluginRoot.mkdirs()
+        val atomic = AtomicFile(PluginSlotPolicy.stateFile(pluginRoot))
+        val bytes = JSONObject().apply {
+            state.active?.let { put("active", it) }
+            state.previous?.let { put("previous", it) }
+            state.pending?.let { put("pending", it) }
+        }.toString(2).toByteArray(Charsets.UTF_8)
+        val output = atomic.startWrite()
+        try {
+            output.write(bytes)
+            atomic.finishWrite(output)
+        } catch (e: Throwable) {
+            atomic.failWrite(output)
+            throw e
         }
     }
 
@@ -642,13 +699,20 @@ class PluginManager(private val context: Context) {
         }
     }
 
-    private fun downloadFile(urlStr: String, dest: File, onProgress: (Float) -> Unit) {
+    private fun downloadFile(urlStr: String, dest: File, expectedBytes: Long, onProgress: (Float) -> Unit) {
         val conn = URL(urlStr).openConnection() as HttpURLConnection
         conn.connectTimeout = 30_000
         conn.readTimeout = 60_000
         conn.connect()
 
+        if (conn.responseCode !in 200..299) {
+            throw IllegalStateException("Plugin download failed: HTTP ${conn.responseCode}")
+        }
+
         val total = conn.contentLength.toLong()
+        if (expectedBytes > 0 && total > expectedBytes) {
+            throw IllegalStateException("Plugin download exceeds signed size: $total > $expectedBytes")
+        }
         var downloaded = 0L
 
         conn.inputStream.use { input ->
@@ -658,11 +722,17 @@ class PluginManager(private val context: Context) {
                 while (input.read(buf).also { read = it } != -1) {
                     output.write(buf, 0, read)
                     downloaded += read
+                    if (expectedBytes > 0 && downloaded > expectedBytes) {
+                        throw IllegalStateException("Plugin download exceeds signed size: $downloaded > $expectedBytes")
+                    }
                     if (total > 0) {
                         onProgress(downloaded.toFloat() / total)
                     }
                 }
             }
+        }
+        if (expectedBytes > 0 && downloaded != expectedBytes) {
+            throw IllegalStateException("Plugin download size mismatch: $downloaded != $expectedBytes")
         }
     }
 
