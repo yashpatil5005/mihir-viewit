@@ -366,23 +366,7 @@ export async function installPlugin(plugin: PluginInfo): Promise<void> {
   if (!isInstallablePlugin(plugin)) {
     throw new Error(`${plugin.name} is not available for download yet`);
   }
-  const manifest = JSON.stringify({
-    id: plugin.id,
-    name: plugin.name,
-    version: plugin.version,
-    description: plugin.description,
-    entryClass: plugin.entryClass ?? `ai.viewit.plugins.${plugin.id.replace(/-/g, "_")}.Plugin`,
-    supportedFormats: plugin.formats,
-    downloadUrl: plugin.downloadUrl,
-    sizeBytes: plugin.sizeBytes ?? 0,
-    installedSizeBytes: plugin.installedSizeBytes ?? 0,
-    minAppVersion: 1,
-    checksum: plugin.checksum ?? "",
-    abi: plugin.abi ?? "",
-    runtime: plugin.runtime ?? "native",
-    jsEntry: plugin.runtime === "js" ? (plugin.jsEntry ?? "web/index.js") : "",
-    cssEntry: plugin.runtime === "js" ? (plugin.cssEntry ?? "") : "",
-  });
+  const manifest = JSON.stringify(legacyInstallManifest(plugin));
   return new Promise<void>((resolve, reject) => {
     const id = `install_${plugin.id}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const bridge = window as any;
@@ -407,6 +391,27 @@ export async function installPlugin(plugin: PluginInfo): Promise<void> {
     };
     bridge.AndroidBridge.installPlugin(manifest, id);
   });
+}
+
+/** Current Kotlin -> WebView -> Kotlin manifest projection, retained for baseline characterization. */
+export function legacyInstallManifest(plugin: PluginInfo) {
+  return {
+    id: plugin.id,
+    name: plugin.name,
+    version: plugin.version,
+    description: plugin.description,
+    entryClass: plugin.entryClass ?? `ai.viewit.plugins.${plugin.id.replace(/-/g, "_")}.Plugin`,
+    supportedFormats: plugin.formats,
+    downloadUrl: plugin.downloadUrl,
+    sizeBytes: plugin.sizeBytes ?? 0,
+    installedSizeBytes: plugin.installedSizeBytes ?? 0,
+    minAppVersion: 1,
+    checksum: plugin.checksum ?? "",
+    abi: plugin.abi ?? "",
+    runtime: plugin.runtime ?? "native",
+    jsEntry: plugin.runtime === "js" ? (plugin.jsEntry ?? "web/index.js") : "",
+    cssEntry: plugin.runtime === "js" ? (plugin.cssEntry ?? "") : "",
+  };
 }
 
 export async function removePlugin(pluginId: string): Promise<void> {
