@@ -258,6 +258,19 @@ export function isJsPlugin(plugin: PluginInfo): boolean {
 
 const jsPluginModuleCache = new Map<string, Promise<Record<string, any>>>();
 
+export function unloadJsPlugin(pluginId: string): void {
+  for (const key of jsPluginModuleCache.keys()) {
+    if (key.startsWith(`${pluginId}@`)) jsPluginModuleCache.delete(key);
+  }
+  if (typeof document !== "undefined") {
+    document.getElementById(`viewit-plugin-css-${pluginId}`)?.remove();
+  }
+  if (typeof window !== "undefined") {
+    const globalName = `ViewItPlugin__${pluginId.replace(/[^a-zA-Z0-9_]/g, "_")}`;
+    delete (window as any)[globalName];
+  }
+}
+
 function decodeB64Utf8(b64: string): string {
   const raw = atob(b64);
   const bytes = new Uint8Array(raw.length);
@@ -436,7 +449,9 @@ export function installManifest(plugin: PluginInfo) {
 
 export async function removePlugin(pluginId: string): Promise<void> {
   if (!hasAndroidBridge()) return;
-  (window as any).AndroidBridge.removePlugin(pluginId);
+  const removed = (window as any).AndroidBridge.removePlugin(pluginId);
+  if (!removed) throw new Error(`Failed to remove plugin ${pluginId}`);
+  unloadJsPlugin(pluginId);
 }
 
 export interface ArchiveEntry {
@@ -587,18 +602,10 @@ export async function renderDocumentWithPlugin(
 ): Promise<unknown> {
   if (!hasAndroidBridge())
     throw new Error("Android document plugins are only available in the Android app");
-  return new Promise((resolve, reject) => {
-    const id = `doc_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    (window as any)._documentPluginCallback = (payload: {
-      id: string;
-      document?: unknown;
-      error?: string;
-    }) => {
-      if (payload.id !== id) return;
-      delete (window as any)._documentPluginCallback;
-      if (payload.error) reject(new Error(payload.error));
-      else resolve(payload.document);
-    };
-    (window as any).AndroidBridge.renderDocumentWithPlugin(plugin.id, uri, ext, id);
-  });
+  const id = requestId(`document_${plugin.id}`);
+  return bridgeRequests.request<unknown>(
+    id,
+    () => (window as any).AndroidBridge.renderDocumentWithPlugin(plugin.id, uri, ext, id),
+    { timeoutMs: 60_000 },
+  );
 }

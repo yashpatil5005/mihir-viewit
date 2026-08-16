@@ -3,6 +3,7 @@ import {
   installManifest,
   isRestartToApplyError,
   RestartRequiredError,
+  unloadJsPlugin,
   type PluginInfo,
 } from "../src/pluginBridge";
 
@@ -24,6 +25,21 @@ describe("plugin install contract", () => {
   it("uses a typed restart-required outcome instead of message matching", () => {
     expect(isRestartToApplyError(new RestartRequiredError("apply after restart"))).toBe(true);
     expect(isRestartToApplyError(new Error("restart the app to apply"))).toBe(false);
+  });
+
+  it("removes host-managed JavaScript globals and styles on unload", () => {
+    const pluginWindow = { ViewItPlugin__test_plugin: { active: true } };
+    const style = { remove: vi.fn() };
+    vi.stubGlobal("window", pluginWindow);
+    vi.stubGlobal("document", {
+      getElementById: vi.fn(() => style),
+    });
+
+    unloadJsPlugin("test-plugin");
+
+    expect(pluginWindow).not.toHaveProperty("ViewItPlugin__test_plugin");
+    expect(style.remove).toHaveBeenCalledOnce();
+    vi.unstubAllGlobals();
   });
 
   it("preserves verified policy fields when the WebView projects an install manifest", () => {
