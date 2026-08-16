@@ -527,6 +527,12 @@ class PluginManager(private val context: Context) {
         providerIds(plugin.manifest).forEach { providerHealth.failed(it, kind) }
     }
 
+    fun retryProviders(pluginId: String): Boolean {
+        val plugin = installed[pluginId] ?: return false
+        providerIds(plugin.manifest).forEach(providerHealth::retry)
+        return true
+    }
+
     private fun providerIds(manifest: PluginManifest): List<String> =
         manifest.providers.map { it.id }.ifEmpty { listOf(manifest.id) }
 

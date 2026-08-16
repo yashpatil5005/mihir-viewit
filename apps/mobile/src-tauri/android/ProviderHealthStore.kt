@@ -49,6 +49,17 @@ class ProviderHealthStore(filesDir: File) {
     }
 
     @Synchronized
+    fun retry(providerId: String) {
+        val current = get(providerId)
+        records[providerId] = current.copy(
+            state = "inactive",
+            consecutiveFailures = 0,
+            updatedAt = System.currentTimeMillis(),
+        )
+        persist()
+    }
+
+    @Synchronized
     fun snapshot(): Map<String, AndroidProviderHealth> = records.toMap()
 
     private fun load() {

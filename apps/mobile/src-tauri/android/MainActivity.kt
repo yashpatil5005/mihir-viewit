@@ -717,6 +717,11 @@ class MainActivity : TauriActivity() {
     }
 
     @JavascriptInterface
+    fun retryPluginProviders(pluginId: String): Boolean {
+      return (application as? ViewItApp)?.pluginManager?.retryProviders(pluginId) == true
+    }
+
+    @JavascriptInterface
     fun fetchPluginCatalog(callbackId: String) {
       val pm = (application as? ViewItApp)?.pluginManager ?: return
       Thread {

@@ -8,11 +8,13 @@
     isInstallablePlugin,
     isRestartToApplyError,
     removePlugin,
+    retryPluginProviders,
     restartApp,
     saveCustomCatalogUrls,
     viewitBuildProfile,
     type PluginCatalogSource,
     type PluginInfo,
+    pluginHealthSummary,
   } from "./pluginBridge";
 
   let {
@@ -77,6 +79,8 @@
           const versionMatches = installedVersion === plugin.version;
           return {
             ...plugin,
+            providerHealth: installedPlugin?.providerHealth,
+            providers: installedPlugin?.providers ?? plugin.providers,
             installed: Boolean(installedPlugin && versionMatches),
             installedVersion,
             updateAvailable: Boolean(installedPlugin && !versionMatches),
@@ -128,6 +132,14 @@
     } catch (e) {
       errorMsg = `Remove failed: ${e instanceof Error ? e.message : String(e)}`;
     }
+  }
+
+  async function retry(pluginId: string) {
+    if (!retryPluginProviders(pluginId)) {
+      errorMsg = `Could not retry ${pluginId}`;
+      return;
+    }
+    await refresh();
   }
 
   async function addCustomCatalog() {
@@ -213,6 +225,7 @@
                 <div class="empty compact">No installable plugins in this catalog.</div>
               {/if}
               {#each source.plugins as plugin}
+                {@const health = pluginHealthSummary(plugin)}
                 <div
                   class="plugin-card"
                   class:installed={plugin.installed}
@@ -242,6 +255,19 @@
                     {#if plugin.storageScope}<p class="scope">{plugin.storageScope}</p>{/if}
                     {#if plugin.sourceUrl}<span class="source-url">From {plugin.sourceUrl}</span
                       >{/if}
+                    {#if plugin.installed && health.state !== "unknown"}
+                      <span
+                        class:health-bad={health.state === "failed" ||
+                          health.state === "quarantined"}
+                        class="health"
+                      >
+                        {health.state}{#if health.failures > 0}
+                          · {health.failures} failure{health.failures === 1
+                            ? ""
+                            : "s"}{/if}{#if health.lastFailureKind}
+                          · {health.lastFailureKind}{/if}
+                      </span>
+                    {/if}
                   </div>
                   {#if installing === plugin.id}
                     <div class="progress">
@@ -256,6 +282,9 @@
                   {:else if plugin.installed}
                     <div class="plugin-actions">
                       <span class="installed-badge">Installed</span>
+                      {#if health.state === "failed" || health.state === "quarantined"}
+                        <button class="install-btn" onclick={() => retry(plugin.id)}>Retry</button>
+                      {/if}
                       <button class="remove-btn" onclick={() => remove(plugin.id)}>Remove</button>
                     </div>
                   {:else}
@@ -414,6 +443,20 @@
     overflow-wrap: anywhere;
     border-top: 1px dashed var(--border, #ddd);
     padding-top: 0.3rem;
+  }
+  .health {
+    display: block;
+    width: fit-content;
+    margin-top: 0.35rem;
+    padding: 0.12rem 0.4rem;
+    border-radius: 999px;
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+    font-size: 0.7rem;
+  }
+  .health.health-bad {
+    color: var(--error);
+    border: 1px solid color-mix(in srgb, var(--error) 35%, transparent);
   }
   .source-heading {
     display: flex;

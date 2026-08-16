@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   installManifest,
   isRestartToApplyError,
+  pluginHealthSummary,
   RestartRequiredError,
   unloadJsPlugin,
   type PluginInfo,
@@ -40,6 +41,31 @@ describe("plugin install contract", () => {
     expect(pluginWindow).not.toHaveProperty("ViewItPlugin__test_plugin");
     expect(style.remove).toHaveBeenCalledOnce();
     vi.unstubAllGlobals();
+  });
+
+  it("summarizes the worst provider health state", () => {
+    const plugin = {
+      id: "health-plugin",
+      name: "Health Plugin",
+      version: "1.0.0",
+      description: "",
+      formats: ["txt"],
+      providerHealth: {
+        parser: { state: "active", consecutiveFailures: 0, totalFailures: 1, updatedAt: 1 },
+        renderer: {
+          state: "quarantined",
+          consecutiveFailures: 3,
+          totalFailures: 3,
+          lastFailureKind: "invalid-output",
+          updatedAt: 2,
+        },
+      },
+    } satisfies PluginInfo;
+    expect(pluginHealthSummary(plugin)).toEqual({
+      state: "quarantined",
+      failures: 4,
+      lastFailureKind: "invalid-output",
+    });
   });
 
   it("preserves verified policy fields when the WebView projects an install manifest", () => {

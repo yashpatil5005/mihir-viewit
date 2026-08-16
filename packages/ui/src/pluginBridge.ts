@@ -458,6 +458,29 @@ export async function removePlugin(pluginId: string): Promise<void> {
   unloadJsPlugin(pluginId);
 }
 
+export function retryPluginProviders(pluginId: string): boolean {
+  if (!hasAndroidBridge()) return false;
+  return (window as any).AndroidBridge.retryPluginProviders?.(pluginId) === true;
+}
+
+export function pluginHealthSummary(plugin: PluginInfo): {
+  state: string;
+  failures: number;
+  lastFailureKind?: string;
+} {
+  const records = Object.values(plugin.providerHealth ?? {});
+  if (records.length === 0) return { state: "unknown", failures: 0 };
+  const rank = ["quarantined", "failed", "degraded", "restart-required", "active", "inactive"];
+  const worst = [...records].sort(
+    (left, right) => rank.indexOf(left.state) - rank.indexOf(right.state),
+  )[0];
+  return {
+    state: worst.state,
+    failures: records.reduce((total, record) => total + record.totalFailures, 0),
+    lastFailureKind: worst.lastFailureKind,
+  };
+}
+
 export interface ArchiveEntry {
   name: string;
   size: number;
