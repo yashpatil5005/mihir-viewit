@@ -9,7 +9,8 @@
     "./activation-scope": "./src/activationScope.ts",
     "./request-registry": "./src/requestRegistry.ts",
     "./provider-health": "./src/providerHealth.ts",
-    "./execution-adapter": "./src/executionAdapter.ts"
+    "./execution-adapter": "./src/executionAdapter.ts",
+    "./dependency-graph": "./src/dependencyGraph.ts"
   },
   "dependencies": {
     "ajv": "^8.20.0"

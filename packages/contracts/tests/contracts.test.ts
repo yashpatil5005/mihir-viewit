@@ -8,11 +8,13 @@ import {
 import providers from "../catalog/providers.v1.json" with { type: "json" };
 import services from "../catalog/services.v1.json" with { type: "json" };
 import officeManifest from "../manifests/office-universal.v1.json" with { type: "json" };
+import { validateProviderGraph } from "../src/dependencyGraph";
 
 describe("canonical ViewIt contracts", () => {
   it("validates every registered service and provider", () => {
     expect(services.map(parseServiceDescriptorV1)).toHaveLength(11);
     expect(providers.map(parseProviderDescriptorV1)).toHaveLength(10);
+    expect(validateProviderGraph(providers.map(parseProviderDescriptorV1)).issues).toEqual([]);
   });
 
   it("validates generated canonical package manifests", () => {
