@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://viewit.ai/schemas/provider-descriptor.v1.schema.json",
+  "title": "ViewIt Provider Descriptor v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "service", "contractVersion", "runtime", "trustClass"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$" },
+    "service": { "type": "string", "pattern": "^viewit\\.[a-z][a-z0-9.-]*$" },
+    "contractVersion": { "type": "integer", "minimum": 1 },
+    "runtime": { "enum": ["builtin", "android-dex", "android-dex-jni", "webview-js", "wasm", "external-worker"] },
+    "trustClass": { "enum": ["built-in", "trusted-in-process", "isolated"] },
+    "formats": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+    "mimeTypes": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+    "priority": { "type": "integer", "default": 0 },
+    "requires": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/requirement" },
+      "uniqueItems": true
+    },
+    "optional": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/requirement" },
+      "uniqueItems": true
+    },
+    "hostGrants": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^viewit\\.host\\.[a-z][a-z0-9.-]*$" },
+      "uniqueItems": true
+    }
+  },
+  "$defs": {
+    "requirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["service", "contractVersion"],
+      "properties": {
+        "service": { "type": "string", "pattern": "^viewit\\.[a-z][a-z0-9.-]*$" },
+        "contractVersion": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

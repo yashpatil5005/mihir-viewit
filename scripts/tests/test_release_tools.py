@@ -149,7 +149,21 @@ class PackageValidatorTests(unittest.TestCase):
         self.validator = SCRIPTS / "validate-plugin-package.py"
         self.manifest = {
             "id": "office-universal",
+            "name": "Office Universal",
             "version": "1.2.3",
+            "description": "test fixture",
+            "minAppVersion": 1,
+            "entryClass": "ai.viewit.plugins.officeuniversal.OfficeUniversalPlugin",
+            "supportedFormats": ["docx"],
+            "capabilities": ["document-render"],
+            "base": "view",
+            "runtime": "native",
+            "abi": "arm64-v8a",
+            "abiVersion": 1,
+            "downloadUrl": "https://example.test/office-universal.zip",
+            "sizeBytes": 1,
+            "installedSizeBytes": 1,
+            "checksum": "0" * 64,
             "jsEntry": "index.js",
         }
         self.required = [

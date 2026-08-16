@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://viewit.ai/schemas/service-descriptor.v1.schema.json",
+  "title": "ViewIt Service Descriptor v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "contractVersion", "requestSchema", "responseSchema", "cardinality", "scope"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^viewit\\.[a-z][a-z0-9.-]*$" },
+    "contractVersion": { "type": "integer", "minimum": 1 },
+    "requestSchema": { "type": "string", "minLength": 1 },
+    "responseSchema": { "type": "string", "minLength": 1 },
+    "cardinality": { "enum": ["single", "many"] },
+    "scope": { "enum": ["app", "document", "operation"] },
+    "defaultTimeoutMs": { "type": "integer", "minimum": 1 }
+  }
+}

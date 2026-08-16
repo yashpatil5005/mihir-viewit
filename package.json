@@ -23,9 +23,10 @@
     "build:wasm": "./scripts/build-wasm.sh",
     "lint": "prettier --check 'apps/**/*.{ts,svelte,js}' 'packages/**/*.{ts,svelte,js}'",
     "format": "prettier --write 'apps/**/*.{ts,svelte,js}' 'packages/**/*.{ts,svelte,js}'",
-    "check": "tsc --noEmit -p packages/platform",
+    "check": "tsc --noEmit -p packages/platform && tsc --noEmit -p packages/contracts",
     "test:ts": "node scripts/run-vitest.mjs",
     "test:release": "python3 -m unittest discover -s scripts/tests -p 'test_*.py'",
+    "test:contracts": "node --experimental-strip-types scripts/validate-contracts.mjs legacy-catalog plugins/catalog.json",
     "test:rust": "cargo test --workspace --exclude viewit-mobile --exclude viewit-desktop --lib",
     "test:e2e": "npm run build:web && playwright test --config e2e/web/playwright.config.ts",
     "test:intent:android": "python3 scripts/android-intent-tests.py",
@@ -33,7 +34,7 @@
     "test:visual:android:update": "python3 scripts/android-visual-regression.py --confirm-device-reset --update-baselines",
     "test:plugins:android": "python3 scripts/android-plugin-lifecycle.py --confirm-device-reset",
     "test:android": "./scripts/android-unit-tests.sh",
-    "test": "npm run test:rust && npm run test:ts && npm run test:release && npm run test:android",
+    "test": "npm run test:rust && npm run test:ts && npm run test:contracts && npm run test:release && npm run test:android",
     "size-check": "node scripts/size-budget.ts"
   },
   "devDependencies": {

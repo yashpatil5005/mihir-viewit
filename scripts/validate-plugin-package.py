@@ -3,6 +3,8 @@ import argparse
 from collections import Counter
 import json
 import zipfile
+import subprocess
+import tempfile
 from pathlib import Path
 
 
@@ -46,6 +48,36 @@ def main() -> int:
         for required_entry in required - {"plugin.json"}:
             if archive.getinfo(required_entry).file_size == 0:
                 raise SystemExit(f"{args.zip}: empty required entry: {required_entry}")
+
+        # Package source manifests still use the legacy shape. Validate all fields
+        # that are complete in a packaged artifact through the canonical schema gate.
+        contract_manifest = {
+            **manifest,
+            "abi": args.abi,
+            "downloadUrl": manifest.get("downloadUrl") or "package://local",
+            "sizeBytes": max(int(manifest.get("sizeBytes", 0)), args.zip.stat().st_size),
+            "installedSizeBytes": max(
+                int(manifest.get("installedSizeBytes", 0)),
+                sum(info.file_size for info in archive.infolist()),
+            ),
+            "checksum": manifest.get("checksum") or "0" * 64,
+        }
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as temp:
+            json.dump(contract_manifest, temp)
+            contract_path = Path(temp.name)
+        try:
+            subprocess.run(
+                [
+                    "node",
+                    "--experimental-strip-types",
+                    str(Path(__file__).with_name("validate-contracts.mjs")),
+                    "legacy-entry",
+                    str(contract_path),
+                ],
+                check=True,
+            )
+        finally:
+            contract_path.unlink(missing_ok=True)
 
     print(f"[validate] OK {args.id} v{args.version} abi={args.abi}: {args.zip}")
     return 0

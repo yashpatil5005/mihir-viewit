@@ -50,6 +50,8 @@ Legacy `base` and `capabilities` fields remain descriptive migration metadata un
 
 JSON Schema is the default authority for catalogs, package manifests, provider descriptors, lifecycle messages, bridge envelopes, and validated plugin output. Generated or mechanically validated Rust, Kotlin/Java, TypeScript, and Python representations must consume that authority.
 
+The initial schemas and TypeScript validators live in `packages/contracts`. Canonical `v1` schemas are separate from strict `legacy-*` migration adapters so current package quirks do not become permanent contracts.
+
 The stable interface must include:
 
 - nominal service identity and contract version;

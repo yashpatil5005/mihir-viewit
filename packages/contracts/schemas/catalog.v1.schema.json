@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://viewit.ai/schemas/catalog.v1.schema.json",
+  "title": "ViewIt Catalog v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "sequence", "generatedAt", "plugins"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "plugins": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["manifest", "artifact"],
+        "properties": {
+          "manifest": { "$ref": "plugin-package-manifest.v1.schema.json" },
+          "artifact": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["url", "sha256", "sizeBytes", "installedSizeBytes"],
+            "properties": {
+              "url": { "type": "string", "format": "uri" },
+              "sha256": { "type": "string", "pattern": "^[a-fA-F0-9]{64}$" },
+              "sizeBytes": { "type": "integer", "minimum": 1 },
+              "installedSizeBytes": { "type": "integer", "minimum": 1 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

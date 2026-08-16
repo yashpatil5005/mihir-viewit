@@ -277,6 +277,24 @@ def main() -> int:
     reject_replaced_versions(existing, new_plugins)
     updated = {"plugins": new_plugins}
 
+    validation_path = ROOT / "build" / "tmp" / "catalog-contract-check.json"
+    validation_path.parent.mkdir(parents=True, exist_ok=True)
+    validation_path.write_text(json.dumps(updated, indent=2) + "\n")
+    try:
+        subprocess.run(
+            [
+                "node",
+                "--experimental-strip-types",
+                str(ROOT / "scripts" / "validate-contracts.mjs"),
+                "legacy-catalog",
+                str(validation_path),
+            ],
+            cwd=ROOT,
+            check=True,
+        )
+    finally:
+        validation_path.unlink(missing_ok=True)
+
     if args.check:
         if json.dumps(updated, indent=2) == json.dumps(existing and {"plugins": existing}, indent=2):
             print("[catalog] up to date")

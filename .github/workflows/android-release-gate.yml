@@ -64,21 +64,24 @@ jobs:
       - name: Frontend build
         run: npm run build --workspace apps/mobile
 
+      - name: Contract schema validation
+        run: npm run test:contracts
+
       - name: Android release + 16 KB verifier
         env:
           ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/26.1.10909125
           JAVA_HOME: ${{ env.JAVA_HOME }}
         run: |
-          bash scripts/android-release.sh
-          ls -la dist/viewit-android-universal-debug.apk
-          bash scripts/verify-android-16kb.sh dist/viewit-android-universal-debug.apk
+          VIEWIT_APP_PROFILE=device-test bash scripts/android-release.sh
+          ls -la dist/viewit-android-arm64-release.apk
+          bash scripts/verify-android-16kb.sh dist/viewit-android-arm64-release.apk
 
       - name: Upload signed APK
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: viewit-android-16kb-apk
-          path: dist/viewit-android-universal-debug.apk
+          path: dist/viewit-android-arm64-release.apk
           if-no-files-found: error
 
       - name: Upload 16 KB verifier log
