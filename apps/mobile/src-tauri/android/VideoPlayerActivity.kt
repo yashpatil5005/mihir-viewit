@@ -33,6 +33,8 @@ class VideoPlayerActivity : AppCompatActivity() {
     private var transcodedFile: File? = null
     private var hasTriedPlugin = false
     private var pluginManager: PluginManager? = null
+    private var mediaWorker: MediaWorkerClient? = null
+    private var mediaWorkerRequestId: String? = null
 
     companion object {
         const val EXTRA_URI = "uri"
@@ -145,6 +147,11 @@ class VideoPlayerActivity : AppCompatActivity() {
         progressBar.visibility = View.VISIBLE
         pluginButton.visibility = View.GONE
 
+        if (BuildConfig.VIEWIT_MEDIA_WORKER_ENABLED) {
+            tryWorkerTranscode(uri, ext)
+            return
+        }
+
         Thread {
             try {
                 val inputPath = resolveInputPath(uri)
@@ -191,40 +198,7 @@ class VideoPlayerActivity : AppCompatActivity() {
                 transcodedFile = outputFile
 
                 runOnUiThread {
-                    android.util.Log.i("VideoPlayer", "Plugin transcode complete: ${outputFile.absolutePath}")
-                    player?.release()
-                    player = null
-
-                    player = ExoPlayer.Builder(this@VideoPlayerActivity)
-                        .build()
-                        .also { exoPlayer ->
-                            playerView.player = exoPlayer
-                            exoPlayer.addListener(object : Player.Listener {
-                                override fun onPlaybackStateChanged(playbackState: Int) {
-                                    when (playbackState) {
-                                        Player.STATE_READY -> {
-                                            progressBar.visibility = View.GONE
-                                            statusText.visibility = View.GONE
-                                        }
-                                        Player.STATE_BUFFERING -> {
-                                            progressBar.visibility = View.VISIBLE
-                                            statusText.text = "Buffering..."
-                                            statusText.visibility = View.VISIBLE
-                                        }
-                                    }
-                                }
-
-                                override fun onPlayerError(error: PlaybackException) {
-                                    progressBar.visibility = View.GONE
-                                    statusText.text = "Playback failed: ${error.message}"
-                                }
-                            })
-
-                            val mediaItem = MediaItem.fromUri(Uri.fromFile(outputFile))
-                            exoPlayer.setMediaItem(mediaItem)
-                            exoPlayer.playWhenReady = true
-                            exoPlayer.prepare()
-                        }
+                    playTranscodedFile(outputFile)
                 }
             } catch (e: Throwable) {
                 android.util.Log.e("VideoPlayer", "Plugin transcode error", e)
@@ -233,6 +207,71 @@ class VideoPlayerActivity : AppCompatActivity() {
                 }
             }
         }.start()
+    }
+
+    private fun tryWorkerTranscode(uri: Uri, ext: String) {
+        Thread {
+            val inputPath = resolveInputPath(uri)
+            if (inputPath == null) {
+                runOnUiThread { showPluginFailure(ext, IllegalStateException("Cannot resolve file path")) }
+                return@Thread
+            }
+            val outputDir = File(cacheDir, "transcoded").apply { mkdirs() }
+            val outputFile = File(outputDir, "worker_${System.currentTimeMillis()}.mp4")
+            runOnUiThread {
+                val client = mediaWorker ?: MediaWorkerClient(this).also { mediaWorker = it }
+                mediaWorkerRequestId = client.transcode(File(inputPath), outputFile, ext, object : MediaWorkerClient.Callback {
+                    override fun onProgress(progress: Float) {
+                        statusText.text = "Converting in isolated worker... ${(progress * 100).toInt()}%"
+                    }
+
+                    override fun onComplete(output: File) {
+                        mediaWorkerRequestId = null
+                        transcodedFile = output
+                        playTranscodedFile(output)
+                    }
+
+                    override fun onError(error: String) {
+                        mediaWorkerRequestId = null
+                        showPluginFailure(ext, IllegalStateException(error))
+                    }
+                })
+            }
+        }.start()
+    }
+
+    private fun playTranscodedFile(outputFile: File) {
+        android.util.Log.i("VideoPlayer", "Plugin transcode complete: ${outputFile.absolutePath}")
+        player?.release()
+        player = null
+        player = ExoPlayer.Builder(this)
+            .build()
+            .also { exoPlayer ->
+                playerView.player = exoPlayer
+                exoPlayer.addListener(object : Player.Listener {
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        when (playbackState) {
+                            Player.STATE_READY -> {
+                                progressBar.visibility = View.GONE
+                                statusText.visibility = View.GONE
+                            }
+                            Player.STATE_BUFFERING -> {
+                                progressBar.visibility = View.VISIBLE
+                                statusText.text = "Buffering..."
+                                statusText.visibility = View.VISIBLE
+                            }
+                        }
+                    }
+
+                    override fun onPlayerError(error: PlaybackException) {
+                        progressBar.visibility = View.GONE
+                        statusText.text = "Playback failed: ${error.message}"
+                    }
+                })
+                exoPlayer.setMediaItem(MediaItem.fromUri(Uri.fromFile(outputFile)))
+                exoPlayer.playWhenReady = true
+                exoPlayer.prepare()
+            }
     }
 
     private fun showUnsupported() {
@@ -347,5 +386,8 @@ class VideoPlayerActivity : AppCompatActivity() {
         player?.release()
         player = null
         transcodedFile?.delete()
+        mediaWorkerRequestId?.let { mediaWorker?.cancel(it) }
+        mediaWorker?.close()
+        mediaWorker = null
     }
 }

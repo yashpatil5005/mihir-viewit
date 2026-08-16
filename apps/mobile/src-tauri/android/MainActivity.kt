@@ -5,6 +5,8 @@ import android.database.Cursor
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.webkit.JavascriptInterface
@@ -450,6 +452,7 @@ class MainActivity : TauriActivity() {
   }
 
   inner class AndroidBridge(private val webView: WebView) {
+    private var mediaWorkerProbe: MediaWorkerClient? = null
     private fun dispatchBridge(payload: JSONObject) {
       dispatchEnvelope(webView, payload)
     }
@@ -719,6 +722,79 @@ class MainActivity : TauriActivity() {
     @JavascriptInterface
     fun retryPluginProviders(pluginId: String): Boolean {
       return (application as? ViewItApp)?.pluginManager?.retryProviders(pluginId) == true
+    }
+
+    @JavascriptInterface
+    fun probeMediaWorker(inputBase64: String, ext: String, callbackId: String) {
+      if (!BuildConfig.VIEWIT_MEDIA_WORKER_ENABLED || BuildConfig.VIEWIT_APP_PROFILE == RuntimeBuildPolicy.PRODUCTION) {
+        dispatchBridge(JSONObject().apply {
+          put("id", callbackId)
+          put("event", "error")
+          put("error", "Media worker probe is disabled")
+        })
+        return
+      }
+      val client = mediaWorkerProbe ?: MediaWorkerClient(this@MainActivity).also { mediaWorkerProbe = it }
+      val bytes = try {
+        java.util.Base64.getDecoder().decode(inputBase64)
+      } catch (_: IllegalArgumentException) {
+        ByteArray(0)
+      }
+      if (bytes.isEmpty() || bytes.size > 1024 * 1024) {
+        dispatchBridge(JSONObject().apply {
+          put("id", callbackId)
+          put("event", "error")
+          put("error", "Media worker probe input must be 1 byte to 1 MiB")
+        })
+        return
+      }
+      val input = File(cacheDir, "media-worker-probe/input-${System.currentTimeMillis()}.$ext")
+      input.parentFile?.mkdirs()
+      input.writeBytes(bytes)
+      val output = File(cacheDir, "media-worker-probe/${System.currentTimeMillis()}.mp4")
+      client.transcode(input, output, ext, object : MediaWorkerClient.Callback {
+        override fun onProgress(progress: Float) {
+          dispatchBridge(JSONObject().apply {
+            put("id", callbackId)
+            put("event", "progress")
+            put("progress", progress)
+          })
+        }
+
+        override fun onComplete(output: File) {
+          input.delete()
+          dispatchBridge(JSONObject().apply {
+            put("id", callbackId)
+            put("event", "complete")
+            put("result", JSONObject().apply { put("outputPath", output.absolutePath) })
+          })
+        }
+
+        override fun onError(error: String) {
+          input.delete()
+          dispatchBridge(JSONObject().apply {
+            put("id", callbackId)
+            put("event", "error")
+            put("error", error)
+          })
+        }
+      })
+    }
+
+    @JavascriptInterface
+    fun probeMediaWorkerCancellation(delayMs: Long, callbackId: String) {
+      if (!BuildConfig.VIEWIT_MEDIA_WORKER_ENABLED || BuildConfig.VIEWIT_APP_PROFILE == RuntimeBuildPolicy.PRODUCTION) return
+      val client = mediaWorkerProbe ?: MediaWorkerClient(this@MainActivity).also { mediaWorkerProbe = it }
+      val requestId = client.testDelay(delayMs, object : MediaWorkerClient.Callback {
+        override fun onProgress(progress: Float) = Unit
+        override fun onComplete(output: File) {
+          dispatchBridge(JSONObject().apply { put("id", callbackId); put("event", "complete") })
+        }
+        override fun onError(error: String) {
+          dispatchBridge(JSONObject().apply { put("id", callbackId); put("event", "error"); put("error", error) })
+        }
+      })
+      Handler(Looper.getMainLooper()).postDelayed({ client.cancel(requestId) }, 250)
     }
 
     @JavascriptInterface

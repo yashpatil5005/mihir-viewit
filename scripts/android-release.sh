@@ -18,12 +18,17 @@ JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-21-openjdk-amd64}"
 export JAVA_HOME
 export VIEWIT_APP_PROFILE="${VIEWIT_APP_PROFILE:-device-test}"
 export VITE_VIEWIT_APP_PROFILE="$VIEWIT_APP_PROFILE"
+export VIEWIT_MEDIA_WORKER_ENABLED="${VIEWIT_MEDIA_WORKER_ENABLED:-0}"
 case "$VIEWIT_APP_PROFILE" in
   development|device-test|production) ;;
   *) echo "[android] invalid VIEWIT_APP_PROFILE=$VIEWIT_APP_PROFILE" >&2; exit 1 ;;
 esac
 if [[ "$VIEWIT_APP_PROFILE" == "production" && "${VIEWIT_PRODUCTION_SIGNING:-0}" != "1" ]]; then
   echo "[android] production profile requires VIEWIT_PRODUCTION_SIGNING=1" >&2
+  exit 1
+fi
+if [[ "$VIEWIT_APP_PROFILE" == "production" && "$VIEWIT_MEDIA_WORKER_ENABLED" == "1" ]]; then
+  echo "[android] media worker prototype is not approved for production" >&2
   exit 1
 fi
 export TMPDIR="${VIEWIT_TMPDIR:-$ROOT/build/tmp}"

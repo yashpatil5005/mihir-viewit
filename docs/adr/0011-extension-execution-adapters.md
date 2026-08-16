@@ -61,6 +61,8 @@ An adapter may claim `isolated` only when an enforceable execution environment p
 
 This is a contract target, not a claim that the worker exists today.
 
+An Android `Messenger` media-worker prototype now exists behind `VIEWIT_MEDIA_WORKER_ENABLED=1` for development/device-test builds. It uses a non-exported same-UID `:media_worker` process, bounded path-only requests, app-cache output, and process termination for hard cancellation. Production builds reject the flag until FFmpeg conformance is proven.
+
 ## Isolation Feasibility
 
 ### Pure JavaScript providers

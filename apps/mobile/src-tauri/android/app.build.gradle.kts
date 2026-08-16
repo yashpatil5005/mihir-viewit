@@ -22,6 +22,13 @@ val supportedViewitProfiles = setOf("development", "device-test", "production")
 require(viewitAppProfile in supportedViewitProfiles) {
     "VIEWIT_APP_PROFILE must be one of ${supportedViewitProfiles.joinToString()}; got $viewitAppProfile"
 }
+val mediaWorkerEnabled: Boolean = providers.gradleProperty("viewitMediaWorkerEnabled")
+    .orElse(providers.environmentVariable("VIEWIT_MEDIA_WORKER_ENABLED"))
+    .orElse("0")
+    .get() == "1"
+require(!mediaWorkerEnabled || viewitAppProfile != "production") {
+    "The media worker prototype cannot be enabled for production before provider conformance approval"
+}
 
 android {
     compileSdk = 36
@@ -35,6 +42,7 @@ android {
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
         buildConfigField("String", "VIEWIT_PLUGIN_CATALOG_URL", "\"${pluginCatalogUrl.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
         buildConfigField("String", "VIEWIT_APP_PROFILE", "\"$viewitAppProfile\"")
+        buildConfigField("boolean", "VIEWIT_MEDIA_WORKER_ENABLED", mediaWorkerEnabled.toString())
     }
     buildTypes {
         getByName("debug") {

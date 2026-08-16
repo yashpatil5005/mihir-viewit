@@ -21,6 +21,8 @@ class AndroidOpenWithPatchTests(unittest.TestCase):
             self.assertFalse(module.patch_manifest(manifest))
             body = manifest.read_text()
             self.assertEqual(body.count(module.MARKER), 1)
+            self.assertEqual(body.count(module.WORKER_MARKER), 1)
+            self.assertIn('android:process=":media_worker"', body)
             self.assertEqual(body.count('android.intent.action.VIEW'), 2)
             self.assertIn('android:mimeType="*/*"', body)
             self.assertIn('android:scheme="content"', body)
