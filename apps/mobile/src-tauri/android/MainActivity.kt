@@ -401,6 +401,20 @@ class MainActivity : TauriActivity() {
     }
   }
 
+  private fun providerHealthJson(pm: PluginManager, manifest: PluginManifest): JSONObject = JSONObject().apply {
+    val providerIds = manifest.providers.map { it.id }.ifEmpty { listOf(manifest.id) }
+    providerIds.forEach { id ->
+      val health = pm.providerHealth.get(id)
+      put(id, JSONObject().apply {
+        put("state", health.state)
+        put("consecutiveFailures", health.consecutiveFailures)
+        put("totalFailures", health.totalFailures)
+        health.lastFailureKind?.let { put("lastFailureKind", it) }
+        put("updatedAt", health.updatedAt)
+      })
+    }
+  }
+
   private fun grantWithDisplayName(uri: Uri, mimeType: String?): String {
     try {
       val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -533,6 +547,7 @@ class MainActivity : TauriActivity() {
           put("schemaVersion", p.manifest.schemaVersion)
           if (p.manifest.publisher.isNotEmpty()) put("publisher", p.manifest.publisher)
           if (p.manifest.providers.isNotEmpty()) put("providers", pluginProvidersJson(p.manifest.providers))
+          put("providerHealth", providerHealthJson(pm, p.manifest))
           if (p.manifest.base.isNotEmpty() && p.manifest.base != "view") put("base", p.manifest.base)
           if (p.manifest.runtime == "js" || p.manifest.jsEntry.isNotBlank()) put("jsEntry", p.manifest.jsEntry)
           if (p.manifest.cssEntry.isNotEmpty()) put("cssEntry", p.manifest.cssEntry)
@@ -832,6 +847,7 @@ class MainActivity : TauriActivity() {
           payload.put("document", JSONObject(json))
         } catch (e: Throwable) {
           android.util.Log.e("ViewIt", "Document plugin render failed", e)
+          pm.recordProviderFailure(pluginId, "execution")
           payload.put("error", e.message ?: e.javaClass.simpleName)
         }
         runOnUiThread {

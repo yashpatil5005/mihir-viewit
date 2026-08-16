@@ -39,6 +39,16 @@ export interface PluginInfo {
   schemaVersion?: number;
   publisher?: string;
   providers?: ProviderDescriptorV1[];
+  providerHealth?: Record<
+    string,
+    {
+      state: string;
+      consecutiveFailures: number;
+      totalFailures: number;
+      lastFailureKind?: string;
+      updatedAt: number;
+    }
+  >;
 }
 
 export interface PluginCatalogSource {

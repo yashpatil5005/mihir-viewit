@@ -165,6 +165,14 @@ export function resolveInstalledProvider(
   ).map((provider) => ({
     ...provider,
     version: installed.find((plugin) => plugin.id === provider.packageId)?.version,
+    health: (() => {
+      const state = installed.find((plugin) => plugin.id === provider.packageId)?.providerHealth?.[
+        provider.id
+      ]?.state;
+      return state === "quarantined" || state === "failed" || state === "degraded"
+        ? state
+        : "active";
+    })(),
   }));
   const preferredProviderId = preferredPackageId
     ? candidates.find((provider) => provider.packageId === preferredPackageId)?.id

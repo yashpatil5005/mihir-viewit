@@ -151,6 +151,7 @@ class PluginManager(private val context: Context) {
     }
 
     private val pluginsDir = File(context.filesDir, "plugins")
+    val providerHealth = ProviderHealthStore(context.filesDir)
     private val installed = mutableMapOf<String, InstalledPlugin>()
     // Android cannot dlclose a loaded native library, so a native plugin that was
     // loaded this process stays loaded even after removePlugin. Cache the loaded
@@ -368,6 +369,7 @@ class PluginManager(private val context: Context) {
             val dir = File(pluginsDir, pluginId)
             dir.deleteRecursively()
             File(context.codeCacheDir, "plugins/$pluginId").deleteRecursively()
+            plugin?.let { providerIds(it.manifest).forEach(providerHealth::removed) }
             Log.i(TAG, "Removed plugin: $pluginId")
             Result.success(Unit)
         } catch (e: Exception) {
@@ -517,7 +519,16 @@ class PluginManager(private val context: Context) {
             warmLoaded[plugin.manifest.id] = plugin
         }
         Log.i(TAG, "Loaded plugin: ${plugin.manifest.id} v${plugin.manifest.version}")
+        providerIds(plugin.manifest).forEach(providerHealth::activated)
     }
+
+    fun recordProviderFailure(pluginId: String, kind: String) {
+        val plugin = installed[pluginId] ?: return
+        providerIds(plugin.manifest).forEach { providerHealth.failed(it, kind) }
+    }
+
+    private fun providerIds(manifest: PluginManifest): List<String> =
+        manifest.providers.map { it.id }.ifEmpty { listOf(manifest.id) }
 
     private fun installSlot(stagingDir: File, slotDir: File) {
         slotDir.parentFile?.mkdirs()
