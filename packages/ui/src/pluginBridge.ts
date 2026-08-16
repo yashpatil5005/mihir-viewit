@@ -385,25 +385,14 @@ export function saveEditedText(
     URL.revokeObjectURL(a.href);
     return Promise.resolve(text.length);
   }
-  return new Promise<number>((resolve, reject) => {
-    const id = `edit_save_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    const prev = (window as any)._editorSaveCallback;
-    (window as any)._editorSaveCallback = (payload: {
-      id: string;
-      ok?: boolean;
-      size?: number;
-      error?: string;
-    }) => {
-      if (payload.id !== id) {
-        prev?.(payload);
-        return;
-      }
-      (window as any)._editorSaveCallback = prev;
-      if (payload.ok) resolve(payload.size ?? text.length);
-      else reject(new Error(payload.error || "Save failed"));
-    };
-    (window as any).AndroidBridge.saveEditedText(text, displayName, mime, id);
-  });
+  const id = requestId("editor_save");
+  return bridgeRequests
+    .request<{ size?: number }>(
+      id,
+      () => (window as any).AndroidBridge.saveEditedText(text, displayName, mime, id),
+      { timeoutMs: 120_000 },
+    )
+    .then((result) => result.size ?? text.length);
 }
 
 export async function installPlugin(plugin: PluginInfo): Promise<void> {
@@ -532,67 +521,47 @@ function callPluginArchive(
   name: string,
   extra: Record<string, string> = {},
 ): Promise<ArchiveBridgeResult> {
-  return new Promise<ArchiveBridgeResult>((resolve) => {
-    if (!hasAndroidBridge()) {
-      resolve({ ok: false, error: "Archive preview is only available in the Android app" });
-      return;
-    }
-    const id = `arch_${op}_${plugin.id}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    const previousCallback = (window as any)._pluginArchiveCallback;
-    (window as any)._pluginArchiveCallback = (payload: { id: string }) => {
-      if (payload.id !== id) {
-        previousCallback?.(payload);
-        return;
+  if (!hasAndroidBridge()) {
+    return Promise.resolve({
+      ok: false,
+      error: "Archive preview is only available in the Android app",
+    });
+  }
+  const id = requestId(`archive_${op}_${plugin.id}`);
+  return bridgeRequests.request<ArchiveBridgeResult>(
+    id,
+    () => {
+      const bridge = (window as any).AndroidBridge;
+      switch (op) {
+        case "list":
+          bridge.listPluginArchiveAsync(plugin.id, uri, name, id);
+          break;
+        case "detect":
+          bridge.detectPluginArchiveFormatAsync(plugin.id, uri, name, id);
+          break;
+        case "entry":
+          bridge.extractPluginArchiveEntryAsync(plugin.id, uri, name, extra.entryName, id);
+          break;
+        case "extract-all":
+          bridge.extractPluginArchiveAllToFolderAsync(plugin.id, uri, name, id);
+          break;
+        case "save":
+          bridge.savePluginArchiveEntryAsync(
+            plugin.id,
+            uri,
+            name,
+            extra.entryName,
+            extra.displayName,
+            extra.mime,
+            id,
+          );
+          break;
+        default:
+          throw new Error(`Unknown archive op ${op}`);
       }
-      (window as any)._pluginArchiveCallback = previousCallback;
-      const data = payload as Record<string, any>;
-      const result: ArchiveBridgeResult = {
-        ok: !data.error,
-        error: data.error,
-        tooLarge: data.tooLarge,
-        base64: data.base64,
-        size: data.size,
-        dir: data.dir,
-        result: data.result,
-      };
-      if (op === "detect") {
-        result.format = data.format;
-      }
-      if (op === "list" && data.manifest) {
-        result.entries = data.manifest.entries;
-        result.format = data.manifest.format;
-      }
-      resolve(result);
-    };
-    const bridge = (window as any).AndroidBridge;
-    switch (op) {
-      case "list":
-        bridge.listPluginArchiveAsync(plugin.id, uri, name, id);
-        break;
-      case "detect":
-        bridge.detectPluginArchiveFormatAsync(plugin.id, uri, name, id);
-        break;
-      case "entry":
-        bridge.extractPluginArchiveEntryAsync(plugin.id, uri, name, extra.entryName, id);
-        break;
-      case "extract-all":
-        bridge.extractPluginArchiveAllToFolderAsync(plugin.id, uri, name, id);
-        break;
-      case "save":
-        bridge.savePluginArchiveEntryAsync(
-          plugin.id,
-          uri,
-          name,
-          extra.entryName,
-          extra.displayName,
-          extra.mime,
-          id,
-        );
-        break;
-      default:
-        resolve({ ok: false, error: `Unknown archive op ${op}` });
-    }
-  });
+    },
+    { timeoutMs: op === "extract-all" || op === "save" ? 120_000 : 60_000 },
+  );
 }
 
 export async function renderDocumentWithPlugin(

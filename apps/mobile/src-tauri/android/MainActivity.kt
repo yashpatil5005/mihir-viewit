@@ -57,6 +57,26 @@ class MainActivity : TauriActivity() {
     const val ACTION_DEBUG_INSTALL_PLUGIN = "ai.viewit.app.action.DEBUG_INSTALL_PLUGIN"
   }
 
+  private fun dispatchEnvelope(webView: WebView, envelope: JSONObject, legacyScript: String? = null) {
+    webView.evaluateJavascript(
+      "window.__viewitBridgeDispatch ? window.__viewitBridgeDispatch($envelope) : " +
+        "(window.__viewitBridgeQueue = window.__viewitBridgeQueue || []).push($envelope)",
+      null,
+    )
+    if (legacyScript != null) webView.evaluateJavascript(legacyScript, null)
+  }
+
+  private fun dispatchResult(webView: WebView, payload: JSONObject, legacyScript: String? = null) {
+    val failed = payload.has("error") || (payload.has("ok") && !payload.optBoolean("ok"))
+    val envelope = JSONObject().apply {
+      put("id", payload.getString("id"))
+      put("event", if (failed) "error" else "complete")
+      if (failed) put("error", payload.optString("error", "Operation failed"))
+      else put("result", payload)
+    }
+    dispatchEnvelope(webView, envelope, legacyScript)
+  }
+
   override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
     super.onActivityResult(requestCode, resultCode, data)
     val webView = bridgeWebView ?: return
@@ -76,7 +96,9 @@ class MainActivity : TauriActivity() {
           payload.put("error", e.message ?: e.javaClass.simpleName)
         }
       }
-      webView.post { webView.evaluateJavascript("window._editorSaveCallback && window._editorSaveCallback($payload)", null) }
+      webView.post {
+        dispatchResult(webView, payload, "window._editorSaveCallback && window._editorSaveCallback($payload)")
+      }
       return
     }
     pendingExtracts.remove(requestCode)?.let { pending ->
@@ -87,7 +109,9 @@ class MainActivity : TauriActivity() {
       if (resultCode != RESULT_OK || data?.data == null) {
         payload.put("ok", false)
         payload.put("error", "Extract cancelled")
-        webView.post { webView.evaluateJavascript("window._pluginArchiveCallback && window._pluginArchiveCallback($payload)", null) }
+        webView.post {
+          dispatchResult(webView, payload, "window._pluginArchiveCallback && window._pluginArchiveCallback($payload)")
+        }
         return
       }
       val treeUri = data.data!!
@@ -112,7 +136,9 @@ class MainActivity : TauriActivity() {
           payload.put("ok", false)
           payload.put("error", e.message ?: e.javaClass.simpleName)
         }
-        webView.post { webView.evaluateJavascript("window._pluginArchiveCallback && window._pluginArchiveCallback($payload)", null) }
+        webView.post {
+          dispatchResult(webView, payload, "window._pluginArchiveCallback && window._pluginArchiveCallback($payload)")
+        }
       }.start()
       return
     }
@@ -124,7 +150,9 @@ class MainActivity : TauriActivity() {
     if (resultCode != RESULT_OK || data?.data == null) {
       payload.put("ok", false)
       payload.put("error", "Save cancelled")
-      webView.post { webView.evaluateJavascript("window._pluginArchiveCallback && window._pluginArchiveCallback($payload)", null) }
+      webView.post {
+        dispatchResult(webView, payload, "window._pluginArchiveCallback && window._pluginArchiveCallback($payload)")
+      }
       return
     }
     val outUri = data.data!!
@@ -148,7 +176,9 @@ class MainActivity : TauriActivity() {
         payload.put("ok", false)
         payload.put("error", e.message ?: e.javaClass.simpleName)
       }
-      webView.post { webView.evaluateJavascript("window._pluginArchiveCallback && window._pluginArchiveCallback($payload)", null) }
+      webView.post {
+        dispatchResult(webView, payload, "window._pluginArchiveCallback && window._pluginArchiveCallback($payload)")
+      }
     }.start()
   }
 
@@ -408,12 +438,7 @@ class MainActivity : TauriActivity() {
 
   inner class AndroidBridge(private val webView: WebView) {
     private fun dispatchBridge(payload: JSONObject, legacyScript: String? = null) {
-      webView.evaluateJavascript(
-        "window.__viewitBridgeDispatch ? window.__viewitBridgeDispatch($payload) : " +
-          "(window.__viewitBridgeQueue = window.__viewitBridgeQueue || []).push($payload)",
-        null,
-      )
-      if (legacyScript != null) webView.evaluateJavascript(legacyScript, null)
+      dispatchEnvelope(webView, payload, legacyScript)
     }
 
     @JavascriptInterface
@@ -841,9 +866,10 @@ class MainActivity : TauriActivity() {
 
     private fun emitArchiveCallback(payload: JSONObject) {
       runOnUiThread {
-        webView.evaluateJavascript(
+        dispatchResult(
+          webView,
+          payload,
           "window._pluginArchiveCallback && window._pluginArchiveCallback($payload)",
-          null
         )
       }
     }
@@ -963,7 +989,11 @@ class MainActivity : TauriActivity() {
             put("ok", false)
             put("error", e.message ?: e.javaClass.simpleName)
           }
-          webView.evaluateJavascript("window._editorSaveCallback && window._editorSaveCallback($payload)", null)
+          dispatchResult(
+            webView,
+            payload,
+            "window._editorSaveCallback && window._editorSaveCallback($payload)",
+          )
         }
       }
     }
