@@ -58,10 +58,7 @@
     OFFICE_ALL_EXTS,
     OFFICE_KINDS,
     resolveIworkFormat,
-    selectBasePlugin,
-    selectDetectedOfficePlugin,
-    selectNativeOfficePlugin,
-    selectPptxJsPlugin,
+    resolveInstalledProvider,
   } from "./runtimeRouting";
 
   // Phase 3.8 — per-format lazy code-split. Heavy viewers load on demand via
@@ -637,10 +634,8 @@
       return null;
     }
     const installed = await listInstalledPlugins();
-    const editors = installed.filter(
-      (p) => (p as unknown as { base?: string }).base === "edit" && isJsPlugin(p),
-    );
-    const found = selectBasePlugin(editors, "edit", ext, true);
+    const decision = resolveInstalledProvider(installed, "viewit.document.edit", ext, null);
+    const found = installed.find((plugin) => plugin.id === decision.selected?.packageId) ?? null;
     editPlugin = found;
     return found;
   }
@@ -703,7 +698,8 @@
       return;
     }
     const installed = await listInstalledPlugins();
-    playPlugin = selectBasePlugin(installed, "play", ext, false);
+    const decision = resolveInstalledProvider(installed, "viewit.media.play", ext, null);
+    playPlugin = installed.find((plugin) => plugin.id === decision.selected?.packageId) ?? null;
     usePlayerBase = false;
   }
 
@@ -729,8 +725,12 @@
   async function resolvePptxVanillaPlugin(): Promise<PluginInfo | null> {
     if (!hasAndroidBridge()) return null;
     const prefId = getRuntimePref("pptx");
+    if (prefId === "__builtin__") return null;
     const installed = await listInstalledPlugins();
-    return selectPptxJsPlugin(installed, prefId);
+    const decision = resolveInstalledProvider(installed, "viewit.document.render", "pptx", prefId, [
+      { service: "viewit.document.parse", contractVersion: 1 },
+    ]);
+    return installed.find((plugin) => plugin.id === decision.selected?.packageId) ?? null;
   }
   function getRuntimePref(ext: string): string | null {
     return loadRuntimePrefs()[ext] ?? null;
@@ -772,7 +772,14 @@
         const plugins = await listInstalledPlugins();
         // runtime=js plugins render in the WebView (Viewer template), not via
         // the native renderDocumentWithPlugin bridge — skip them here.
-        const plugin = selectNativeOfficePlugin(plugins, ext, prefId);
+        const decision = resolveInstalledProvider(
+          plugins.filter((candidate) => !isJsPlugin(candidate)),
+          "viewit.document.parse",
+          ext,
+          prefId,
+        );
+        const plugin =
+          plugins.find((candidate) => candidate.id === decision.selected?.packageId) ?? null;
         if (prefId) {
           const prefPlugin = plugins.find((p) => p.id === prefId && pluginSupports(p, ext));
           if (!prefPlugin) {
@@ -977,12 +984,17 @@
     if (hasAndroidBridge() && OFFICE_KINDS.has(detectedKind) && OFFICE_ALL_EXTS.has(ext)) {
       const prefId = getRuntimePref(detectedKind);
       if (prefId !== "__builtin__") {
-        const plugin = selectDetectedOfficePlugin(
-          await listInstalledPlugins(),
+        const installed = await listInstalledPlugins();
+        const decision = resolveInstalledProvider(
+          installed.filter(
+            (candidate) => candidate.id !== failedPluginId && !isJsPlugin(candidate),
+          ),
+          "viewit.document.parse",
           detectedKind,
           prefId,
-          failedPluginId,
         );
+        const plugin =
+          installed.find((candidate) => candidate.id === decision.selected?.packageId) ?? null;
         if (plugin) {
           await dbg(`runtime[${detectedKind}] retry plugin ${plugin.id} via detected kind`);
           try {
@@ -1452,6 +1464,7 @@
     name={(docUri ?? "Office file").split("/").pop() ?? "Office file"}
     ext={officeExt()}
     builtInLabel="Built-in lightweight Office viewer"
+    service="viewit.document.parse"
     onClose={() => (officeRuntimeChooserOpen = false)}
     onUseBuiltIn={chooseBuiltInOfficeRuntime}
     onUseInstalledPlugin={chooseOfficePlugin}

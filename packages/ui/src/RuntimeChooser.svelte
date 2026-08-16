@@ -10,6 +10,7 @@
     pluginSupports,
     type PluginInfo,
   } from "./pluginBridge";
+  import { providersForPackages, resolveProvider } from "@viewit/contracts/resolver";
 
   let {
     open = false,
@@ -17,6 +18,7 @@
     name = "file",
     ext = "",
     builtInLabel = "Built-in viewer",
+    service = "viewit.document.parse",
     onClose,
     onUseBuiltIn,
     onUseInstalledPlugin,
@@ -26,6 +28,7 @@
     name?: string;
     ext: string;
     builtInLabel?: string;
+    service?: `viewit.${string}`;
     onClose: () => void;
     onUseBuiltIn: () => void | Promise<void>;
     onUseInstalledPlugin?: (plugin: PluginInfo) => void | Promise<void>;
@@ -44,9 +47,36 @@
     try {
       const allInstalled = await listInstalledPlugins();
       const catalog = (await fetchPluginCatalogSources()).flatMap((source) => source.plugins);
-      installed = allInstalled.filter((plugin) => pluginSupports(plugin, ext));
+      const installedDecision = resolveProvider(
+        { service, contractVersion: 1, format: ext },
+        providersForPackages(
+          allInstalled.map((plugin) => plugin.id),
+          "installed",
+        ),
+      );
+      const downloadableDecision = resolveProvider(
+        { service, contractVersion: 1, format: ext },
+        providersForPackages(
+          catalog.map((plugin) => plugin.id),
+          "downloadable",
+        ),
+      );
+      const installedIds = new Set(
+        installedDecision.candidates.map((provider) => provider.packageId),
+      );
+      const downloadableIds = new Set(
+        downloadableDecision.candidates.map((provider) => provider.packageId),
+      );
+      installed = allInstalled.filter(
+        (plugin) => installedIds.has(plugin.id) && pluginSupports(plugin, ext),
+      );
       downloadable = catalog
-        .filter((plugin) => pluginSupports(plugin, ext) && isInstallablePlugin(plugin))
+        .filter(
+          (plugin) =>
+            downloadableIds.has(plugin.id) &&
+            pluginSupports(plugin, ext) &&
+            isInstallablePlugin(plugin),
+        )
         .map((plugin) => ({
           ...plugin,
           installed: allInstalled.some((installedPlugin) => installedPlugin.id === plugin.id),

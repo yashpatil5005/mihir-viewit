@@ -642,6 +642,7 @@
   {name}
   {ext}
   builtInLabel="Native Android player"
+  service="viewit.media.play"
   onClose={() => (runtimeChooserOpen = false)}
   onUseBuiltIn={useBuiltInRuntime}
   onUseInstalledPlugin={useInstalledPlugin}
