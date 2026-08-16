@@ -4,6 +4,7 @@ import {
   NON_ARCHIVE_BUNDLE_EXTS,
   hasPptxJsRenderer,
   resolveIworkFormat,
+  resolveInstalledProvider,
   selectBasePlugin,
   selectDetectedOfficePlugin,
   selectNativeOfficePlugin,
@@ -17,6 +18,46 @@ const plugin = (overrides: Partial<PluginInfo>): PluginInfo => ({
   description: "",
   formats: [],
   ...overrides,
+});
+
+describe("provider resolver shadow decisions", () => {
+  const office = plugin({ id: "office-universal", runtime: "native", formats: ["docx", "pptx"] });
+  const pptx = plugin({ id: "pptx-vanilla", runtime: "js", formats: ["pptx"] });
+  const player = plugin({ id: "player-base", base: "play", runtime: "js", formats: ["mp3"] });
+  const editor = plugin({ id: "editor-base", base: "edit", runtime: "js", formats: ["md"] });
+
+  it("matches automatic Office package selection", () => {
+    expect(
+      resolveInstalledProvider([office], "viewit.document.parse", "docx", null).selected?.packageId,
+    ).toBe(selectNativeOfficePlugin([office], "docx", null)?.id);
+  });
+
+  it("selects PPTX renderer only when its parser service is available", () => {
+    expect(
+      resolveInstalledProvider([pptx], "viewit.document.render", "pptx", null).selected,
+    ).toBeNull();
+    expect(
+      resolveInstalledProvider([pptx], "viewit.document.render", "pptx", null, [
+        { service: "viewit.document.parse", contractVersion: 1 },
+      ]).selected?.packageId,
+    ).toBe(selectPptxJsPlugin([pptx], null)?.id);
+  });
+
+  it("matches current player and editor package selection", () => {
+    expect(
+      resolveInstalledProvider([player], "viewit.media.play", "mp3", null).selected?.packageId,
+    ).toBe(selectBasePlugin([player], "play", "mp3", false)?.id);
+    expect(
+      resolveInstalledProvider([editor], "viewit.document.edit", "md", null).selected?.packageId,
+    ).toBe(selectBasePlugin([editor], "edit", "md", true)?.id);
+  });
+
+  it("maps legacy package preferences to canonical provider IDs", () => {
+    expect(
+      resolveInstalledProvider([office], "viewit.document.parse", "docx", "office-universal")
+        .selected?.id,
+    ).toBe("office-universal.parse");
+  });
 });
 
 describe("format plugin routing", () => {

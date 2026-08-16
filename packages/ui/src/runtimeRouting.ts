@@ -1,5 +1,11 @@
 import type { PluginInfo } from "./pluginBridge";
 import { providerSupportsFormat } from "@viewit/platform";
+import {
+  providersForPackages,
+  resolveProvider,
+  type ProviderRequirementKey,
+  type ProviderResolutionDecision,
+} from "@viewit/contracts/resolver";
 
 export const OFFICE_ALL_EXTS = new Set([
   "docx",
@@ -143,5 +149,34 @@ export function selectBasePlugin(
   return (
     candidates.find((plugin) => pluginSupportsFormat(plugin, ext)) ??
     (allowFallback ? (candidates[0] ?? null) : null)
+  );
+}
+
+export function resolveInstalledProvider(
+  installed: PluginInfo[],
+  service: `viewit.${string}`,
+  ext: string,
+  preferredPackageId: string | null,
+  availableServices: ProviderRequirementKey[] = [],
+): ProviderResolutionDecision {
+  const candidates = providersForPackages(
+    installed.map((plugin) => plugin.id),
+    "installed",
+  ).map((provider) => ({
+    ...provider,
+    version: installed.find((plugin) => plugin.id === provider.packageId)?.version,
+  }));
+  const preferredProviderId = preferredPackageId
+    ? candidates.find((provider) => provider.packageId === preferredPackageId)?.id
+    : undefined;
+  return resolveProvider(
+    {
+      service,
+      contractVersion: 1,
+      format: ext,
+      preferredProviderId,
+      availableServices,
+    },
+    candidates,
   );
 }
