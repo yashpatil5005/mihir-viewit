@@ -187,7 +187,8 @@
   let officeRendererLabel: string = $state("");
   let loadSeq = 0;
 
-  import { onMount, tick } from "svelte";
+  import { onMount, onDestroy, tick } from "svelte";
+  import { ActivationScope } from "@viewit/contracts/activation-scope";
   import {
     openFile,
     openFileFromPicker,
@@ -198,6 +199,15 @@
   } from "@viewit/platform";
 
   let imagePreviewUrl: string | null = null;
+  const appScope = new ActivationScope("viewer-app");
+  let documentScope = appScope.child("document-initial");
+
+  function replaceDocumentScope(id: string): ActivationScope {
+    void documentScope.dispose("document-replaced");
+    documentScope = appScope.child(id);
+    imagePreviewUrl = null;
+    return documentScope;
+  }
   import { theme, toggleTheme, applyTheme } from "./theme.svelte";
   let _debugLog: any = null;
   async function dbg(msg: string) {
@@ -317,22 +327,32 @@
         void load();
       }
     };
-    onOpenedFiles((urls) => {
+    appScope.register("android-open-handler", () => {
+      delete (window as any).__viewitAndroidOpened;
+    });
+    const unlisten = await onOpenedFiles((urls) => {
       if (urls.length > 0) {
         setPendingOpen(urls[0]);
         debugLog(`opened event ${String(pendingUri).slice(0, 60)}…`);
         void load();
       }
     });
-    setInterval(() => {
+    appScope.register("opened-files-listener", unlisten);
+    const poll = setInterval(() => {
       void drainOpenedQueue();
     }, 1500);
+    appScope.register("opened-files-poll", () => clearInterval(poll));
+  });
+
+  onDestroy(() => {
+    void appScope.dispose("viewer-destroyed");
   });
 
   async function load() {
     if (!pendingUri) return;
     const uri = pendingUri;
     const seq = ++loadSeq;
+    replaceDocumentScope(`document:${seq}`);
     const nameHint = pendingName ?? undefined;
     const extHint = pendingExt ?? undefined;
     const mimeHint = pendingMime ?? undefined;
@@ -377,15 +397,12 @@
   }
 
   async function pickFile(f: File) {
-    if (imagePreviewUrl) {
-      URL.revokeObjectURL(imagePreviewUrl);
-      imagePreviewUrl = null;
-    }
     busy = true;
     error = null;
     const viewitUri = (f as File & { viewitUri?: string }).viewitUri;
     if (viewitUri) {
       const seq = ++loadSeq;
+      replaceDocumentScope(`document:${seq}`);
       pendingUri = viewitUri;
       pendingName = resolvePickerName(f, viewitUri);
       pendingExt = null;
@@ -416,6 +433,7 @@
       return;
     }
     const seq = ++loadSeq;
+    const scope = replaceDocumentScope(`document:${seq}`);
     pendingUri = f.name;
     pendingName = f.name;
     pendingExt = formatFromFile(f.name, f.type);
@@ -452,6 +470,7 @@
           imagePreviewUrl = null;
         }
         const objectUrl = URL.createObjectURL(f);
+        scope.ownObjectUrl(objectUrl);
         if (doc.kind === "image") imagePreviewUrl = objectUrl;
         docUri = objectUrl;
       }
@@ -796,7 +815,12 @@
           await dbg(`runtime[${ext}] pref=${prefId ?? "auto"} → plugin ${plugin.id}`);
           try {
             busyHint = `Opening with ${plugin.name}…`;
-            const rendered = (await renderDocumentWithPlugin(plugin, readableUri, ext)) as Document;
+            const rendered = (await renderDocumentWithPlugin(
+              plugin,
+              readableUri,
+              ext,
+              documentScope.signal,
+            )) as Document;
             await dbg(
               `runtime[${ext}] plugin ${plugin.id} returned kind=${(rendered as any)?.kind} renderer=${(rendered as any)?.renderer?.id ?? "none"}`,
             );
@@ -833,6 +857,7 @@
             fontPlugin,
             readableUri,
             ext,
+            documentScope.signal,
           )) as Document;
           if (rendered && rendered.kind !== "unsupported") {
             await dbg(
@@ -913,7 +938,12 @@
           try {
             busyHint = `Opening with ${plugin.name}…`;
             const pluginUri = materializeExternalUri(uri, ext);
-            const rendered = (await renderDocumentWithPlugin(plugin, pluginUri, ext)) as Document;
+            const rendered = (await renderDocumentWithPlugin(
+              plugin,
+              pluginUri,
+              ext,
+              documentScope.signal,
+            )) as Document;
             if (rendered.kind !== "unsupported") return rendered;
             await dbg(`runtime[${ext}] plugin ${plugin.id} declined the file`);
           } catch (e) {
@@ -1003,6 +1033,7 @@
               plugin,
               readableUri,
               detectedKind,
+              documentScope.signal,
             )) as Document;
             await dbg(
               `runtime[${detectedKind}] plugin ${plugin.id} returned kind=${(rendered as any)?.kind} renderer=${(rendered as any)?.renderer?.id ?? "none"}`,
@@ -1047,7 +1078,12 @@
         officePluginNotice = `WebView renderer ${plugin.name} selected.`;
         return;
       }
-      const nextDoc = (await renderDocumentWithPlugin(plugin, readableUri, ext)) as Document;
+      const nextDoc = (await renderDocumentWithPlugin(
+        plugin,
+        readableUri,
+        ext,
+        documentScope.signal,
+      )) as Document;
       if (seq !== loadSeq || docUri !== uri) return;
       doc = nextDoc;
       await dbg(

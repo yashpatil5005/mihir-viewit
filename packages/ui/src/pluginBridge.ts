@@ -583,6 +583,7 @@ export async function renderDocumentWithPlugin(
   plugin: PluginInfo,
   uri: string,
   ext: string,
+  signal?: AbortSignal,
 ): Promise<ExternalDocumentV1> {
   if (!hasAndroidBridge())
     throw new Error("Android document plugins are only available in the Android app");
@@ -590,7 +591,7 @@ export async function renderDocumentWithPlugin(
   const result = await bridgeRequests.request<unknown>(
     id,
     () => (window as any).AndroidBridge.renderDocumentWithPlugin(plugin.id, uri, ext, id),
-    { timeoutMs: 60_000 },
+    { timeoutMs: 60_000, signal },
   );
   try {
     return parseExternalDocumentV1(result);
