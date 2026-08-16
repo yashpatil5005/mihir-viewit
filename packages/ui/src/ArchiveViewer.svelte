@@ -40,6 +40,55 @@
   let notice = $state("");
   let error = $state("");
   let extractDir: string | null = $state(null);
+  let currentPath = $state("");
+
+  type ArchiveEntry = (typeof entries)[number];
+  type VisibleEntry = ArchiveEntry & { displayName: string; path: string; synthetic?: boolean };
+
+  let breadcrumbs = $derived(
+    currentPath
+      .split("/")
+      .filter(Boolean)
+      .map((label, index, parts) => ({ label, path: `${parts.slice(0, index + 1).join("/")}/` })),
+  );
+  let visibleEntries = $derived.by(() => {
+    const children = new Map<string, VisibleEntry>();
+    for (const entry of entries) {
+      const normalized = entry.name.replace(/^\/+/, "");
+      if (!normalized.startsWith(currentPath) || normalized === currentPath) continue;
+      const relative = normalized.slice(currentPath.length);
+      const [first, ...rest] = relative.split("/");
+      if (!first) continue;
+      const path = `${currentPath}${first}${rest.length > 0 || entry.is_dir ? "/" : ""}`;
+      if (rest.length > 0) {
+        if (!children.has(first)) {
+          children.set(first, {
+            name: path,
+            path,
+            displayName: first,
+            size: 0,
+            compressed_size: 0,
+            is_dir: true,
+            synthetic: true,
+          });
+        }
+      } else {
+        children.set(first, { ...entry, path, displayName: first.replace(/\/$/, "") });
+      }
+    }
+    return [...children.values()].sort((a, b) => {
+      if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
+      return a.displayName.localeCompare(b.displayName, undefined, { numeric: true });
+    });
+  });
+
+  function openFolder(path: string) {
+    currentPath = path.endsWith("/") ? path : `${path}/`;
+  }
+
+  function goToBreadcrumb(index: number) {
+    currentPath = index < 0 ? "" : breadcrumbs[index].path;
+  }
 
   const TOO_LARGE = "Too large for in-place preview — use Save to extract this member.";
 
@@ -187,6 +236,19 @@
     </p>
   {/if}
 
+  <nav class="breadcrumbs" aria-label="Archive path">
+    <button class:current={!currentPath} onclick={() => goToBreadcrumb(-1)}>Archive</button>
+    {#each breadcrumbs as crumb, index}
+      <span aria-hidden="true">/</span>
+      <button
+        class:current={index === breadcrumbs.length - 1}
+        onclick={() => goToBreadcrumb(index)}
+      >
+        {crumb.label}
+      </button>
+    {/each}
+  </nav>
+
   <div class="table-frame">
     <table>
       <thead>
@@ -195,18 +257,30 @@
         >
       </thead>
       <tbody>
-        {#each entries as entry}
+        {#if currentPath}
+          <tr class="dir">
+            <td>
+              <button class="drill folder" onclick={() => goToBreadcrumb(breadcrumbs.length - 2)}>
+                📁 ..
+              </button>
+            </td>
+            <td></td><td></td>{#if plugin}<td></td>{/if}
+          </tr>
+        {/if}
+        {#each visibleEntries as entry}
           <tr class:dir={entry.is_dir}>
             <td>
               {#if entry.is_dir}
-                <span>📁 {entry.name}</span>
+                <button class="drill folder" onclick={() => openFolder(entry.path)}>
+                  📁 {entry.displayName}
+                </button>
               {:else}
                 <button
                   class="drill"
                   onclick={() => openMember(entry)}
                   aria-label="Open {entry.name}"
                 >
-                  📄 {entry.name}
+                  📄 {entry.displayName}
                 </button>
               {/if}
             </td>
@@ -292,6 +366,30 @@
     border: 1px solid var(--border);
     border-radius: 0.4rem;
   }
+  .breadcrumbs {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    overflow-x: auto;
+    margin: 0 0 0.5rem;
+    padding: 0.45rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: 0.4rem;
+    background: var(--bg-secondary);
+    white-space: nowrap;
+  }
+  .breadcrumbs button {
+    border: 0;
+    padding: 0.1rem 0.2rem;
+    color: var(--link);
+    background: transparent;
+    cursor: pointer;
+  }
+  .breadcrumbs button.current {
+    color: var(--text-primary);
+    font-weight: 600;
+    cursor: default;
+  }
   table {
     border-collapse: collapse;
     width: 100%;
@@ -326,6 +424,10 @@
   }
   .drill:hover {
     text-decoration: underline;
+  }
+  .drill.folder {
+    color: var(--text-primary);
+    font-weight: 600;
   }
   .save {
     cursor: pointer;

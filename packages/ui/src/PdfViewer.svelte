@@ -51,7 +51,13 @@
 
   let pages = $state<string[]>([]);
   let loadingPage = $state<number | null>(null);
-  let pdfjsPages = $state<{ canvas: HTMLCanvasElement; num: number }[]>([]);
+  let pdfjsDocument = $state<any>(null);
+  let pdfjsPageCount = $state(0);
+  let pdfjsPages = $state<Record<number, HTMLCanvasElement>>({});
+  let thumbnailPages = $state<Record<number, HTMLCanvasElement>>({});
+  let renderingPages = new Set<string>();
+  let showThumbnails = $state(true);
+  let currentPage = $state(1);
   let pdfjsStatus = $state<"idle" | "loading" | "error" | "ready">("idle");
   let pdfjsError = $state("");
   let pdfBlobUrl = $state("");
@@ -103,7 +109,8 @@
   async function renderNativePdfJsFromStream(url: string) {
     pdfjsStatus = "loading";
     pdfjsError = "";
-    pdfjsPages = [];
+    pdfjsPages = {};
+    thumbnailPages = {};
     debugLog(`[pdf] renderNativePdfJsFromStream url=${url.slice(0, 80)}`);
     try {
       // Bytes over Tauri IPC — cross-origin JS fetch to the localhost stream
@@ -128,7 +135,8 @@
   async function renderNativePdfJs(path: string) {
     pdfjsStatus = "loading";
     pdfjsError = "";
-    pdfjsPages = [];
+    pdfjsPages = {};
+    thumbnailPages = {};
     debugLog(`[pdf] renderNativePdfJs path=${path.slice(0, 80)}`);
     try {
       const { readMaterializedBytes } = await import("@viewit/platform");
@@ -187,45 +195,58 @@
     const task = pdfjs.getDocument({ url: pdfBlobUrl, disableRange: false });
     const pdf = await task.promise;
     debugLog(`[pdf] pdf loaded, numPages=${pdf.numPages}`);
-    const n = Math.min(pdf.numPages, 30);
-    const MAX_DIM = 2048;
-    const out: { canvas: HTMLCanvasElement; num: number }[] = [];
+    pdfjsDocument = pdf;
+    pdfjsPageCount = pdf.numPages;
+    pdfjsStatus = "ready";
+  }
+
+  async function renderPdfPage(num: number, thumbnail: boolean) {
+    const key = `${thumbnail ? "thumb" : "page"}-${num}`;
+    const cache = thumbnail ? thumbnailPages : pdfjsPages;
+    if (!pdfjsDocument || cache[num] || renderingPages.has(key)) return;
+    renderingPages.add(key);
     try {
-      for (let i = 1; i <= n; i++) {
-        try {
-          debugLog(`[pdf] getPage(${i})…`);
-          const page = await pdf.getPage(i);
-          const unscaled = page.getViewport({ scale: 1 });
-          const rawScale = Math.min(MAX_DIM / unscaled.width, MAX_DIM / unscaled.height, 2);
-          const scale = Math.min(rawScale, 1.5);
-          const vp = page.getViewport({ scale });
-          debugLog(`[pdf] viewport ${vp.width}x${vp.height} scale=${scale.toFixed(2)}`);
-          const canvas = document.createElement("canvas");
-          canvas.width = vp.width;
-          canvas.height = vp.height;
-          const ctx = canvas.getContext("2d");
-          if (!ctx) {
-            debugLog(`[pdf] no 2d ctx for page ${i}`);
-            continue;
-          }
-          debugLog(`[pdf] rendering page ${i}…`);
-          await page.render({ canvasContext: ctx, viewport: vp }).promise;
-          out.push({ canvas, num: i });
-          debugLog(`[pdf] rendered page ${i}/${n}`);
-        } catch (pageErr) {
-          debugLog(
-            `[pdf] page ${i} render failed: ${pageErr instanceof Error ? pageErr.message : pageErr}`,
-          );
-        }
-      }
-      pdfjsPages = out;
-      pdfjsStatus = "ready";
-      debugLog(`[pdf] done — ${n} pages rendered`);
+      const page = await pdfjsDocument.getPage(num);
+      const unscaled = page.getViewport({ scale: 1 });
+      const scale = thumbnail
+        ? Math.min(140 / unscaled.width, 180 / unscaled.height)
+        : Math.min(2048 / unscaled.width, 2048 / unscaled.height, 1.5);
+      const viewport = page.getViewport({ scale });
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.ceil(viewport.width);
+      canvas.height = Math.ceil(viewport.height);
+      const context = canvas.getContext("2d");
+      if (!context) return;
+      await page.render({ canvasContext: context, viewport }).promise;
+      if (thumbnail) thumbnailPages = { ...thumbnailPages, [num]: canvas };
+      else pdfjsPages = { ...pdfjsPages, [num]: canvas };
     } catch (e) {
-      pdfjsStatus = "error";
-      pdfjsError = e instanceof Error ? e.message : String(e);
-      debugLog(`[pdf] ERROR: ${pdfjsError}`);
+      debugLog(`[pdf] page ${num} render failed: ${e instanceof Error ? e.message : e}`);
+    } finally {
+      renderingPages.delete(key);
     }
+  }
+
+  function lazyPdfPage(node: HTMLElement, params: { num: number; thumbnail: boolean }) {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          void renderPdfPage(params.num, params.thumbnail);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: params.thumbnail ? "300px" : "800px" },
+    );
+    observer.observe(node);
+    return { destroy: () => observer.disconnect() };
+  }
+
+  function jumpToPage(num: number) {
+    currentPage = num;
+    document
+      .getElementById(`pdf-page-${num}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    void renderPdfPage(num, false);
   }
 
   async function ensurePage(i: number) {
@@ -292,21 +313,58 @@
       <strong>{page_count} page{page_count !== 1 ? "s" : ""}</strong> · {byte_len.toLocaleString()} bytes
       · pdf
     {/if}
+    {#if native && pdfjsPageCount > 0}
+      <button class="thumbnail-toggle" onclick={() => (showThumbnails = !showThumbnails)}>
+        {showThumbnails ? "Hide" : "Show"} thumbnails
+      </button>
+    {/if}
   </aside>
   {#if native}
-    <div class="native-frame">
-      {#if pdfjsStatus === "loading"}
-        <p class="status">Loading PDF…</p>
-      {:else if pdfjsStatus === "error"}
-        <p class="error">{pdfjsError}</p>
-      {:else if pdfjsPages.length > 0}
-        {#each pdfjsPages as p (p.num)}
-          <figure class="page">
-            <figcaption>Page {p.num}</figcaption>
-            <div class="canvas-wrap" use:mountCanvas={p.canvas}></div>
-          </figure>
-        {/each}
+    <div class="native-layout" class:with-thumbnails={showThumbnails && pdfjsPageCount > 0}>
+      {#if showThumbnails && pdfjsPageCount > 0}
+        <nav class="thumbnail-sidebar" aria-label="PDF pages">
+          {#each Array(pdfjsPageCount) as _, i}
+            <button
+              class="thumbnail"
+              class:active={currentPage === i + 1}
+              onclick={() => jumpToPage(i + 1)}
+              aria-label="Go to page {i + 1}"
+              use:lazyPdfPage={{ num: i + 1, thumbnail: true }}
+            >
+              <span class="thumbnail-canvas">
+                {#if thumbnailPages[i + 1]}
+                  <span use:mountCanvas={thumbnailPages[i + 1]}></span>
+                {:else}
+                  <span class="thumbnail-placeholder"></span>
+                {/if}
+              </span>
+              <span>{i + 1}</span>
+            </button>
+          {/each}
+        </nav>
       {/if}
+      <div class="native-frame" bind:this={containerEl}>
+        {#if pdfjsStatus === "loading"}
+          <p class="status">Loading PDF…</p>
+        {:else if pdfjsStatus === "error"}
+          <p class="error">{pdfjsError}</p>
+        {:else if pdfjsPageCount > 0}
+          {#each Array(pdfjsPageCount) as _, i}
+            <figure
+              class="page native-page"
+              id="pdf-page-{i + 1}"
+              use:lazyPdfPage={{ num: i + 1, thumbnail: false }}
+            >
+              <figcaption>Page {i + 1}</figcaption>
+              {#if pdfjsPages[i + 1]}
+                <div class="canvas-wrap" use:mountCanvas={pdfjsPages[i + 1]}></div>
+              {:else}
+                <div class="page-placeholder">Rendering page {i + 1}…</div>
+              {/if}
+            </figure>
+          {/each}
+        {/if}
+      </div>
     </div>
   {:else}
     <div class="pages" bind:this={containerEl} role="document">
@@ -339,6 +397,74 @@
     color: var(--text-secondary);
     margin-bottom: 1rem;
     font-size: 0.75rem;
+  }
+  .thumbnail-toggle {
+    margin-left: 0.75rem;
+    color: var(--link);
+    background: none;
+    border: 0;
+    cursor: pointer;
+    font: inherit;
+  }
+  .native-layout.with-thumbnails {
+    display: grid;
+    grid-template-columns: 10rem minmax(0, 1fr);
+    gap: 1rem;
+    align-items: start;
+  }
+  .thumbnail-sidebar {
+    position: sticky;
+    top: 0.5rem;
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    background: var(--bg-secondary);
+  }
+  .thumbnail {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.35rem;
+    border: 1px solid transparent;
+    border-radius: 0.35rem;
+    color: var(--text-secondary);
+    background: transparent;
+    cursor: pointer;
+  }
+  .thumbnail.active {
+    border-color: var(--link);
+    color: var(--text-primary);
+  }
+  .thumbnail-canvas,
+  .thumbnail-canvas :global(canvas),
+  .thumbnail-placeholder {
+    display: block;
+    max-width: 100%;
+  }
+  .thumbnail-placeholder {
+    width: 7rem;
+    height: 9rem;
+    background: color-mix(in srgb, var(--text-secondary) 12%, transparent);
+  }
+  .native-page {
+    width: 100%;
+    min-height: 28rem;
+    scroll-margin-top: 1rem;
+  }
+  .page-placeholder {
+    width: min(100%, 40rem);
+    min-height: 28rem;
+    display: grid;
+    place-items: center;
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
   }
   .pages,
   .native-frame {
@@ -378,5 +504,24 @@
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     border-radius: 0.4rem;
+  }
+  @media (max-width: 700px) {
+    .native-layout.with-thumbnails {
+      grid-template-columns: 1fr;
+    }
+    .thumbnail-sidebar {
+      position: sticky;
+      z-index: 2;
+      flex-direction: row;
+      max-height: none;
+      overflow-x: auto;
+    }
+    .thumbnail {
+      min-width: 5rem;
+    }
+    .thumbnail-canvas,
+    .thumbnail-placeholder {
+      display: none;
+    }
   }
 </style>

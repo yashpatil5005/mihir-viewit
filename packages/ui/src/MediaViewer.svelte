@@ -32,6 +32,11 @@
   let nativePlayerLaunched = $state(false);
   let isAndroidTauri = $state(false);
   let runtimeChooserOpen = $state(false);
+  let playing = $state(false);
+  let currentTime = $state(0);
+  let duration = $state(0);
+  let volume = $state(1);
+  let playbackRate = $state(1);
 
   const MIME_MAP: Record<string, string> = {
     mp4: "video/mp4",
@@ -428,6 +433,51 @@
   function onLoad() {
     const elapsed = Date.now() - loadStart;
     debugLog(`[media] loaded in ${elapsed}ms via ${currentStrategy}`);
+    syncPlaybackState();
+  }
+
+  function syncPlaybackState() {
+    if (!mediaEl) return;
+    currentTime = Number.isFinite(mediaEl.currentTime) ? mediaEl.currentTime : 0;
+    duration = Number.isFinite(mediaEl.duration) ? mediaEl.duration : 0;
+    playing = !mediaEl.paused && !mediaEl.ended;
+  }
+
+  async function togglePlayback() {
+    if (!mediaEl) return;
+    if (mediaEl.paused) await mediaEl.play();
+    else mediaEl.pause();
+    syncPlaybackState();
+  }
+
+  function seek(event: Event) {
+    if (!mediaEl) return;
+    const value = Number((event.currentTarget as HTMLInputElement).value);
+    mediaEl.currentTime = value;
+    currentTime = value;
+  }
+
+  function setVolume(event: Event) {
+    if (!mediaEl) return;
+    volume = Number((event.currentTarget as HTMLInputElement).value);
+    mediaEl.volume = volume;
+  }
+
+  function setPlaybackRate(event: Event) {
+    if (!mediaEl) return;
+    playbackRate = Number((event.currentTarget as HTMLSelectElement).value);
+    mediaEl.playbackRate = playbackRate;
+  }
+
+  function formatTime(seconds: number): string {
+    if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+    const whole = Math.floor(seconds);
+    const hours = Math.floor(whole / 3600);
+    const minutes = Math.floor((whole % 3600) / 60);
+    const secs = String(whole % 60).padStart(2, "0");
+    return hours > 0
+      ? `${hours}:${String(minutes).padStart(2, "0")}:${secs}`
+      : `${minutes}:${secs}`;
   }
 
   async function onError() {
@@ -498,6 +548,7 @@
   }
   function onEnded() {
     debugLog(`[media] ENDED`);
+    syncPlaybackState();
   }
 </script>
 
@@ -520,23 +571,69 @@
     {:else if !src}
       <p class="status">Loading…</p>
     {:else if media_kind === "audio"}
-      <audio bind:this={mediaEl} controls {src} onerror={onError} onload={onLoad}></audio>
+      <audio
+        bind:this={mediaEl}
+        {src}
+        onerror={onError}
+        onloadedmetadata={onLoad}
+        ontimeupdate={syncPlaybackState}
+        onplay={syncPlaybackState}
+        onpause={syncPlaybackState}
+        onended={syncPlaybackState}
+      ></audio>
     {:else}
       <!-- svelte-ignore a11y_media_has_caption -->
       <video
         bind:this={mediaEl}
-        controls
         playsinline
         preload="auto"
         {src}
         onerror={onError}
-        onload={onLoad}
+        onloadedmetadata={onLoad}
+        ontimeupdate={syncPlaybackState}
+        onplay={syncPlaybackState}
+        onpause={syncPlaybackState}
         onprogress={onProgress}
         onwaiting={onWaiting}
         onended={onEnded}
       ></video>
     {/if}
   </div>
+  {#if src && !errorMsg}
+    <div class="controls" aria-label="Media controls">
+      <button class="play-button" onclick={togglePlayback} aria-label={playing ? "Pause" : "Play"}>
+        {playing ? "Pause" : "Play"}
+      </button>
+      <span class="time">{formatTime(currentTime)}</span>
+      <input
+        class="seek"
+        type="range"
+        min="0"
+        max={duration || 0}
+        step="0.01"
+        value={currentTime}
+        oninput={seek}
+        aria-label="Seek"
+        disabled={!duration}
+      />
+      <span class="time">{formatTime(duration)}</span>
+      <label class="volume-control">
+        <span>Volume</span>
+        <input type="range" min="0" max="1" step="0.05" value={volume} oninput={setVolume} />
+      </label>
+      <label class="speed-control">
+        <span>Speed</span>
+        <select value={playbackRate} onchange={setPlaybackRate}>
+          <option value="0.5">0.5x</option>
+          <option value="0.75">0.75x</option>
+          <option value="1">1x</option>
+          <option value="1.25">1.25x</option>
+          <option value="1.5">1.5x</option>
+          <option value="2">2x</option>
+        </select>
+      </label>
+    </div>
+  {/if}
 </article>
 
 <RuntimeChooser
@@ -593,7 +690,52 @@
     max-height: 70vh;
   }
   audio {
-    width: min(100%, 32rem);
+    display: none;
+  }
+  .controls {
+    display: grid;
+    grid-template-columns: auto auto minmax(6rem, 1fr) auto auto auto;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.7rem 1rem;
+    border-top: 1px solid var(--border);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+  }
+  .play-button,
+  .speed-control select {
+    border: 1px solid var(--border);
+    border-radius: 0.35rem;
+    padding: 0.35rem 0.65rem;
+    color: var(--text-primary);
+    background: var(--bg-primary, #161b22);
+    cursor: pointer;
+  }
+  .seek,
+  .volume-control input {
+    accent-color: var(--link);
+  }
+  .seek {
+    width: 100%;
+  }
+  .time {
+    min-width: 2.8rem;
+    color: var(--text-secondary);
+    font:
+      0.75rem ui-monospace,
+      monospace;
+    text-align: center;
+  }
+  .volume-control,
+  .speed-control {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+  }
+  .volume-control input {
+    width: 5rem;
   }
   .status {
     color: var(--text-secondary);
@@ -619,5 +761,22 @@
   }
   .external-btn:hover {
     opacity: 0.9;
+  }
+  @media (max-width: 700px) {
+    .controls {
+      grid-template-columns: auto auto minmax(4rem, 1fr) auto;
+      gap: 0.4rem;
+      padding: 0.6rem;
+    }
+    .volume-control {
+      grid-column: 1 / 4;
+    }
+    .volume-control input {
+      width: 100%;
+    }
+    .speed-control {
+      grid-column: 4;
+      grid-row: 2;
+    }
   }
 </style>
