@@ -8,7 +8,8 @@
     "./resolver": "./src/resolver.ts",
     "./activation-scope": "./src/activationScope.ts",
     "./request-registry": "./src/requestRegistry.ts",
-    "./provider-health": "./src/providerHealth.ts"
+    "./provider-health": "./src/providerHealth.ts",
+    "./execution-adapter": "./src/executionAdapter.ts"
   },
   "dependencies": {
     "ajv": "^8.20.0"
