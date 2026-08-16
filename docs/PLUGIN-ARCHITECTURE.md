@@ -78,6 +78,8 @@ The target trust classes are:
 
 There is no requirement for a separate Android Activity per plugin. Isolation belongs behind an execution adapter and is introduced only where threat, feasibility, and product value justify it.
 
+See [`adr/0011-extension-execution-adapters.md`](adr/0011-extension-execution-adapters.md) for current adapter classifications and the measured-prototype requirements for isolated WebView/worker or Android service execution.
+
 ## Activation And Cleanup
 
 The target runtime owns nested application, provider, document-session, and operation scopes. Scopes own callbacks, listeners, timers, styles, object URLs, temporary resources, progress, cancellation, and cleanup reports.
