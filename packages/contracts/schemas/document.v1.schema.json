@@ -1,0 +1,728 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://viewit.ai/schemas/document.v1.schema.json",
+  "title": "ViewIt External Document v1",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/text"
+    },
+    {
+      "$ref": "#/$defs/image"
+    },
+    {
+      "$ref": "#/$defs/markdown"
+    },
+    {
+      "$ref": "#/$defs/json"
+    },
+    {
+      "$ref": "#/$defs/csv"
+    },
+    {
+      "$ref": "#/$defs/epub"
+    },
+    {
+      "$ref": "#/$defs/archive"
+    },
+    {
+      "$ref": "#/$defs/pdf"
+    },
+    {
+      "$ref": "#/$defs/media"
+    },
+    {
+      "$ref": "#/$defs/streamFile"
+    },
+    {
+      "$ref": "#/$defs/unsupported"
+    },
+    {
+      "$ref": "#/$defs/pptx"
+    },
+    {
+      "$ref": "#/$defs/docx"
+    },
+    {
+      "$ref": "#/$defs/xlsx"
+    },
+    {
+      "$ref": "#/$defs/placeholder"
+    },
+    {
+      "$ref": "#/$defs/font"
+    }
+  ],
+  "$defs": {
+    "base": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string"
+        }
+      }
+    },
+    "byteLength": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1073741824
+    },
+    "shortString": {
+      "type": "string",
+      "maxLength": 8192
+    },
+    "longString": {
+      "type": "string",
+      "maxLength": 16777216
+    },
+    "uri": {
+      "type": "string",
+      "maxLength": 16384
+    },
+    "richObject": {
+      "type": "object",
+      "maxProperties": 128,
+      "additionalProperties": true
+    },
+    "text": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base"
+        },
+        {
+          "required": [
+            "kind",
+            "content",
+            "encoding",
+            "byte_len",
+            "truncated"
+          ],
+          "properties": {
+            "kind": {
+              "const": "text"
+            },
+            "content": {
+              "$ref": "#/$defs/longString"
+            },
+            "encoding": {
+              "$ref": "#/$defs/shortString"
+            },
+            "byte_len": {
+              "$ref": "#/$defs/byteLength"
+            },
+            "truncated": {
+              "type": "boolean"
+            },
+            "stream_url": {
+              "$ref": "#/$defs/uri"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "image": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base"
+        },
+        {
+          "required": [
+            "kind",
+            "format",
+            "byte_len",
+            "name"
+          ],
+          "properties": {
+            "kind": {
+              "const": "image"
+            },
+            "format": {
+              "$ref": "#/$defs/shortString"
+            },
+            "byte_len": {
+              "$ref": "#/$defs/byteLength"
+            },
+            "name": {
+              "$ref": "#/$defs/shortString"
+            },
+            "asset_path": {
+              "$ref": "#/$defs/uri"
+            },
+            "stream_url": {
+              "$ref": "#/$defs/uri"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "markdown": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base"
+        },
+        {
+          "required": [
+            "kind",
+            "html",
+            "byte_len"
+          ],
+          "properties": {
+            "kind": {
+              "const": "markdown"
+            },
+            "html": {
+              "$ref": "#/$defs/longString"
+            },
+            "byte_len": {
+              "$ref": "#/$defs/byteLength"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "json": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base"
+        },
+        {
+          "required": [
+            "kind",
+            "pretty",
+            "byte_len"
+          ],
+          "properties": {
+            "kind": {
+              "const": "json"
+            },
+            "pretty": {
+              "$ref": "#/$defs/longString"
+            },
+            "byte_len": {
+              "$ref": "#/$defs/byteLength"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "csv": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base"
+        },
+        {
+          "required": [
+            "kind",
+            "header",
+            "preview_rows",
+            "byte_len"
+          ],
+          "properties": {
+            "kind": {
+              "const": "csv"
+            },
+            "header": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "$ref": "#/$defs/shortString"
+              }
+            },
+            "preview_rows": {
+              "type": "array",
+              "maxItems": 10000,
+              "items": {
+                "type": "array",
+                "maxItems": 4096,
+                "items": {
+                  "$ref": "#/$defs/shortString"
+                }
+              }
+            },
+            "total_rows_hint": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "byte_len": {
+              "$ref": "#/$defs/byteLength"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "epub": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base"
+        },
+        {
+          "required": [
+            "kind",
+            "title",
+            "first_chapter_xhtml",
+            "spine_len",
+            "byte_len"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "epub",
+                "mobi",
+                "azw3",
+                "fictionbook",
+                "palmdoc"
+              ]
+            },
+            "title": {
+              "$ref": "#/$defs/shortString"
+            },
+            "author": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 8192
+            },
+            "first_chapter_xhtml": {
+              "$ref": "#/$defs/longString"
+            },
+            "spine_len": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "byte_len": {
+              "$ref": "#/$defs/byteLength"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "archive": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base"
+        },
+        {
+          "required": [
+            "kind",
+            "entries",
+            "format",
+            "byte_len"
+          ],
+          "properties": {
+            "kind": {
+              "const": "archive"
+            },
+            "entries": {
+              "type": "array",
+              "maxItems": 100000,
+              "items": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "size",
+                  "is_dir",
+                  "compressed_size"
+                ],
+                "properties": {
+                  "name": {
+                    "$ref": "#/$defs/shortString"
+                  },
+                  "size": {
+                    "$ref": "#/$defs/byteLength"
+                  },
+                  "is_dir": {
+                    "type": "boolean"
+                  },
+                  "compressed_size": {
+                    "$ref": "#/$defs/byteLength"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "format": {
+              "$ref": "#/$defs/shortString"
+            },
+            "byte_len": {
+              "$ref": "#/$defs/byteLength"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "pdf": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base"
+        },
+        {
+          "required": [
+            "kind",
+            "page_count",
+            "pages",
+            "byte_len",
+            "name"
+          ],
+          "properties": {
+            "kind": {
+              "const": "pdf"
+            },
+            "page_count": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "pages": {
+              "type": "array",
+              "maxItems": 100000,
+              "items": {
+                "$ref": "#/$defs/uri"
+              }
+            },
+            "byte_len": {
+              "$ref": "#/$defs/byteLength"
+            },
+            "native": {
+              "type": "boolean"
+            },
+            "name": {
+              "$ref": "#/$defs/shortString"
+            },
+            "asset_path": {
+              "$ref": "#/$defs/uri"
+            },
+            "stream_url": {
+              "$ref": "#/$defs/uri"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "media": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base"
+        },
+        {
+          "required": [
+            "kind",
+            "format",
+            "media_kind",
+            "name",
+            "byte_len"
+          ],
+          "properties": {
+            "kind": {
+              "const": "media"
+            },
+            "format": {
+              "$ref": "#/$defs/shortString"
+            },
+            "media_kind": {
+              "enum": [
+                "video",
+                "audio"
+              ]
+            },
+            "name": {
+              "$ref": "#/$defs/shortString"
+            },
+            "byte_len": {
+              "$ref": "#/$defs/byteLength"
+            },
+            "asset_path": {
+              "$ref": "#/$defs/uri"
+            },
+            "ext": {
+              "$ref": "#/$defs/shortString"
+            },
+            "stream_url": {
+              "$ref": "#/$defs/uri"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "streamFile": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base"
+        },
+        {
+          "required": [
+            "kind",
+            "asset_path",
+            "mime",
+            "name",
+            "byte_len",
+            "stream_kind"
+          ],
+          "properties": {
+            "kind": {
+              "const": "stream-file"
+            },
+            "asset_path": {
+              "$ref": "#/$defs/uri"
+            },
+            "mime": {
+              "$ref": "#/$defs/shortString"
+            },
+            "name": {
+              "$ref": "#/$defs/shortString"
+            },
+            "byte_len": {
+              "$ref": "#/$defs/byteLength"
+            },
+            "stream_kind": {
+              "enum": [
+                "pdf",
+                "video",
+                "audio"
+              ]
+            },
+            "stream_url": {
+              "$ref": "#/$defs/uri"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "unsupported": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base"
+        },
+        {
+          "required": [
+            "kind",
+            "format",
+            "reason",
+            "suggestion"
+          ],
+          "properties": {
+            "kind": {
+              "const": "unsupported"
+            },
+            "format": {
+              "$ref": "#/$defs/shortString"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 65536
+            },
+            "suggestion": {
+              "enum": [
+                "open-with-external",
+                "none"
+              ]
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "pptx": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base"
+        },
+        {
+          "required": [
+            "kind",
+            "slide_count",
+            "slides",
+            "byte_len"
+          ],
+          "properties": {
+            "kind": {
+              "const": "pptx"
+            },
+            "slide_count": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "slides": {
+              "type": "array",
+              "maxItems": 100000,
+              "items": {
+                "$ref": "#/$defs/richObject"
+              }
+            },
+            "byte_len": {
+              "$ref": "#/$defs/byteLength"
+            },
+            "asset_path": {
+              "$ref": "#/$defs/uri"
+            },
+            "stream_url": {
+              "$ref": "#/$defs/uri"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "docx": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base"
+        },
+        {
+          "required": [
+            "kind",
+            "blocks",
+            "byte_len"
+          ],
+          "properties": {
+            "kind": {
+              "const": "docx"
+            },
+            "blocks": {
+              "type": "array",
+              "maxItems": 100000,
+              "items": {
+                "$ref": "#/$defs/richObject"
+              }
+            },
+            "byte_len": {
+              "$ref": "#/$defs/byteLength"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "xlsx": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base"
+        },
+        {
+          "required": [
+            "kind",
+            "sheets",
+            "byte_len"
+          ],
+          "properties": {
+            "kind": {
+              "const": "xlsx"
+            },
+            "sheets": {
+              "type": "array",
+              "maxItems": 10000,
+              "items": {
+                "$ref": "#/$defs/richObject"
+              }
+            },
+            "byte_len": {
+              "$ref": "#/$defs/byteLength"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "placeholder": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base"
+        },
+        {
+          "required": [
+            "kind",
+            "format",
+            "name",
+            "byte_len"
+          ],
+          "properties": {
+            "kind": {
+              "const": "placeholder"
+            },
+            "format": {
+              "$ref": "#/$defs/shortString"
+            },
+            "name": {
+              "$ref": "#/$defs/shortString"
+            },
+            "byte_len": {
+              "$ref": "#/$defs/byteLength"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "font": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base"
+        },
+        {
+          "required": [
+            "kind",
+            "family_name",
+            "weight",
+            "is_italic",
+            "format",
+            "byte_len"
+          ],
+          "properties": {
+            "kind": {
+              "const": "font"
+            },
+            "family_name": {
+              "$ref": "#/$defs/shortString"
+            },
+            "weight": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+            },
+            "is_italic": {
+              "type": "boolean"
+            },
+            "format": {
+              "$ref": "#/$defs/shortString"
+            },
+            "byte_len": {
+              "$ref": "#/$defs/byteLength"
+            },
+            "font_data": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 33554432
+            },
+            "font_format": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 128
+            }
+          },
+          "type": "object"
+        }
+      ]
+    }
+  }
+}

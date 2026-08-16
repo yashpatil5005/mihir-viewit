@@ -710,6 +710,13 @@ class MainActivity : TauriActivity() {
     }
 
     @JavascriptInterface
+    fun recordProviderFailure(pluginId: String, kind: String) {
+      val allowed = setOf("activation", "execution", "timeout", "invalid-output", "cleanup", "transport", "runtime-crash")
+      if (kind !in allowed) return
+      (application as? ViewItApp)?.pluginManager?.recordProviderFailure(pluginId, kind)
+    }
+
+    @JavascriptInterface
     fun fetchPluginCatalog(callbackId: String) {
       val pm = (application as? ViewItApp)?.pluginManager ?: return
       Thread {

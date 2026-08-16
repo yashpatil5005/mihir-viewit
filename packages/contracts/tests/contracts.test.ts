@@ -4,6 +4,7 @@ import {
   parsePluginPackageManifestV1,
   parseProviderDescriptorV1,
   parseServiceDescriptorV1,
+  parseExternalDocumentV1,
 } from "../src/index";
 import providers from "../catalog/providers.v1.json" with { type: "json" };
 import services from "../catalog/services.v1.json" with { type: "json" };
@@ -70,5 +71,25 @@ describe("canonical ViewIt contracts", () => {
         scope: "operation",
       }),
     ).toThrow(ContractValidationError);
+  });
+
+  it("validates plugin document variants before rendering", () => {
+    expect(
+      parseExternalDocumentV1({
+        kind: "docx",
+        blocks: [{ kind: "paragraph", text: "Hello" }],
+        byte_len: 5,
+      }).kind,
+    ).toBe("docx");
+    expect(() => parseExternalDocumentV1({ kind: "docx", byte_len: 5 })).toThrow(
+      ContractValidationError,
+    );
+    expect(() => parseExternalDocumentV1({ kind: "unknown" })).toThrow(ContractValidationError);
+  });
+
+  it("rejects excessively deep plugin document values", () => {
+    let value: Record<string, unknown> = { kind: "docx", blocks: [], byte_len: 0 };
+    for (let index = 0; index < 34; index++) value = { nested: value };
+    expect(() => parseExternalDocumentV1(value)).toThrow("nesting depth");
   });
 });

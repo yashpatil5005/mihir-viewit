@@ -58,6 +58,23 @@ describe("provider resolver shadow decisions", () => {
         .selected?.id,
     ).toBe("office-universal.parse");
   });
+
+  it("excludes providers quarantined by persisted Android health", () => {
+    const unhealthy = {
+      ...office,
+      providerHealth: {
+        "office-universal.parse": {
+          state: "quarantined",
+          consecutiveFailures: 3,
+          totalFailures: 3,
+          updatedAt: 1,
+        },
+      },
+    };
+    expect(
+      resolveInstalledProvider([unhealthy], "viewit.document.parse", "docx", null).selected,
+    ).toBeNull();
+  });
 });
 
 describe("format plugin routing", () => {

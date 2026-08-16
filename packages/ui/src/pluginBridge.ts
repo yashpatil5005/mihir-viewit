@@ -1,5 +1,10 @@
 import { providerSupportsFormat, resolveFormatCapability } from "@viewit/platform";
-import type { ProviderDescriptorV1 } from "@viewit/contracts";
+import {
+  ContractValidationError,
+  parseExternalDocumentV1,
+  type ExternalDocumentV1,
+  type ProviderDescriptorV1,
+} from "@viewit/contracts";
 import {
   BridgeRequestRegistry,
   RequestRestartRequiredError,
@@ -578,13 +583,21 @@ export async function renderDocumentWithPlugin(
   plugin: PluginInfo,
   uri: string,
   ext: string,
-): Promise<unknown> {
+): Promise<ExternalDocumentV1> {
   if (!hasAndroidBridge())
     throw new Error("Android document plugins are only available in the Android app");
   const id = requestId(`document_${plugin.id}`);
-  return bridgeRequests.request<unknown>(
+  const result = await bridgeRequests.request<unknown>(
     id,
     () => (window as any).AndroidBridge.renderDocumentWithPlugin(plugin.id, uri, ext, id),
     { timeoutMs: 60_000 },
   );
+  try {
+    return parseExternalDocumentV1(result);
+  } catch (error) {
+    if (error instanceof ContractValidationError || error instanceof Error) {
+      (window as any).AndroidBridge.recordProviderFailure?.(plugin.id, "invalid-output");
+    }
+    throw error;
+  }
 }
