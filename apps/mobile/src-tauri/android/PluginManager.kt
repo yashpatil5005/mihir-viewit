@@ -373,7 +373,7 @@ class PluginManager(private val context: Context) {
                 val list = mutableListOf<PluginManifest>()
                 for (i in 0 until arr.length()) {
                     val manifest = parseManifest(arr.getJSONObject(i))
-                    if (isCompatible(manifest) && isInstallable(manifest)) {
+                    if (validateManifest(manifest).isEmpty() && isCompatible(manifest) && isInstallable(manifest)) {
                         list.add(manifest)
                     }
                 }
@@ -387,7 +387,7 @@ class PluginManager(private val context: Context) {
                 val list = mutableListOf<PluginManifest>()
                 for (i in 0 until arr.length()) {
                     val manifest = parseManifest(arr.getJSONObject(i))
-                    if (isCompatible(manifest) && isInstallable(manifest)) {
+                    if (validateManifest(manifest).isEmpty() && isCompatible(manifest) && isInstallable(manifest)) {
                         list.add(manifest)
                     }
                 }

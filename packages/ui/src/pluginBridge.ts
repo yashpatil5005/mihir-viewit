@@ -11,6 +11,8 @@ export interface PluginInfo {
   installedSizeBytes?: number;
   checksum?: string;
   abi?: string;
+  abiVersion?: number;
+  minAppVersion?: number;
   entryClass?: string;
   installed?: boolean;
   installedVersion?: string;
@@ -94,6 +96,8 @@ function normalizeCatalogPlugin(raw: any): PluginInfo | null {
     installedSizeBytes: Number(raw.installedSizeBytes ?? 0),
     checksum: raw.checksum ? String(raw.checksum) : undefined,
     abi: raw.abi ? String(raw.abi) : undefined,
+    abiVersion: Number(raw.abiVersion ?? 1),
+    minAppVersion: Number(raw.minAppVersion ?? 1),
     entryClass: raw.entryClass ? String(raw.entryClass) : undefined,
     storageScope: raw.storageScope ? String(raw.storageScope) : undefined,
     base: raw.base ? String(raw.base) : "view",
@@ -373,7 +377,7 @@ export async function installPlugin(plugin: PluginInfo): Promise<void> {
   if (!isInstallablePlugin(plugin)) {
     throw new Error(`${plugin.name} is not available for download yet`);
   }
-  const manifest = JSON.stringify(legacyInstallManifest(plugin));
+  const manifest = JSON.stringify(installManifest(plugin));
   return new Promise<void>((resolve, reject) => {
     const id = `install_${plugin.id}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const bridge = window as any;
@@ -400,8 +404,8 @@ export async function installPlugin(plugin: PluginInfo): Promise<void> {
   });
 }
 
-/** Current Kotlin -> WebView -> Kotlin manifest projection, retained for baseline characterization. */
-export function legacyInstallManifest(plugin: PluginInfo) {
+/** Preserve the complete verified catalog policy when crossing back into Android. */
+export function installManifest(plugin: PluginInfo) {
   return {
     id: plugin.id,
     name: plugin.name,
@@ -412,9 +416,12 @@ export function legacyInstallManifest(plugin: PluginInfo) {
     downloadUrl: plugin.downloadUrl,
     sizeBytes: plugin.sizeBytes ?? 0,
     installedSizeBytes: plugin.installedSizeBytes ?? 0,
-    minAppVersion: 1,
+    minAppVersion: plugin.minAppVersion ?? 1,
     checksum: plugin.checksum ?? "",
     abi: plugin.abi ?? "",
+    abiVersion: plugin.abiVersion ?? 1,
+    base: plugin.base ?? "view",
+    capabilities: plugin.capabilities ?? [],
     runtime: plugin.runtime ?? "native",
     jsEntry: plugin.runtime === "js" ? (plugin.jsEntry ?? "web/index.js") : "",
     cssEntry: plugin.runtime === "js" ? (plugin.cssEntry ?? "") : "",

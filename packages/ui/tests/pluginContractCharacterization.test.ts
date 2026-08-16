@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { legacyInstallManifest, type PluginInfo } from "../src/pluginBridge";
+import { installManifest, type PluginInfo } from "../src/pluginBridge";
 
-describe("legacy plugin contract characterization", () => {
-  it("documents policy fields currently lost when the WebView reconstructs an install manifest", () => {
+describe("plugin install contract", () => {
+  it("preserves verified policy fields when the WebView projects an install manifest", () => {
     const plugin = {
       id: "characterization-plugin",
       name: "Characterization Plugin",
@@ -14,16 +14,18 @@ describe("legacy plugin contract characterization", () => {
       sizeBytes: 10,
       installedSizeBytes: 20,
       abi: "arm64-v8a",
+      abiVersion: 7,
+      minAppVersion: 42,
       runtime: "native",
       base: "tool",
       capabilities: ["example.execute"],
     } satisfies PluginInfo;
 
-    const manifest = legacyInstallManifest(plugin) as Record<string, unknown>;
+    const manifest = installManifest(plugin) as Record<string, unknown>;
 
-    expect(manifest.minAppVersion).toBe(1);
-    expect(manifest).not.toHaveProperty("abiVersion");
-    expect(manifest).not.toHaveProperty("base");
-    expect(manifest).not.toHaveProperty("capabilities");
+    expect(manifest.minAppVersion).toBe(42);
+    expect(manifest.abiVersion).toBe(7);
+    expect(manifest.base).toBe("tool");
+    expect(manifest.capabilities).toEqual(["example.execute"]);
   });
 });
