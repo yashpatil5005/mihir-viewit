@@ -407,6 +407,15 @@ class MainActivity : TauriActivity() {
   }
 
   inner class AndroidBridge(private val webView: WebView) {
+    private fun dispatchBridge(payload: JSONObject, legacyScript: String? = null) {
+      webView.evaluateJavascript(
+        "window.__viewitBridgeDispatch ? window.__viewitBridgeDispatch($payload) : " +
+          "(window.__viewitBridgeQueue = window.__viewitBridgeQueue || []).push($payload)",
+        null,
+      )
+      if (legacyScript != null) webView.evaluateJavascript(legacyScript, null)
+    }
+
     @JavascriptInterface
     fun drainPendingOpenUris(): String = this@MainActivity.drainPendingOpenUris().toString()
 
@@ -541,7 +550,7 @@ class MainActivity : TauriActivity() {
           put("error", "Local plugin installation is disabled in production builds")
         }
         runOnUiThread {
-          webView.evaluateJavascript("window._pluginCallback && window._pluginCallback($msg)", null)
+          dispatchBridge(msg, "window._pluginCallback && window._pluginCallback($msg)")
         }
         return
       }
@@ -555,7 +564,7 @@ class MainActivity : TauriActivity() {
               put("progress", progress)
             }
             runOnUiThread {
-              webView.evaluateJavascript("window._pluginCallback && window._pluginCallback($msg)", null)
+              dispatchBridge(msg, "window._pluginCallback && window._pluginCallback($msg)")
             }
           }
           val msg = JSONObject().apply {
@@ -568,7 +577,7 @@ class MainActivity : TauriActivity() {
             }
           }
           runOnUiThread {
-            webView.evaluateJavascript("window._pluginCallback && window._pluginCallback($msg)", null)
+            dispatchBridge(msg, "window._pluginCallback && window._pluginCallback($msg)")
           }
         } catch (e: Exception) {
           android.util.Log.e("ViewIt", "Local plugin install error", e)
@@ -578,7 +587,7 @@ class MainActivity : TauriActivity() {
             put("error", e.message ?: e.javaClass.simpleName)
           }
           runOnUiThread {
-            webView.evaluateJavascript("window._pluginCallback && window._pluginCallback($msg)", null)
+            dispatchBridge(msg, "window._pluginCallback && window._pluginCallback($msg)")
           }
         }
       }.start()
@@ -616,10 +625,7 @@ class MainActivity : TauriActivity() {
               put("progress", progress)
             }
             runOnUiThread {
-              webView.evaluateJavascript(
-                "window._pluginCallback && window._pluginCallback($msg)",
-                null
-              )
+              dispatchBridge(msg, "window._pluginCallback && window._pluginCallback($msg)")
             }
           }
           if (result.isSuccess) {
@@ -629,10 +635,7 @@ class MainActivity : TauriActivity() {
               put("event", "complete")
             }
             runOnUiThread {
-              webView.evaluateJavascript(
-                "window._pluginCallback && window._pluginCallback($msg)",
-                null
-              )
+              dispatchBridge(msg, "window._pluginCallback && window._pluginCallback($msg)")
             }
             } else {
               val failure = result.exceptionOrNull()
@@ -644,10 +647,7 @@ class MainActivity : TauriActivity() {
               put("error", reason)
             }
             runOnUiThread {
-              webView.evaluateJavascript(
-                "window._pluginCallback && window._pluginCallback($msg)",
-                null
-              )
+              dispatchBridge(msg, "window._pluginCallback && window._pluginCallback($msg)")
             }
           }
         } catch (e: Exception) {
@@ -658,10 +658,7 @@ class MainActivity : TauriActivity() {
             put("error", e.message ?: e.javaClass.simpleName)
           }
           runOnUiThread {
-            webView.evaluateJavascript(
-              "window._pluginCallback && window._pluginCallback($msg)",
-              null
-            )
+            dispatchBridge(msg, "window._pluginCallback && window._pluginCallback($msg)")
           }
         }
       }.start()
@@ -678,7 +675,7 @@ class MainActivity : TauriActivity() {
       val pm = (application as? ViewItApp)?.pluginManager ?: return
       Thread {
         val result = pm.fetchCatalog()
-        val json = if (result.isSuccess) {
+        val plugins = if (result.isSuccess) {
           val arr = JSONArray()
           result.getOrNull()?.forEach { m ->
             arr.put(JSONObject().apply {
@@ -705,11 +702,23 @@ class MainActivity : TauriActivity() {
               if (m.cssEntry.isNotBlank()) put("cssEntry", m.cssEntry)
             })
           }
-          arr.toString()
+          arr
         } else {
-          "[]"
+          JSONArray()
         }
         runOnUiThread {
+          val payload = JSONObject().apply {
+            put("id", callbackId)
+            if (result.isSuccess) {
+              put("event", "complete")
+              put("result", plugins)
+            } else {
+              put("event", "error")
+              put("error", result.exceptionOrNull()?.message ?: "Failed to fetch catalog")
+            }
+          }
+          dispatchBridge(payload)
+          val json = plugins.toString()
           val escaped = json.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n")
           webView.evaluateJavascript(
             "window._catalogCallback && window._catalogCallback('$callbackId', '$escaped')",
@@ -724,11 +733,10 @@ class MainActivity : TauriActivity() {
       val pm = (application as? ViewItApp)?.pluginManager ?: return
       Thread {
         val result = pm.fetchCatalog(url)
-        val payload = JSONObject().apply { put("id", callbackId) }
+        val plugins = JSONArray()
         if (result.isSuccess) {
-          val arr = JSONArray()
           result.getOrNull()?.forEach { m ->
-            arr.put(JSONObject().apply {
+            plugins.put(JSONObject().apply {
               put("id", m.id)
               put("name", m.name)
               put("version", m.version)
@@ -752,13 +760,26 @@ class MainActivity : TauriActivity() {
               if (m.cssEntry.isNotBlank()) put("cssEntry", m.cssEntry)
             })
           }
-          payload.put("plugins", arr)
-        } else {
-          payload.put("error", result.exceptionOrNull()?.message ?: "Failed to fetch catalog")
         }
         runOnUiThread {
+          val payload = JSONObject().apply {
+            put("id", callbackId)
+            if (result.isSuccess) {
+              put("event", "complete")
+              put("result", plugins)
+            } else {
+              put("event", "error")
+              put("error", result.exceptionOrNull()?.message ?: "Failed to fetch catalog")
+            }
+          }
+          dispatchBridge(payload)
+          val legacy = JSONObject().apply {
+            put("id", callbackId)
+            if (result.isSuccess) put("plugins", plugins)
+            else put("error", result.exceptionOrNull()?.message ?: "Failed to fetch catalog")
+          }
           webView.evaluateJavascript(
-            "window._customCatalogCallback && window._customCatalogCallback($payload)",
+            "window._customCatalogCallback && window._customCatalogCallback($legacy)",
             null
           )
         }

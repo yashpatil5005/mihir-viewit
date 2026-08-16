@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   installManifest,
   isRestartToApplyError,
@@ -7,6 +7,20 @@ import {
 } from "../src/pluginBridge";
 
 describe("plugin install contract", () => {
+  it("drains native envelopes queued before the lazy plugin bridge loads", async () => {
+    const queuedWindow: {
+      __viewitBridgeQueue?: unknown[];
+      __viewitBridgeDispatch?: (payload: unknown) => boolean;
+    } = {};
+    queuedWindow.__viewitBridgeQueue = [{ id: "early", event: "error", error: "ignored" }];
+    vi.stubGlobal("window", queuedWindow);
+    vi.resetModules();
+    await import("../src/pluginBridge");
+    expect(queuedWindow.__viewitBridgeQueue).toBeUndefined();
+    expect(typeof queuedWindow.__viewitBridgeDispatch).toBe("function");
+    vi.unstubAllGlobals();
+  });
+
   it("uses a typed restart-required outcome instead of message matching", () => {
     expect(isRestartToApplyError(new RestartRequiredError("apply after restart"))).toBe(true);
     expect(isRestartToApplyError(new Error("restart the app to apply"))).toBe(false);

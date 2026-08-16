@@ -1,5 +1,10 @@
 import { providerSupportsFormat, resolveFormatCapability } from "@viewit/platform";
 import type { ProviderDescriptorV1 } from "@viewit/contracts";
+import {
+  BridgeRequestRegistry,
+  RequestRestartRequiredError,
+  type BridgeEnvelope,
+} from "@viewit/contracts/request-registry";
 
 export interface PluginInfo {
   id: string;
@@ -45,6 +50,21 @@ export interface PluginCatalogSource {
 }
 
 const CUSTOM_CATALOGS_KEY = "viewit-plugin-custom-catalogs";
+const bridgeRequests = new BridgeRequestRegistry();
+
+if (typeof window !== "undefined") {
+  (window as any).__viewitBridgeDispatch = (payload: BridgeEnvelope) =>
+    bridgeRequests.handle(payload);
+  const queued = (window as any).__viewitBridgeQueue as BridgeEnvelope[] | undefined;
+  if (queued) {
+    for (const payload of queued) bridgeRequests.handle(payload);
+    delete (window as any).__viewitBridgeQueue;
+  }
+}
+
+function requestId(prefix: string): string {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+}
 
 export type ViewItBuildProfile = "development" | "device-test" | "production";
 
@@ -75,15 +95,13 @@ export async function listInstalledPlugins(): Promise<PluginInfo[]> {
 
 export async function fetchPluginCatalog(): Promise<PluginInfo[]> {
   if (!hasAndroidBridge()) return [];
-  return new Promise<PluginInfo[]>((resolve) => {
-    const id = `cat_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    (window as any)._catalogCallback = (cbId: string, data: string) => {
-      if (cbId !== id) return;
-      delete (window as any)._catalogCallback;
-      resolve((JSON.parse(data) as PluginInfo[]).filter(isInstallablePlugin));
-    };
-    (window as any).AndroidBridge.fetchPluginCatalog(id);
-  });
+  const id = requestId("catalog");
+  const plugins = await bridgeRequests.request<PluginInfo[]>(
+    id,
+    () => (window as any).AndroidBridge.fetchPluginCatalog(id),
+    { timeoutMs: 15_000 },
+  );
+  return plugins.filter(isInstallablePlugin);
 }
 
 function normalizeCatalogPlugin(raw: any): PluginInfo | null {
@@ -143,24 +161,13 @@ export function saveCustomCatalogUrls(urls: string[]): void {
 export async function fetchCustomCatalog(url: string): Promise<PluginInfo[]> {
   const bridge = hasAndroidBridge() ? (window as any).AndroidBridge : null;
   if (bridge && typeof bridge.fetchPluginCatalogFromUrl === "function") {
-    return new Promise<PluginInfo[]>((resolve, reject) => {
-      const id = `custom_cat_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-      const previousCallback = (window as any)._customCatalogCallback;
-      (window as any)._customCatalogCallback = (payload: {
-        id: string;
-        plugins?: PluginInfo[];
-        error?: string;
-      }) => {
-        if (payload.id !== id) {
-          previousCallback?.(payload);
-          return;
-        }
-        (window as any)._customCatalogCallback = previousCallback;
-        if (payload.error) reject(new Error(payload.error));
-        else resolve((payload.plugins ?? []).filter(isInstallablePlugin));
-      };
-      bridge.fetchPluginCatalogFromUrl(url, id);
-    });
+    const id = requestId("custom_catalog");
+    const plugins = await bridgeRequests.request<PluginInfo[]>(
+      id,
+      () => bridge.fetchPluginCatalogFromUrl(url, id),
+      { timeoutMs: 15_000 },
+    );
+    return plugins.filter(isInstallablePlugin);
   }
   const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -335,7 +342,7 @@ export async function loadJsPlugin(plugin: PluginInfo): Promise<Record<string, a
 
 /** True when an install/upgrade error means a native update is staged and needs a cold restart. */
 export function isRestartToApplyError(err: unknown): boolean {
-  return err instanceof RestartRequiredError;
+  return err instanceof RestartRequiredError || err instanceof RequestRestartRequiredError;
 }
 
 export class RestartRequiredError extends Error {
@@ -392,33 +399,12 @@ export async function installPlugin(plugin: PluginInfo): Promise<void> {
     throw new Error(`${plugin.name} is not available for download yet`);
   }
   const manifest = JSON.stringify(installManifest(plugin));
-  return new Promise<void>((resolve, reject) => {
-    const id = `install_${plugin.id}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    const bridge = window as any;
-    const previousCallback = bridge._pluginCallback;
-    bridge._pluginCallback = (payload: {
-      id: string;
-      event?: string;
-      error?: string;
-      progress?: number;
-    }) => {
-      if (payload.id !== id) {
-        previousCallback?.(payload);
-        return;
-      }
-      if (payload.event === "complete") {
-        bridge._pluginCallback = previousCallback;
-        resolve();
-      } else if (payload.event === "restart-required") {
-        bridge._pluginCallback = previousCallback;
-        reject(new RestartRequiredError(payload.error || "Restart required"));
-      } else if (payload.event === "error") {
-        bridge._pluginCallback = previousCallback;
-        reject(new Error(payload.error || "Install failed"));
-      }
-    };
-    bridge.AndroidBridge.installPlugin(manifest, id);
-  });
+  const id = requestId(`install_${plugin.id}`);
+  await bridgeRequests.request<void>(
+    id,
+    () => (window as any).AndroidBridge.installPlugin(manifest, id),
+    { timeoutMs: 120_000 },
+  );
 }
 
 /** Preserve the complete verified catalog policy when crossing back into Android. */
