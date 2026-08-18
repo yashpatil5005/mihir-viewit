@@ -105,6 +105,19 @@ class PluginRuntimePolicyTest {
     }
 
     @Test
+    fun `plugin installation rejects insufficient storage before extraction`() {
+        val required = PluginRuntimePolicy.requiredInstallSpace(20)
+        assertEquals(20 + PluginRuntimePolicy.INSTALL_HEADROOM_BYTES, required)
+        PluginRuntimePolicy.requireInstallSpace(required, 20)
+        assertThrows(IllegalArgumentException::class.java) {
+            PluginRuntimePolicy.requireInstallSpace(required - 1, 20)
+        }
+        assertThrows(ArithmeticException::class.java) {
+            PluginRuntimePolicy.requiredInstallSpace(Long.MAX_VALUE)
+        }
+    }
+
+    @Test
     fun `unsigned catalogs are accepted only by debug builds`() {
         assertTrue(PluginRuntimePolicy.acceptsUnsignedCatalog(true))
         assertFalse(PluginRuntimePolicy.acceptsUnsignedCatalog(false))

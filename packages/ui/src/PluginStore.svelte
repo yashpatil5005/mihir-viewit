@@ -362,6 +362,8 @@
     cursor: pointer;
     color: var(--text-secondary, #666);
     padding: 0.25rem;
+    min-width: 44px;
+    min-height: 44px;
   }
   .loading,
   .empty {

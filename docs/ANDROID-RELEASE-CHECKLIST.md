@@ -11,6 +11,7 @@ Production publication is blocked until the architecture renewal completes trans
 - [ ] `VIEWIT_APP_PROFILE=production` is used.
 - [ ] `VIEWIT_PRODUCTION_SIGNING=1` is used.
 - [ ] Production keystore variables are supplied from secure storage.
+- [ ] `ANDROID_SIGNING_CERT_SHA256` matches the approved upload certificate.
 - [ ] Build fails when production profile uses debug signing.
 - [ ] WebView debugging is disabled.
 - [ ] Debug intents and local plugin installation are disabled.

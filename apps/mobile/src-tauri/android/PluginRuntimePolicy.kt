@@ -6,6 +6,7 @@ object PluginRuntimePolicy {
     const val SUPPORTED_ABI_VERSION = 1
     const val MAX_PLUGIN_ENTRIES = 10_000
     const val MAX_INSTALLED_BYTES = 512L * 1024 * 1024
+    const val INSTALL_HEADROOM_BYTES = 16L * 1024 * 1024
 
     enum class WarmInstallAction {
         LOAD,
@@ -48,6 +49,18 @@ object PluginRuntimePolicy {
     fun requireExtractionWithinLimits(entryCount: Int, totalBytes: Long) {
         require(entryCount <= MAX_PLUGIN_ENTRIES) { "Plugin zip contains too many entries" }
         require(totalBytes <= MAX_INSTALLED_BYTES) { "Plugin exceeds its installed size limit" }
+    }
+
+    fun requiredInstallSpace(expandedBytes: Long): Long {
+        require(expandedBytes >= 0) { "Plugin size must be non-negative" }
+        return Math.addExact(expandedBytes, INSTALL_HEADROOM_BYTES)
+    }
+
+    fun requireInstallSpace(usableBytes: Long, expandedBytes: Long) {
+        val required = requiredInstallSpace(expandedBytes)
+        require(usableBytes >= required) {
+            "Not enough storage to install plugin: $required bytes required, $usableBytes available"
+        }
     }
 
     fun warmInstallAction(

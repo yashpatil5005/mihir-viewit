@@ -519,6 +519,7 @@ export interface ArchiveBridgeResult {
   dir?: string;
   result?: Record<string, unknown>;
   format?: string;
+  manifest?: ArchiveBridgeResult;
 }
 
 export interface ArchiveBridgeApi {
@@ -537,6 +538,14 @@ export interface ArchiveBridgeApi {
   saveEntry(entryName: string, displayName?: string, mime?: string): Promise<ArchiveBridgeResult>;
 }
 
+export function normalizeArchiveBridgeResult(value: ArchiveBridgeResult): ArchiveBridgeResult {
+  if (value.manifest) return value.manifest;
+  if (value.result && typeof value.result === "object") {
+    return value.result as ArchiveBridgeResult;
+  }
+  return value;
+}
+
 export function archiveBridgeFor(
   plugin: PluginInfo,
   uri: string,
@@ -548,26 +557,30 @@ export function archiveBridgeFor(
     uri,
     name,
     async listArchive() {
-      return callPluginArchive("list", plugin, uri, name);
+      return normalizeArchiveBridgeResult(await callPluginArchive("list", plugin, uri, name));
     },
     async detectFormat() {
-      const res = await callPluginArchive("detect", plugin, uri, name);
+      const res = normalizeArchiveBridgeResult(await callPluginArchive("detect", plugin, uri, name));
       return res.format ?? "unknown";
     },
     async readEntry(entryName) {
-      const res = await callPluginArchive("entry", plugin, uri, name, { entryName });
+      const res = normalizeArchiveBridgeResult(
+        await callPluginArchive("entry", plugin, uri, name, { entryName }),
+      );
       if (!res.ok && !res.tooLarge) return res;
       return res;
     },
     async extractAll() {
-      return callPluginArchive("extract-all", plugin, uri, name);
+      return normalizeArchiveBridgeResult(await callPluginArchive("extract-all", plugin, uri, name));
     },
     async saveEntry(entryName, displayName, mime) {
-      return callPluginArchive("save", plugin, uri, name, {
-        entryName,
-        displayName: displayName || entryName.split("/").pop() || entryName,
-        mime: mime || "",
-      });
+      return normalizeArchiveBridgeResult(
+        await callPluginArchive("save", plugin, uri, name, {
+          entryName,
+          displayName: displayName || entryName.split("/").pop() || entryName,
+          mime: mime || "",
+        }),
+      );
     },
   };
 }

@@ -11,6 +11,9 @@
 # the dependency tree every time you switch entry points (~10 min).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+mkdir -p "$ROOT/build"
+exec 9>"$ROOT/build/android-release.lock"
+flock -n 9 || { echo "[android] another Android release build is already running" >&2; exit 1; }
 MOBILE="$ROOT/apps/mobile"
 GEN="$MOBILE/src-tauri/gen/android"
 NDK="${ANDROID_NDK_HOME:-${NDK_HOME:-$HOME/Android/Sdk/ndk/26.1.10909125}}"
@@ -38,6 +41,60 @@ fi
 if [[ "$VIEWIT_APP_PROFILE" == "production" && "$VIEWIT_MEDIA_WORKER_ENABLED" == "1" ]]; then
   echo "[android] media worker prototype is not approved for production" >&2
   exit 1
+fi
+if [[ "${VIEWIT_PRODUCTION_SIGNING:-0}" == "1" ]]; then
+  KEYSTORE="${ANDROID_SIGNING_KEYSTORE:?ANDROID_SIGNING_KEYSTORE required}"
+  KS_PASS="${ANDROID_SIGNING_STORE_PASS:?ANDROID_SIGNING_STORE_PASS required}"
+  KEY_PASS="${ANDROID_SIGNING_KEY_PASS:?ANDROID_SIGNING_KEY_PASS required}"
+  KEY_ALIAS="${ANDROID_SIGNING_KEY_ALIAS:?ANDROID_SIGNING_KEY_ALIAS required}"
+  EXPECTED_CERT_SHA256="${ANDROID_SIGNING_CERT_SHA256:?ANDROID_SIGNING_CERT_SHA256 required}"
+  [[ -f "$KEYSTORE" ]] || { echo "[android] production keystore not found: $KEYSTORE" >&2; exit 1; }
+  KEY_INFO="$(keytool -list -v -keystore "$KEYSTORE" -storepass "$KS_PASS" -alias "$KEY_ALIAS" 2>/dev/null)" || {
+    echo "[android] could not open production signing keystore/alias" >&2
+    exit 1
+  }
+  grep -q 'Entry type: PrivateKeyEntry' <<<"$KEY_INFO" || {
+    echo "[android] production signing alias is not a private key" >&2
+    exit 1
+  }
+  KEYSTORE_TYPE="$(keytool -list -keystore "$KEYSTORE" -storepass "$KS_PASS" 2>/dev/null \
+    | awk -F': ' '/Keystore type:/{print toupper($2); exit}')"
+  if [[ "$KEYSTORE_TYPE" == "PKCS12" ]]; then
+    [[ "$KEY_PASS" == "$KS_PASS" ]] || {
+      echo "[android] PKCS12 key password must match the store password" >&2
+      exit 1
+    }
+  else
+    KEY_PROBE="$(mktemp "$ROOT/build/signing-key-probe.XXXXXX.jks")"
+    rm -f "$KEY_PROBE"
+    if ! keytool -importkeystore -srckeystore "$KEYSTORE" -srcstorepass "$KS_PASS" \
+      -srcalias "$KEY_ALIAS" -srckeypass "$KEY_PASS" -destkeystore "$KEY_PROBE" \
+      -deststoretype JKS -deststorepass viewit-probe-password -destkeypass viewit-probe-password \
+      -noprompt >/dev/null 2>&1; then
+      rm -f "$KEY_PROBE"
+      echo "[android] production signing private key password is invalid" >&2
+      exit 1
+    fi
+    rm -f "$KEY_PROBE"
+  fi
+  ACTUAL_CERT_SHA256="$(awk -F'SHA256:' '/SHA256:/{gsub(/[^0-9A-Fa-f]/, "", $2); print toupper($2); exit}' <<<"$KEY_INFO")"
+  NORMALIZED_EXPECTED_CERT_SHA256="$(tr -d ':[:space:]' <<<"$EXPECTED_CERT_SHA256" | tr '[:lower:]' '[:upper:]')"
+  [[ "$ACTUAL_CERT_SHA256" =~ ^[0-9A-F]{64}$ ]] || { echo "[android] could not read production signing certificate" >&2; exit 1; }
+  [[ "$ACTUAL_CERT_SHA256" == "$NORMALIZED_EXPECTED_CERT_SHA256" ]] || {
+    echo "[android] production signing certificate fingerprint mismatch" >&2
+    exit 1
+  }
+else
+  KEYSTORE="${ANDROID_DEBUG_KEYSTORE:-$HOME/.android/debug.keystore}"
+  KS_PASS=android
+  KEY_PASS=android
+  KEY_ALIAS=androiddebugkey
+  if [[ ! -f "$KEYSTORE" ]]; then
+    mkdir -p "$(dirname "$KEYSTORE")"
+    keytool -genkeypair -v -keystore "$KEYSTORE" -storepass "$KS_PASS" -alias "$KEY_ALIAS" \
+      -keypass "$KEY_PASS" -keyalg RSA -keysize 2048 -validity 10000 \
+      -dname "CN=Android Debug,O=Android,C=US"
+  fi
 fi
 export TMPDIR="${VIEWIT_TMPDIR:-$ROOT/build/tmp}"
 mkdir -p "$TMPDIR"
@@ -73,6 +130,8 @@ mark "mainactivity overlay"
 FE_STAMP="${VIEWIT_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/viewit}/mobile-frontend-inputs.v1.sha"
 fe_hash() {
   {
+    printf 'VIEWIT_APP_PROFILE=%s\nVIEWIT_MEDIA_WORKER_ENABLED=%s\n' \
+      "$VIEWIT_APP_PROFILE" "$VIEWIT_MEDIA_WORKER_ENABLED"
     for p in "$MOBILE/src" "$MOBILE/static" "$MOBILE/package.json" \
              "$MOBILE/svelte.config.js" "$MOBILE/vite.config.ts" "$MOBILE/tsconfig.json" \
              "$ROOT/packages/ui/src" "$ROOT/packages/ui/package.json" "$ROOT/packages/ui/tsconfig.json"; do
@@ -175,6 +234,10 @@ rsync -a --delete "$MOBILE/build/" "$ASSETS/"
 mark "frontend assets sync"
 
 echo "[android] gradle arm64-only APK (~11 MB, not 4-ABI universal)"
+rm -f "$ROOT/dist/viewit-android-arm64-release.aab"
+rm -f \
+  "$GEN/app/build/outputs/bundle/arm64/release/app-arm64-release.aab" \
+  "$GEN/app/build/outputs/bundle/arm64Release/app-arm64-release.aab"
 GRADLE_EXTRA=""
 # CI: hermetic single-run JVM. Local: reuse the gradle daemon (much faster
 # repeated builds, and it's what makes warm runs seconds instead of minutes).
@@ -184,31 +247,17 @@ GRADLE_EXTRA=""
   -x rustBuildArm64Release -x rustBuildUniversalRelease $GRADLE_EXTRA)
 mark "gradle assembleArm64Release + bundleArm64Release"
 
+python3 "$ROOT/scripts/verify-android-plugin-abi.py" \
+  "$GEN/app/build/outputs/mapping/arm64Release/mapping.txt" \
+  "$GEN/app/build/tmp/kotlin-classes/arm64Release"
+mark "plugin ABI verification"
+
 APK_UNSIGNED="$GEN/app/build/outputs/apk/arm64/release/app-arm64-release-unsigned.apk"
 APK_WITH_LIB="$ROOT/dist/viewit-android-arm64-release-with-lib.apk"
 APK_ALIGNED="$ROOT/dist/viewit-android-arm64-release-aligned.apk"
 APK_SIGNED="$ROOT/dist/viewit-android-arm64-release.apk"
 APK_LEGACY="$ROOT/dist/viewit-android-universal-debug.apk"
 mkdir -p "$ROOT/dist"
-
-if [[ "${VIEWIT_PRODUCTION_SIGNING:-0}" == "1" ]]; then
-  KEYSTORE="${ANDROID_SIGNING_KEYSTORE:?ANDROID_SIGNING_KEYSTORE required}"
-  KS_PASS="${ANDROID_SIGNING_STORE_PASS:?ANDROID_SIGNING_STORE_PASS required}"
-  KEY_PASS="${ANDROID_SIGNING_KEY_PASS:?ANDROID_SIGNING_KEY_PASS required}"
-  KEY_ALIAS="${ANDROID_SIGNING_KEY_ALIAS:?ANDROID_SIGNING_KEY_ALIAS required}"
-  [[ -f "$KEYSTORE" ]] || { echo "[android] production keystore not found: $KEYSTORE" >&2; exit 1; }
-else
-  KEYSTORE="${ANDROID_DEBUG_KEYSTORE:-$HOME/.android/debug.keystore}"
-  KS_PASS=android
-  KEY_PASS=android
-  KEY_ALIAS=androiddebugkey
-  if [[ ! -f "$KEYSTORE" ]]; then
-    mkdir -p "$(dirname "$KEYSTORE")"
-    keytool -genkeypair -v -keystore "$KEYSTORE" -storepass "$KS_PASS" -alias "$KEY_ALIAS" \
-      -keypass "$KEY_PASS" -keyalg RSA -keysize 2048 -validity 10000 \
-      -dname "CN=Android Debug,O=Android,C=US"
-  fi
-fi
 
 cp "$APK_UNSIGNED" "$APK_WITH_LIB"
 TMP_LIB_DIR="$ROOT/dist/android-native-lib"
@@ -233,8 +282,7 @@ mark "zip/zipalign/apksigner"
 
 # App Bundle for Google Play upload (Play App Signing re-signs the APKs it
 # generates from this AAB, so the AAB is signed with the same upload key).
-AAB_UNSIGNED="$GEN/app/build/outputs/bundle/arm64/release/app-arm64-release.aab"
-[[ -f "$AAB_UNSIGNED" ]] || AAB_UNSIGNED="$GEN/app/build/outputs/bundle/arm64Release/app-arm64-release.aab"
+AAB_UNSIGNED="$GEN/app/build/outputs/bundle/arm64Release/app-arm64-release.aab"
 AAB_SIGNED="$ROOT/dist/viewit-android-arm64-release.aab"
 if [[ -f "$AAB_UNSIGNED" ]]; then
   # AABs are Zip/JAR-based, so jarsigner signs them (apksigner is APK-only).
@@ -244,7 +292,8 @@ if [[ -f "$AAB_UNSIGNED" ]]; then
   mark "aab jarsigner"
   echo "Play App Bundle (upload): $AAB_SIGNED"
 else
-  echo "[android] warn: bundle not found at $AAB_UNSIGNED (APK-only build)" >&2
+  echo "[android] bundle not found at $AAB_UNSIGNED" >&2
+  exit 1
 fi
 
 MAX_APK_BYTES="${MAX_APK_BYTES:-15000000}"

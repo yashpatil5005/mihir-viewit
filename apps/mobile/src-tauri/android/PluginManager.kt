@@ -262,6 +262,14 @@ class PluginManager(private val context: Context) {
                     return Result.failure(Exception("Checksum mismatch"))
                 }
             }
+            val expandedBytes = java.util.zip.ZipFile(zipFile).use { zip ->
+                zip.entries().asSequence().filterNot { it.isDirectory }.fold(0L) { total, entry ->
+                    Math.addExact(total, entry.size.coerceAtLeast(0L))
+                }
+            }
+            PluginRuntimePolicy.requireExtractionWithinLimits(0, expandedBytes)
+            // The ZIP already occupies app-data storage when usableSpace is sampled.
+            PluginRuntimePolicy.requireInstallSpace(pluginsDir.usableSpace, expandedBytes)
 
             // A native plugin loaded this process stays loaded (Android cannot
             // dlclose it). Reinstall of the SAME artifact reuses the loaded

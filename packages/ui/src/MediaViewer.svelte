@@ -711,10 +711,12 @@
     color: var(--text-primary);
     background: var(--bg-primary, #161b22);
     cursor: pointer;
+    min-height: 44px;
   }
   .seek,
   .volume-control input {
     accent-color: var(--link);
+    min-height: 44px;
   }
   .seek {
     width: 100%;
@@ -759,6 +761,7 @@
     font-size: 0.85rem;
     cursor: pointer;
     font-weight: 500;
+    min-height: 44px;
   }
   .external-btn:hover {
     opacity: 0.9;

@@ -102,9 +102,9 @@ fn sniff_zip_as_office_or_epub(bytes: &[u8], ext: &str) -> Format {
         "docx" => Format::Docx,
         "xlsx" => Format::Xlsx,
         "pptx" => Format::Pptx,
-        "odt" => Format::Odt,
-        "ods" => Format::Ods,
-        "odp" => Format::Odp,
+        "odt" | "ott" => Format::Odt,
+        "ods" | "ots" => Format::Ods,
+        "odp" | "otp" => Format::Odp,
         "epub" => Format::Epub,
         "pages" => Format::IworkPages,
         "numbers" => Format::IworkNumbers,
@@ -464,8 +464,8 @@ fn sniff_ext(ext: &str) -> Format {
         "xls" => Format::Xls,
         "pptx" | "pptm" | "potx" => Format::Pptx,
         "odt" | "ott" => Format::Odt,
-        "ods" => Format::Ods,
-        "odp" => Format::Odp,
+        "ods" | "ots" => Format::Ods,
+        "odp" | "otp" => Format::Odp,
         "djvu" | "djv" => Format::ImageRaw, // DjVu — treat as image-like
         "doc" => Format::Doc,
         "ppt" => Format::Ppt,
@@ -715,6 +715,9 @@ mod tests {
         assert_eq!(sniff(pk, "xlsx"), Format::Xlsx);
         assert_eq!(sniff(pk, "docx"), Format::Docx);
         assert_eq!(sniff(pk, "zip"), Format::ArchiveZip);
+        assert_eq!(sniff(pk, "ott"), Format::Odt);
+        assert_eq!(sniff(pk, "ots"), Format::Ods);
+        assert_eq!(sniff(pk, "otp"), Format::Odp);
     }
 
     #[test]

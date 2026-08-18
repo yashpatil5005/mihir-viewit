@@ -36,6 +36,7 @@ def load_script(name: str):
 update_catalog = load_script("update-catalog.py")
 stage_plugin_catalog = load_script("stage_plugin_catalog.py")
 verify_catalog_artifacts = load_script("verify_catalog_artifacts.py")
+verify_android_plugin_abi = load_script("verify-android-plugin-abi.py")
 
 
 class AtomicWriteTests(unittest.TestCase):
@@ -66,6 +67,61 @@ class AtomicWriteTests(unittest.TestCase):
                 text=True,
             ).stdout.strip()
             subprocess.run(["git", "cat-file", "-e", f"{object_id}^{{blob}}"], cwd=root, check=True)
+
+
+class AndroidPluginAbiTests(unittest.TestCase):
+    def mapping(self, renamed: tuple[str, str] | None = None) -> str:
+        blocks = []
+        for interface, methods in verify_android_plugin_abi.EXPECTED.items():
+            lines = [f"{interface} -> {interface}:"]
+            for method in sorted(methods):
+                target = renamed[1] if renamed and renamed[0] == f"{interface}.{method}" else method
+                lines.append(f"    java.lang.Object {method}() -> {target}")
+            blocks.append("\n".join(lines))
+        return "\n".join(blocks) + "\n"
+
+    def javap(self, changed: tuple[str, str] | None = None, missing: str | None = None) -> str:
+        blocks = []
+        for interface, methods in verify_android_plugin_abi.EXPECTED.items():
+            lines = [f"public interface {interface} {{"]
+            for method, descriptor in methods.items():
+                key = f"{interface}.{method}"
+                if key == missing:
+                    continue
+                actual = changed[1] if changed and changed[0] == key else descriptor
+                lines.extend([f"  public abstract java.lang.Object {method}();", f"    descriptor: {actual}"])
+            lines.append("}")
+            blocks.append("\n".join(lines))
+        return "\n".join(blocks)
+
+    def test_accepts_preserved_plugin_interfaces(self):
+        self.assertEqual(verify_android_plugin_abi.validate_mapping(self.mapping()), [])
+
+    def test_accepts_unchanged_members_omitted_by_r8(self):
+        mapping = "\n".join(
+            f"{interface} -> {interface}:" for interface in verify_android_plugin_abi.EXPECTED
+        )
+        self.assertEqual(verify_android_plugin_abi.validate_mapping(mapping), [])
+
+    def test_rejects_renamed_plugin_interface_method(self):
+        failures = verify_android_plugin_abi.validate_mapping(
+            self.mapping(("ai.viewit.app.ArchivePlugin.extractEntry", "d"))
+        )
+
+        self.assertIn("method renamed: ai.viewit.app.ArchivePlugin.extractEntry -> d", failures)
+
+    def test_accepts_exact_compiled_plugin_interface_descriptors(self):
+        self.assertEqual(verify_android_plugin_abi.validate_descriptors(self.javap()), [])
+
+    def test_rejects_missing_or_changed_plugin_interface_descriptors(self):
+        missing = verify_android_plugin_abi.validate_descriptors(
+            self.javap(missing="ai.viewit.app.ArchivePlugin.extractEntry")
+        )
+        changed = verify_android_plugin_abi.validate_descriptors(
+            self.javap(("ai.viewit.app.PluginProgress.update", "(D)V"))
+        )
+        self.assertTrue(any("missing ABI method" in failure for failure in missing))
+        self.assertTrue(any("descriptor changed" in failure for failure in changed))
 
 
 class CatalogTests(unittest.TestCase):
@@ -500,6 +556,14 @@ class ShellContractTests(unittest.TestCase):
         self.assertIn('if [[ "$VIEWIT_APP_PROFILE" == "device-test" ]]', source)
         self.assertIn("export VIEWIT_MEDIA_WORKER_ENABLED=1", source)
         self.assertIn('"$VIEWIT_APP_PROFILE" == "production" && "$VIEWIT_MEDIA_WORKER_ENABLED" == "1"', source)
+        self.assertIn("ANDROID_SIGNING_CERT_SHA256", source)
+        self.assertIn("production signing certificate fingerprint mismatch", source)
+        self.assertIn("flock -n 9", source)
+        self.assertIn("VIEWIT_APP_PROFILE=%s", source)
+        self.assertIn("VIEWIT_MEDIA_WORKER_ENABLED=%s", source)
+        self.assertIn('rm -f "$ROOT/dist/viewit-android-arm64-release.aab"', source)
+        self.assertIn('echo "[android] bundle not found', source)
+        self.assertIn('outputs/bundle/arm64Release/app-arm64-release.aab', source)
 
     def test_office_release_requires_clean_tree_by_default(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "build") as directory:

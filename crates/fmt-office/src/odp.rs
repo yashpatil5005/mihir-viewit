@@ -554,7 +554,7 @@ fn finish_element(
         .find_map(|run| run.font_size)
         .or(Some(if index == 0 { 36.0 } else { 24.0 }));
     page.elements.push(PptxElement {
-        kind: item.kind.into(),
+        kind: if item.kind == "shape" && !text.is_empty() { "text" } else { item.kind }.into(),
         x,
         y,
         w,
@@ -730,6 +730,14 @@ mod tests {
         );
         assert_eq!(slide.elements[0].text.as_deref(), Some("One"));
         assert_eq!(slide.elements[1].text.as_deref(), Some("Two"));
+    }
+
+    #[test]
+    fn text_bearing_custom_shape_renders_as_text_element() {
+        let xml = r#"<office:document-content xmlns:office="o" xmlns:draw="d" xmlns:text="t" xmlns:svg="s"><office:body><office:presentation><draw:page><draw:custom-shape svg:x="1cm" svg:y="2cm" svg:width="3cm" svg:height="1cm"><text:p>Visible title</text:p></draw:custom-shape></draw:page></office:presentation></office:body></office:document-content>"#;
+        let slide = &extract_odp_slides(xml)[0];
+        assert_eq!(slide.elements[0].kind, "text");
+        assert_eq!(slide.elements[0].text.as_deref(), Some("Visible title"));
     }
 
     #[test]

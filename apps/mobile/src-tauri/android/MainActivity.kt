@@ -516,6 +516,30 @@ class MainActivity : TauriActivity() {
     }
 
     @JavascriptInterface
+    fun androidMaturationDiagnostics(action: String): String {
+      if (!RuntimeBuildPolicy.enablesDebugIntents(BuildConfig.VIEWIT_APP_PROFILE)) return "{}"
+      val prefixes = listOf("external-", "media-worker-probe", "transcoded", "temp_input_", "extract_stage_", "save_stage_")
+      if (action == "cleanup") {
+        cacheDir.listFiles()?.filter { entry -> prefixes.any { entry.name.startsWith(it) } }
+          ?.forEach(File::deleteRecursively)
+      }
+      val files = JSONArray()
+      fun collect(entry: File) {
+        if (entry.isDirectory) entry.listFiles()?.forEach(::collect)
+        else files.put(JSONObject().apply {
+          put("path", entry.relativeTo(cacheDir).path)
+          put("bytes", entry.length())
+        })
+      }
+      cacheDir.listFiles()?.filter { entry -> prefixes.any { entry.name.startsWith(it) } }?.forEach(::collect)
+      return JSONObject().apply {
+        put("pid", android.os.Process.myPid())
+        put("profile", BuildConfig.VIEWIT_APP_PROFILE)
+        put("files", files)
+      }.toString()
+    }
+
+    @JavascriptInterface
     fun launchVideoPlayer(uri: String, title: String, ext: String) {
       runOnUiThread {
         val intent = Intent(this@MainActivity, VideoPlayerActivity::class.java).apply {
@@ -968,6 +992,33 @@ class MainActivity : TauriActivity() {
         }
       })
       Handler(Looper.getMainLooper()).postDelayed({ client.cancel(requestId) }, 250)
+    }
+
+    @JavascriptInterface
+    fun probeMediaWorkerBusy(callbackId: String) {
+      if (!BuildConfig.VIEWIT_MEDIA_WORKER_ENABLED || BuildConfig.VIEWIT_APP_PROFILE == RuntimeBuildPolicy.PRODUCTION) return
+      val client = mediaWorkerProbe ?: MediaWorkerClient(this@MainActivity).also { mediaWorkerProbe = it }
+      val first = client.testDelay(5000, object : MediaWorkerClient.Callback {
+        override fun onProgress(progress: Float) = Unit
+        override fun onComplete(output: File) = Unit
+        override fun onError(error: String) = Unit
+      })
+      client.testDelay(5000, object : MediaWorkerClient.Callback {
+        override fun onProgress(progress: Float) = Unit
+        override fun onComplete(output: File) {
+          client.cancel(first)
+          dispatchBridge(JSONObject().apply {
+            put("id", callbackId); put("event", "error"); put("error", "Concurrent request unexpectedly completed")
+          })
+        }
+        override fun onError(error: String) {
+          client.cancel(first)
+          dispatchBridge(JSONObject().apply {
+            put("id", callbackId); put("event", "complete")
+            put("result", JSONObject().apply { put("error", error) })
+          })
+        }
+      })
     }
 
     @JavascriptInterface

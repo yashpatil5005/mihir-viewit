@@ -3,6 +3,7 @@ import {
   installManifest,
   ensureBridgeDispatch,
   isRestartToApplyError,
+  normalizeArchiveBridgeResult,
   pluginHealthSummary,
   RestartRequiredError,
   unloadJsPlugin,
@@ -41,6 +42,16 @@ describe("plugin install contract", () => {
   it("uses a typed restart-required outcome instead of message matching", () => {
     expect(isRestartToApplyError(new RestartRequiredError("apply after restart"))).toBe(true);
     expect(isRestartToApplyError(new Error("restart the app to apply"))).toBe(false);
+  });
+
+  it("unwraps native archive callback payloads at the bridge boundary", () => {
+    const manifest = {
+      ok: true,
+      format: "7z",
+      entries: [{ name: "file.txt", size: 4, compressed_size: 4, is_dir: false }],
+    };
+    expect(normalizeArchiveBridgeResult({ ok: true, manifest })).toBe(manifest);
+    expect(normalizeArchiveBridgeResult({ ok: true, result: manifest })).toBe(manifest);
   });
 
   it("removes host-managed JavaScript globals and styles on unload", () => {

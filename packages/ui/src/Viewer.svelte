@@ -954,7 +954,19 @@
         }
       }
     }
-    const builtIn = await openFile(readableUri, nameHint);
+    let builtIn: Document;
+    try {
+      builtIn = await openFile(readableUri, nameHint);
+    } catch (e) {
+      const reason = e instanceof Error ? e.message : String(e);
+      await dbg(`openFile[${ext}] failed before plugin sniff: ${reason}`);
+      builtIn = {
+        kind: "unsupported",
+        format: ext || "unknown",
+        reason,
+        suggestion: "none",
+      } as Document;
+    }
     // Misnamed or unrecognized archives (e.g. "archive.7z.enc") — only if the
     // built-in runtime produced a placeholder/unsupported result, let the native
     // plugin sniff the container by magic before giving up. Never preempts an
@@ -1572,6 +1584,8 @@
   .hint-btn {
     font-size: 0.65rem;
     padding: 0.25rem 0.45rem;
+    min-width: 44px;
+    min-height: 44px;
   }
   header button {
     cursor: pointer;
@@ -1581,6 +1595,8 @@
     border-radius: 0.3rem;
     padding: 0.3rem 0.7rem;
     font-size: 0.85rem;
+    min-width: 44px;
+    min-height: 44px;
   }
   header button:hover {
     background: var(--border);

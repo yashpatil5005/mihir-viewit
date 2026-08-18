@@ -32,7 +32,7 @@ interface Budget {
 }
 
 const ARTIFACT_DIRS_DEFAULT = {
-  'android-aab-arm64-v8a': 'apps/mobile/src-tauri/gen/android/app/build/outputs/bundle/universalRelease',
+  'android-aab-arm64-v8a': 'apps/mobile/src-tauri/gen/android/app/build/outputs/bundle/arm64Release',
   'android-apk-arm64-v8a': 'apps/mobile/src-tauri/gen/android/app/build/outputs/apk/arm64/release',
   'ios-ipa': 'apps/mobile/src-tauri/gen/apple/build/Build/Products/Release-iphoneos',
   'desktop-linux': 'apps/desktop/src-tauri/target/release/bundle',
@@ -63,6 +63,10 @@ function parseArgs(): { artifactsDir: string; budgetPath: string } {
 }
 
 function findArtifact(target: string, rootDir: string): string | null {
+  if (target === 'android-aab-arm64-v8a') {
+    const signedAab = resolve(rootDir, 'dist/viewit-android-arm64-release.aab');
+    if (existsSync(signedAab)) return signedAab;
+  }
   if (target === 'android-apk-arm64-v8a') {
     const signedApk = resolve(rootDir, 'dist/viewit-android-arm64-release.apk');
     if (existsSync(signedApk)) return signedApk;

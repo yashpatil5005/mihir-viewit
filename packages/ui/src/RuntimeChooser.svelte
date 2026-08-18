@@ -248,6 +248,8 @@
     color: var(--text-secondary);
     font-size: 1.5rem;
     cursor: pointer;
+    min-width: 44px;
+    min-height: 44px;
   }
   .summary,
   .muted {
@@ -306,6 +308,7 @@
     color: white;
     font-weight: 700;
     cursor: pointer;
+    min-height: 44px;
   }
   .download button:disabled {
     opacity: 0.65;

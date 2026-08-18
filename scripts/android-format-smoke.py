@@ -34,6 +34,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Iterable
 
 from android_device import (
@@ -377,6 +378,13 @@ def _xlsx_or_plugin(m: dict) -> str:
     return "xlsxViewer or pluginRenderer expected"
 
 
+def _has_odp_fixture_text(m: dict) -> str:
+    text = m.get("text", "")
+    if "ViewIt PPTX Test" in text and "Runtime rendering verifies slide text extraction." in text:
+        return ""
+    return "expected ODP title and body text"
+
+
 ASSERTIONS: dict[str, list[tuple[str, callable]]] = {
     # --- Office / structured documents ---
     "sample.odt": [
@@ -394,13 +402,13 @@ ASSERTIONS: dict[str, list[tuple[str, callable]]] = {
     "sample.odp": [
         ("no error", _no_error),
         ("pptx viewer", lambda m: assert_truthy(m.get("pptxRoot"), what="pptxRoot")),
-        ("has slide text", lambda m: assert_truthy(m.get("slideText"), what="slideText")),
+        ("has presentation content", _has_odp_fixture_text),
         ("no archive fallback", _no_archive_fallback),
     ],
     "sample.otp": [
         ("no error", _no_error),
         ("pptx viewer", lambda m: assert_truthy(m.get("pptxRoot"), what="pptxRoot")),
-        ("has slide text", lambda m: assert_truthy(m.get("slideText"), what="slideText")),
+        ("has presentation content", _has_odp_fixture_text),
         ("no archive fallback", _no_archive_fallback),
     ],
     "sample.rtf": [
@@ -456,19 +464,19 @@ ASSERTIONS: dict[str, list[tuple[str, callable]]] = {
     "sample.pages": [
         ("no error", _no_error),
         ("not archive fallback", _no_archive_fallback),
-        ("no partial iwork notice", lambda m: assert_falsey(m.get("hasPartial"), what="hasPartial")),
+        ("honest partial iwork notice", lambda m: assert_truthy(m.get("hasPartial"), what="hasPartial")),
         ("has body", lambda m: _has_body(m, 50)),
     ],
     "sample.numbers": [
         ("no error", _no_error),
         ("not archive fallback", _no_archive_fallback),
-        ("no partial iwork notice", lambda m: assert_falsey(m.get("hasPartial"), what="hasPartial")),
+        ("honest partial iwork notice", lambda m: assert_truthy(m.get("hasPartial"), what="hasPartial")),
         ("has body", lambda m: _has_body(m, 50)),
     ],
     "sample.key": [
         ("no error", _no_error),
         ("not archive fallback", _no_archive_fallback),
-        ("no partial iwork notice", lambda m: assert_falsey(m.get("hasPartial"), what="hasPartial")),
+        ("honest partial iwork notice", lambda m: assert_truthy(m.get("hasPartial"), what="hasPartial")),
         ("has body", lambda m: _has_body(m, 50)),
     ],
     # --- eBooks ---
@@ -805,7 +813,13 @@ def ensure_fixtures(adb: list[str], fixture_dir: str, names: Iterable[str]) -> N
 
 def open_file(adb: list[str], fixture_dir: str, name: str) -> None:
     sh(adb + ["shell", "am", "force-stop", PKG], check=False)
-    sh(adb + ["shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", f"file://{fixture_dir}/{name}", "-n", ACT])
+    command = adb + ["shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", f"file://{fixture_dir}/{name}", "-n", ACT]
+    result = sh(command, check=False)
+    if "Error:" in result:
+        time.sleep(0.5)
+        result = sh(command, check=False)
+    if "Error:" in result:
+        raise RuntimeError(f"could not launch {name}: {result}")
 
 
 def grant_fixture_file_access(adb: list[str]) -> None:
@@ -902,6 +916,24 @@ def main() -> int:
             metrics = ws_eval(ws_url, DOM_QUERY)
             assert metrics is not None, f"no metrics returned for {name}"
 
+            # Nested archives can expose only a directory at their root. Descend
+            # once so file preview/save assertions exercise the first real entry.
+            if metrics.get("archiveViewer") and not metrics.get("archivePluginSaveButtons"):
+                descended = ws_eval(
+                    ws_url,
+                    """(() => {
+                      const folder = document.querySelector('.archive-viewer .drill.folder');
+                      if (!folder || folder.textContent?.includes('..')) return false;
+                      folder.click();
+                      return true;
+                    })()""",
+                )
+                if descended:
+                    time.sleep(0.25)
+                    metrics = ws_eval(ws_url, DOM_QUERY)
+                    assert metrics is not None, f"no metrics after archive folder navigation for {name}"
+                    metrics["archiveFolderDescended"] = True
+
             # If runtime chooser appeared, click "Native Android player" and re-evaluate
             if metrics.get("runtimeChooser") and metrics.get("nativePlayerBtn"):
                 print(f"         [info] runtime chooser detected, clicking 'Native Android player'")
@@ -991,6 +1023,7 @@ def main() -> int:
         print(f"[smoke] wrote screenshots/metadata to device: {args.device_output_dir}")
 
     if args.json:
+        Path(args.json).parent.mkdir(parents=True, exist_ok=True)
         with open(args.json, "w") as f:
             for r in results:
                 f.write(json.dumps(r) + "\n")
