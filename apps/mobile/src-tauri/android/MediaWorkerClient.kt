@@ -48,7 +48,7 @@ class MediaWorkerClient(private val context: Context) {
     }
 
     fun cancel(requestId: String) {
-        pending.remove(requestId)
+        pending.remove(requestId)?.callback?.onError("Media worker request cancelled")
         runCatching {
             worker?.send(Message.obtain(null, MediaWorkerProtocol.MSG_CANCEL).apply {
                 data = Bundle().apply { putString(MediaWorkerProtocol.KEY_REQUEST_ID, requestId) }
@@ -119,18 +119,23 @@ class MediaWorkerClient(private val context: Context) {
         override fun handleMessage(message: Message) {
             val requestId = message.data.getString(MediaWorkerProtocol.KEY_REQUEST_ID).orEmpty()
             val request = pending[requestId] ?: return
+            val pluginId = message.data.getString(MediaWorkerProtocol.KEY_PLUGIN_ID)
             when (message.what) {
                 MediaWorkerProtocol.MSG_PROGRESS -> request.callback.onProgress(
                     message.data.getFloat(MediaWorkerProtocol.KEY_PROGRESS),
                 )
                 MediaWorkerProtocol.MSG_COMPLETE -> {
                     pending.remove(requestId)
+                    pluginId?.let(::recordSuccess)
                     request.callback.onComplete(request.output)
                 }
-                MediaWorkerProtocol.MSG_ERROR -> finishError(
-                    requestId,
-                    message.data.getString(MediaWorkerProtocol.KEY_ERROR) ?: "Media worker failed",
-                )
+                MediaWorkerProtocol.MSG_ERROR -> {
+                    pluginId?.let(::recordFailure)
+                    finishError(
+                        requestId,
+                        message.data.getString(MediaWorkerProtocol.KEY_ERROR) ?: "Media worker failed",
+                    )
+                }
             }
         }
     }
@@ -144,5 +149,13 @@ class MediaWorkerClient(private val context: Context) {
         pending.clear()
         synchronized(waiting) { waiting.clear() }
         values.forEach { it.callback.onError(error) }
+    }
+
+    private fun recordSuccess(pluginId: String) {
+        (context.applicationContext as? ViewItApp)?.pluginManager?.recordProviderSuccess(pluginId)
+    }
+
+    private fun recordFailure(pluginId: String) {
+        (context.applicationContext as? ViewItApp)?.pluginManager?.recordProviderFailure(pluginId, "execution")
     }
 }

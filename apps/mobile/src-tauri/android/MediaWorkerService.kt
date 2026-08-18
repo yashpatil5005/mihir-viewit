@@ -15,6 +15,7 @@ import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
 class MediaWorkerService : Service() {
+    companion object { private const val TRANSCODE_TIMEOUT_MS = 10 * 60 * 1000L }
     private val operations = ConcurrentHashMap<String, Thread>()
     private val messenger = Messenger(IncomingHandler(Looper.getMainLooper()))
 
@@ -49,7 +50,10 @@ class MediaWorkerService : Service() {
                 operations.remove(requestId)
             }
         }, "viewit-media-delay-$requestId")
-        operations[requestId] = thread
+        if (!registerOperation(requestId, thread)) {
+            replyTo.sendResult(MediaWorkerProtocol.MSG_ERROR, requestId, "Media worker is busy")
+            return
+        }
         thread.start()
     }
 
@@ -63,11 +67,8 @@ class MediaWorkerService : Service() {
             replyTo?.sendResult(MediaWorkerProtocol.MSG_ERROR, requestId, "Invalid media worker request")
             return
         }
-        if (operations.containsKey(requestId)) {
-            replyTo.sendResult(MediaWorkerProtocol.MSG_ERROR, requestId, "Duplicate media worker request")
-            return
-        }
         val thread = Thread({
+            var pluginId: String? = null
             try {
                 val input = File(inputPath).canonicalFile
                 val output = File(outputPath).canonicalFile
@@ -77,9 +78,10 @@ class MediaWorkerService : Service() {
                 output.parentFile?.mkdirs()
                 output.delete()
 
-                val manager = (application as ViewItApp).pluginManager
-                val plugin = manager.canHandleExt(ext)
+                val pluginManager = (application as ViewItApp).pluginManager
+                val plugin = pluginManager.canHandleExt(ext)
                     ?: error("No media provider installed for .$ext")
+                pluginId = plugin.manifest.id
                 val mediaPlugin = plugin.mediaPlugin ?: error("Provider does not implement media conversion")
                 val current = Thread.currentThread()
                 val previous = current.contextClassLoader
@@ -94,15 +96,24 @@ class MediaWorkerService : Service() {
                     current.contextClassLoader = previous
                 }
                 if (!success || !output.isFile || output.length() == 0L) error("Media conversion failed")
-                replyTo.sendResult(MediaWorkerProtocol.MSG_COMPLETE, requestId, null)
+                replyTo.sendResult(MediaWorkerProtocol.MSG_COMPLETE, requestId, null, plugin.manifest.id)
             } catch (error: Throwable) {
-                replyTo.sendResult(MediaWorkerProtocol.MSG_ERROR, requestId, error.message ?: error.javaClass.simpleName)
+                replyTo.sendResult(
+                    MediaWorkerProtocol.MSG_ERROR,
+                    requestId,
+                    error.message ?: error.javaClass.simpleName,
+                    pluginId,
+                )
             } finally {
                 operations.remove(requestId)
             }
         }, "viewit-media-$requestId")
-        operations[requestId] = thread
+        if (!registerOperation(requestId, thread)) {
+            replyTo.sendResult(MediaWorkerProtocol.MSG_ERROR, requestId, "Media worker is busy")
+            return
+        }
         thread.start()
+        Handler(Looper.getMainLooper()).postDelayed({ cancel(requestId) }, TRANSCODE_TIMEOUT_MS)
     }
 
     private fun cancel(requestId: String) {
@@ -111,6 +122,13 @@ class MediaWorkerService : Service() {
             // FFmpeg/native providers are not guaranteed to observe interruption.
             // Terminating this dedicated process is the hard cancellation boundary.
             Process.killProcess(Process.myPid())
+        }
+    }
+
+    private fun registerOperation(requestId: String, thread: Thread): Boolean = synchronized(operations) {
+        if (operations.isNotEmpty()) false else {
+            operations[requestId] = thread
+            true
         }
     }
 
@@ -123,12 +141,13 @@ class MediaWorkerService : Service() {
         })
     }
 
-    private fun Messenger.sendResult(what: Int, requestId: String, error: String?) {
+    private fun Messenger.sendResult(what: Int, requestId: String, error: String?, pluginId: String? = null) {
         runCatching {
             send(Message.obtain(null, what).apply {
                 data = Bundle().apply {
                     putString(MediaWorkerProtocol.KEY_REQUEST_ID, requestId)
                     error?.let { putString(MediaWorkerProtocol.KEY_ERROR, it) }
+                    pluginId?.let { putString(MediaWorkerProtocol.KEY_PLUGIN_ID, it) }
                 }
             })
         }

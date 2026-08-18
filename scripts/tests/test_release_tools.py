@@ -137,9 +137,17 @@ class CatalogTests(unittest.TestCase):
             "",
         )
 
-        with patch.object(update_catalog.subprocess, "run", side_effect=[history, snapshot]):
+        shallow = subprocess.CompletedProcess([], 0, "false\n", "")
+        with patch.object(update_catalog.subprocess, "run", side_effect=[shallow, history, snapshot]):
             with self.assertRaisesRegex(SystemExit, "bump the plugin version"):
                 update_catalog.reject_replaced_versions([], updated)
+
+    def test_rejects_shallow_repository(self):
+        shallow = subprocess.CompletedProcess([], 0, "true\n", "")
+
+        with patch.object(update_catalog.subprocess, "run", return_value=shallow):
+            with self.assertRaisesRegex(SystemExit, "shallow repository"):
+                update_catalog.reject_replaced_versions([], [])
 
 
 class PackageValidatorTests(unittest.TestCase):
@@ -202,6 +210,30 @@ class PackageValidatorTests(unittest.TestCase):
     def test_accepts_canonical_package(self):
         result = self.validate(self.make_package("valid.zip"))
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_accepts_android_dex_jni_multi_library_package(self):
+        self.manifest.update({"id": "ffmpeg-transcoder", "runtime": "android-dex-jni", "jsEntry": ""})
+        libraries = [
+            "libavcodec.so", "libavdevice.so", "libavfilter.so", "libavformat.so",
+            "libavutil.so", "libc++_shared.so", "libffmpegkit.so",
+            "libffmpegkit_abidetect.so", "libswresample.so", "libswscale.so",
+        ]
+        package = self.make_package(
+            "ffmpeg.zip",
+            [("dex/classes.dex", b"dex")] + [(f"arm64-v8a/{name}", b"library") for name in libraries],
+        )
+        result = self.validate(package, plugin_id="ffmpeg-transcoder")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_rejects_incomplete_ffmpeg_native_library_set(self):
+        self.manifest.update({"id": "ffmpeg-transcoder", "runtime": "android-dex-jni", "jsEntry": ""})
+        package = self.make_package(
+            "ffmpeg-incomplete.zip",
+            [("dex/classes.dex", b"dex"), ("arm64-v8a/libffmpegkit.so", b"kit")],
+        )
+        result = self.validate(package, plugin_id="ffmpeg-transcoder")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("missing required native libraries", result.stderr)
 
     def test_rejects_missing_required_entry(self):
         result = self.validate(self.make_package("missing.zip", self.required[1:]))
@@ -462,6 +494,12 @@ class ShellContractTests(unittest.TestCase):
         result = self.run_shell("bash", "scripts/publish-plugins.sh", "--not-a-real-option")
         self.assertEqual(result.returncode, 2)
         self.assertIn("usage:", result.stderr)
+
+    def test_device_test_defaults_media_worker_on_while_production_stays_blocked(self):
+        source = (SCRIPTS / "android-release.sh").read_text()
+        self.assertIn('if [[ "$VIEWIT_APP_PROFILE" == "device-test" ]]', source)
+        self.assertIn("export VIEWIT_MEDIA_WORKER_ENABLED=1", source)
+        self.assertIn('"$VIEWIT_APP_PROFILE" == "production" && "$VIEWIT_MEDIA_WORKER_ENABLED" == "1"', source)
 
     def test_office_release_requires_clean_tree_by_default(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "build") as directory:

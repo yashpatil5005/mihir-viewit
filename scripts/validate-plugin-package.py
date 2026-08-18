@@ -30,11 +30,26 @@ def main() -> int:
         if unsafe:
             raise SystemExit(f"{args.zip}: unsafe entries: {', '.join(unsafe)}")
         manifest = json.loads(archive.read("plugin.json"))
-        required = {
-            "plugin.json",
-            "dex/classes.dex",
-            f"lib/{args.abi}/libviewit_plugin_{args.id.replace('-', '_')}.so",
-        }
+        native_libs = sorted(name for name in names if name.endswith(".so"))
+        if manifest.get("runtime") == "android-dex-jni":
+            allowed_prefixes = (f"lib/{args.abi}/", f"{args.abi}/")
+            if not native_libs or any(not name.startswith(allowed_prefixes) for name in native_libs):
+                raise SystemExit(f"{args.zip}: native libraries do not match abi {args.abi}: {native_libs}")
+            required = {"plugin.json", "dex/classes.dex"}
+            if args.id == "ffmpeg-transcoder":
+                required_basenames = {
+                    "libavcodec.so", "libavdevice.so", "libavfilter.so", "libavformat.so",
+                    "libavutil.so", "libc++_shared.so", "libffmpegkit.so",
+                    "libffmpegkit_abidetect.so", "libswresample.so", "libswscale.so",
+                }
+                missing_libraries = sorted(required_basenames - {Path(name).name for name in native_libs})
+                if missing_libraries:
+                    raise SystemExit(
+                        f"{args.zip}: missing required native libraries: {', '.join(missing_libraries)}"
+                    )
+        else:
+            sidecar = f"lib/{args.abi}/libviewit_plugin_{args.id.replace('-', '_')}.so"
+            required = {"plugin.json", "dex/classes.dex", sidecar}
         if manifest.get("jsEntry"):
             required.add(manifest["jsEntry"])
         missing = sorted(required - names)
@@ -42,10 +57,9 @@ def main() -> int:
             raise SystemExit(f"{args.zip}: missing required entries: {', '.join(missing)}")
         if manifest.get("id") != args.id or manifest.get("version") != args.version:
             raise SystemExit(f"{args.zip}: manifest id/version does not match package name")
-        native_libs = [name for name in names if name.endswith(".so")]
-        if native_libs != [f"lib/{args.abi}/libviewit_plugin_{args.id.replace('-', '_')}.so"]:
+        if manifest.get("runtime") != "android-dex-jni" and native_libs != [sidecar]:
             raise SystemExit(f"{args.zip}: unexpected native libraries: {native_libs}")
-        for required_entry in required - {"plugin.json"}:
+        for required_entry in (required - {"plugin.json"}) | set(native_libs):
             if archive.getinfo(required_entry).file_size == 0:
                 raise SystemExit(f"{args.zip}: empty required entry: {required_entry}")
 

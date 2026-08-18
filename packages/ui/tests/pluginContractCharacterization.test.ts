@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   installManifest,
+  ensureBridgeDispatch,
   isRestartToApplyError,
   pluginHealthSummary,
   RestartRequiredError,
@@ -18,6 +19,20 @@ describe("plugin install contract", () => {
     vi.stubGlobal("window", queuedWindow);
     vi.resetModules();
     await import("../src/pluginBridge");
+    expect(queuedWindow.__viewitBridgeQueue).toBeUndefined();
+    expect(typeof queuedWindow.__viewitBridgeDispatch).toBe("function");
+    vi.unstubAllGlobals();
+  });
+
+  it("installs the native dispatcher after an SSR-first module import", () => {
+    const queuedWindow: {
+      __viewitBridgeQueue?: unknown[];
+      __viewitBridgeDispatch?: (payload: unknown) => boolean;
+    } = {
+      __viewitBridgeQueue: [{ id: "early", event: "error", error: "ignored" }],
+    };
+    vi.stubGlobal("window", queuedWindow);
+    ensureBridgeDispatch();
     expect(queuedWindow.__viewitBridgeQueue).toBeUndefined();
     expect(typeof queuedWindow.__viewitBridgeDispatch).toBe("function");
     vi.unstubAllGlobals();

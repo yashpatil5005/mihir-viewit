@@ -159,7 +159,7 @@
       }
       const invoke = (await import("@tauri-apps/api/core")).invoke;
       const bytes: number[] = await invoke("archive_extract", {
-        uri: (window as any).__viewit_uri__,
+        uri,
         entryName: entry.name,
       });
       const blob = new Blob([new Uint8Array(bytes)], { type: "application/octet-stream" });
@@ -207,7 +207,14 @@
     }
   }
 
-  onMount(resolvePlugin);
+  onMount(() => {
+    (window as any).__viewitArchiveSource = { uri, name };
+    resolvePlugin();
+    return () => {
+      delete (window as any).__viewitArchiveSource;
+      delete (window as any).__viewitArchiveBridge;
+    };
+  });
 </script>
 
 <article class="archive-viewer">

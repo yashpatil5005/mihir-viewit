@@ -67,14 +67,39 @@ export interface PluginCatalogSource {
 const CUSTOM_CATALOGS_KEY = "viewit-plugin-custom-catalogs";
 const bridgeRequests = new BridgeRequestRegistry();
 
-if (typeof window !== "undefined") {
-  (window as any).__viewitBridgeDispatch = (payload: BridgeEnvelope) =>
-    bridgeRequests.handle(payload);
-  const queued = (window as any).__viewitBridgeQueue as BridgeEnvelope[] | undefined;
+export function ensureBridgeDispatch(): void {
+  if (typeof window === "undefined") return;
+  const bridgeWindow = window as any;
+  if (typeof bridgeWindow.__viewitBridgeDispatch !== "function") {
+    bridgeWindow.__viewitBridgeDispatch = (payload: BridgeEnvelope) =>
+      bridgeRequests.handle(payload);
+  }
+  const queued = bridgeWindow.__viewitBridgeQueue as BridgeEnvelope[] | undefined;
   if (queued) {
     for (const payload of queued) bridgeRequests.handle(payload);
-    delete (window as any).__viewitBridgeQueue;
+    delete bridgeWindow.__viewitBridgeQueue;
   }
+  const nativeQueue = bridgeWindow.AndroidBridge?.drainBridgeEnvelopes?.();
+  if (nativeQueue) {
+    const envelopes = JSON.parse(nativeQueue) as BridgeEnvelope[];
+    for (const payload of envelopes) bridgeRequests.handle(payload);
+  }
+}
+
+ensureBridgeDispatch();
+
+function bridgeRequest<T>(
+  id: string,
+  start: () => void,
+  options: Parameters<BridgeRequestRegistry["request"]>[2],
+): Promise<T> {
+  ensureBridgeDispatch();
+  const request = bridgeRequests.request<T>(id, start, options);
+  // Some Android WebViews drop the callback property after module evaluation.
+  // Keep draining the native fallback queue while this request is pending.
+  const queuePump = setInterval(ensureBridgeDispatch, 50);
+  ensureBridgeDispatch();
+  return request.finally(() => clearInterval(queuePump));
 }
 
 function requestId(prefix: string): string {
@@ -111,7 +136,7 @@ export async function listInstalledPlugins(): Promise<PluginInfo[]> {
 export async function fetchPluginCatalog(): Promise<PluginInfo[]> {
   if (!hasAndroidBridge()) return [];
   const id = requestId("catalog");
-  const plugins = await bridgeRequests.request<PluginInfo[]>(
+  const plugins = await bridgeRequest<PluginInfo[]>(
     id,
     () => (window as any).AndroidBridge.fetchPluginCatalog(id),
     { timeoutMs: 15_000 },
@@ -177,7 +202,7 @@ export async function fetchCustomCatalog(url: string): Promise<PluginInfo[]> {
   const bridge = hasAndroidBridge() ? (window as any).AndroidBridge : null;
   if (bridge && typeof bridge.fetchPluginCatalogFromUrl === "function") {
     const id = requestId("custom_catalog");
-    const plugins = await bridgeRequests.request<PluginInfo[]>(
+    const plugins = await bridgeRequest<PluginInfo[]>(
       id,
       () => bridge.fetchPluginCatalogFromUrl(url, id),
       { timeoutMs: 15_000 },
@@ -190,34 +215,31 @@ export async function fetchCustomCatalog(url: string): Promise<PluginInfo[]> {
 }
 
 export async function fetchPluginCatalogSources(): Promise<PluginCatalogSource[]> {
-  const defaultPlugins = (await fetchPluginCatalog()).map((plugin) => ({
-    ...plugin,
-    sourceId: "default",
-    sourceName: "ViewIt default catalog",
-  }));
-  const sources: PluginCatalogSource[] = [
-    { id: "default", name: "ViewIt default catalog", plugins: defaultPlugins },
-  ];
-  for (const url of getCustomCatalogUrls()) {
+  const loadSource = async (url?: string): Promise<PluginCatalogSource> => {
+    const id = url ?? "default";
+    const name = url ?? "ViewIt default catalog";
     try {
-      const plugins = (await fetchCustomCatalog(url)).map((plugin) => ({
-        ...plugin,
-        sourceId: url,
-        sourceName: url,
-        sourceUrl: url,
-      }));
-      sources.push({ id: url, name: url, url, plugins });
+      const plugins = (await (url ? fetchCustomCatalog(url) : fetchPluginCatalog())).map(
+        (plugin) => ({
+          ...plugin,
+          sourceId: id,
+          sourceName: name,
+          sourceUrl: url,
+        }),
+      );
+      return { id, name, url, plugins };
     } catch (e) {
-      sources.push({
-        id: url,
-        name: url,
+      return {
+        id,
+        name,
         url,
         plugins: [],
         error: e instanceof Error ? e.message : String(e),
-      });
+      };
     }
-  }
-  return sources;
+  };
+
+  return Promise.all([loadSource(), ...getCustomCatalogUrls().map((url) => loadSource(url))]);
 }
 
 export async function pluginInventory(): Promise<{
@@ -417,11 +439,9 @@ export async function installPlugin(plugin: PluginInfo): Promise<void> {
   }
   const manifest = JSON.stringify(installManifest(plugin));
   const id = requestId(`install_${plugin.id}`);
-  await bridgeRequests.request<void>(
-    id,
-    () => (window as any).AndroidBridge.installPlugin(manifest, id),
-    { timeoutMs: 120_000 },
-  );
+  await bridgeRequest<void>(id, () => (window as any).AndroidBridge.installPlugin(manifest, id), {
+    timeoutMs: 120_000,
+  });
 }
 
 /** Preserve the complete verified catalog policy when crossing back into Android. */
@@ -566,7 +586,7 @@ function callPluginArchive(
     });
   }
   const id = requestId(`archive_${op}_${plugin.id}`);
-  return bridgeRequests.request<ArchiveBridgeResult>(
+  return bridgeRequest<ArchiveBridgeResult>(
     id,
     () => {
       const bridge = (window as any).AndroidBridge;
@@ -611,7 +631,7 @@ export async function renderDocumentWithPlugin(
   if (!hasAndroidBridge())
     throw new Error("Android document plugins are only available in the Android app");
   const id = requestId(`document_${plugin.id}`);
-  const result = await bridgeRequests.request<unknown>(
+  const result = await bridgeRequest<unknown>(
     id,
     () => (window as any).AndroidBridge.renderDocumentWithPlugin(plugin.id, uri, ext, id),
     { timeoutMs: 60_000, signal },

@@ -59,9 +59,9 @@ An adapter may claim `isolated` only when an enforceable execution environment p
 - cancellation: termination;
 - unload: full.
 
-This is a contract target, not a claim that the worker exists today.
+An Android `Messenger` media worker now implements this adapter for media transcoding. It uses a non-exported same-UID `:media_worker` process, bounded path-only requests, app-cache output, a ten-minute hard deadline, and process termination for hard cancellation.
 
-An Android `Messenger` media-worker prototype now exists behind `VIEWIT_MEDIA_WORKER_ENABLED=1` for development/device-test builds. It uses a non-exported same-UID `:media_worker` process, bounded path-only requests, app-cache output, and process termination for hard cancellation. Production builds reject the flag until FFmpeg conformance is proven.
+The worker is enabled by default in `device-test` builds after API 36 arm64 fixture, URI transport, progress, output, memory, cancellation, and recovery conformance. Development builds remain opt-in. Production builds reject the flag until the corrected versioned artifact is published and representative arm64 Android 7-15 coverage passes.
 
 ## Isolation Feasibility
 
@@ -84,7 +84,7 @@ Isolation requires an Android bound service or separate extension package/proces
 
 ### FFmpeg/media transcoding
 
-FFmpeg is the strongest candidate for a separate worker because operations are long-running, native, cancellable by process termination, and naturally file-oriented. Current in-process behavior remains available until a worker prototype passes fixture, performance, and failure-containment tests.
+FFmpeg executes through the separate worker in the `device-test` canary. The in-process adapter remains available as a rollback path but is not the canary default.
 
 ### Document parsers
 
@@ -96,7 +96,7 @@ Large structured `Document` JSON can exceed comfortable binder limits. A process
 - Provider resolution and viewers do not depend on execution topology.
 - Isolation can be introduced per provider without rewriting service contracts.
 - Per-plugin sandboxed Activities are explicitly rejected as an architecture requirement.
-- The first isolated implementation should be a measured prototype, not a blanket migration.
+- Isolation is enabled per provider only after measured conformance; it is not a blanket migration.
 
 ## Prototype Exit Criteria
 

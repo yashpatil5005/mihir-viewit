@@ -14,7 +14,7 @@ ANDROID_JAR="$ANDROID_HOME/platforms/android-36/android.jar"
 STUBS="$ROOT/build/plugin-stubs"
 ONLY_PLUGIN=""
 
-KNOWN_PLUGINS="office-universal font-universal compression-universal iwork-universal pptx-vanilla"
+KNOWN_PLUGINS="office-universal font-universal compression-universal iwork-universal pptx-vanilla ffmpeg-transcoder"
 if [ "${1:-}" = "--plugin" ] && [ "$#" -eq 2 ]; then
   ONLY_PLUGIN="${2:?usage: package-plugins.sh [--plugin ID]}"
 elif [ "$#" -ne 0 ]; then
@@ -147,6 +147,15 @@ package_plugin() { # pid, name, srcDir, sobase, with_js
 }
 
 write_stubs
+
+if selected ffmpeg-transcoder; then
+  "$ROOT/plugins/ffmpeg-transcoder/build.sh"
+  ffmpeg_version="$(python3 -c "import json;print(json.load(open('$ROOT/plugins/ffmpeg-transcoder/plugin.json'))['version'])")"
+  ffmpeg_zip="$ROOT/plugins/ffmpeg-transcoder/build/ffmpeg-transcoder-$ffmpeg_version.zip"
+  python3 "$ROOT/scripts/validate-plugin-package.py" "$ffmpeg_zip" \
+    --id ffmpeg-transcoder --version "$ffmpeg_version" --abi arm64-v8a
+  "$ROOT/scripts/verify-android-16kb.sh" "$ffmpeg_zip"
+fi
 
 # ---- JS bundles first (office-universal hybrid needs them) ----
 if selected office-universal || selected pptx-vanilla; then

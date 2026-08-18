@@ -79,10 +79,11 @@ def ws_eval(ws_url: str, expr: str, *, timeout: int = 15) -> Any:
         return client.evaluate(expr)
 
 
-def ws_click(ws_url: str, selector: str, *, timeout: int = 10) -> bool:
-    """Click an element matching selector via CDP. Returns True if clicked."""
+def ws_click_text(ws_url: str, text: str, *, timeout: int = 10) -> bool:
+    """Click the first button-like element containing text via CDP."""
     click_js = f"""(() => {{
-          const el = document.querySelector('{selector}');
+          const elements = [...document.querySelectorAll('button, [role="button"], .option')];
+          const el = elements.find(candidate => candidate.textContent?.includes({json.dumps(text)}));
           if (!el) return false;
           el.scrollIntoView({{ block: 'center' }});
           el.click();
@@ -222,10 +223,27 @@ DOM_QUERY = """(() => {
 # returns the sha256 of the extracted bytes for byte-exact comparison.
 PREVIEW_SHA_JS = """(async () => {
   const info = (window).__viewitArchiveBridge;
+  const source = (window).__viewitArchiveSource;
   const drill = document.querySelector('.archive-viewer .drill[aria-label]');
-  if (!info || !window.AndroidBridge) return { ok: false, reason: 'no archive bridge info' };
   if (!drill) return { ok: false, reason: 'no file entries to preview' };
   const entryName = drill.getAttribute('aria-label').replace(/^Open\\s+/, '');
+  if (!info || !window.AndroidBridge) {
+    if (!window.__TAURI__?.core?.invoke || !source?.uri) {
+      return { ok: false, reason: 'no archive extraction bridge' };
+    }
+    try {
+      const payload = await window.__TAURI__.core.invoke('archive_extract', {
+        uri: source.uri,
+        entryName,
+      });
+      const bytes = payload instanceof Uint8Array ? payload : new Uint8Array(payload);
+      const digest = await crypto.subtle.digest('SHA-256', bytes);
+      const hex = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+      return { ok: true, entry: entryName, size: bytes.length, sha256: hex };
+    } catch (e) {
+      return { ok: false, reason: String(e), entry: entryName };
+    }
+  }
   const id = 'smoke_preview_' + Date.now();
   return await new Promise((resolve) => {
     const prev = window.__viewitBridgeDispatch;
@@ -252,7 +270,6 @@ PREVIEW_SHA_JS = """(async () => {
         done({ ok: false, reason: payload.error || 'no base64 payload', tooLarge: !!payload.tooLarge, entry: entryName });
         return true;
       }
-      return true;
       try {
         const raw = atob(payload.base64);
         const bytes = new Uint8Array(raw.length);
@@ -888,17 +905,7 @@ def main() -> int:
             # If runtime chooser appeared, click "Native Android player" and re-evaluate
             if metrics.get("runtimeChooser") and metrics.get("nativePlayerBtn"):
                 print(f"         [info] runtime chooser detected, clicking 'Native Android player'")
-                clicked = ws_click(ws_url, "button, [role='button'], .option")
-                # Try more specific selector if generic didn't work
-                if not clicked:
-                    # Find by text content via JS
-                    click_js = """(() => {
-                      const btns = [...document.querySelectorAll('button, [role="button"], .option')];
-                      const btn = btns.find(b => b.textContent?.includes('Native Android player'));
-                      if (btn) { btn.click(); return true; }
-                      return false;
-                    })()"""
-                    clicked = ws_eval(ws_url, click_js)
+                clicked = ws_click_text(ws_url, "Native Android player")
                 if clicked:
                     time.sleep(3)  # Wait for content to load after click
                     metrics = ws_eval(ws_url, DOM_QUERY)

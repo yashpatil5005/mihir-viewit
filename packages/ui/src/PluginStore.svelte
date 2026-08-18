@@ -88,6 +88,9 @@
         }),
       }));
       catalog = catalogSources.flatMap((source) => source.plugins);
+      if (catalogSources.every((source) => source.error)) {
+        throw new Error(catalogSources[0]?.error ?? "No plugin catalog could be loaded");
+      }
       if (
         typeof localStorage !== "undefined" &&
         localStorage.getItem("viewit-plugin-privacy-accepted") === "1"
@@ -198,6 +201,10 @@
         {#if restartRequired}
           <div class="restart-cta">
             <button type="button" onclick={restartApp}>Restart app to apply</button>
+          </div>
+        {:else}
+          <div class="error-actions">
+            <button type="button" onclick={refresh}>Try again</button>
           </div>
         {/if}
       {:else}
@@ -376,6 +383,20 @@
   }
   .restart-cta {
     margin-bottom: 1rem;
+  }
+  .error-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin: -0.35rem 0 1rem;
+  }
+  .error-actions button {
+    padding: 0.45rem 0.8rem;
+    border: 1px solid var(--link);
+    border-radius: 0.5rem;
+    background: transparent;
+    color: var(--link);
+    cursor: pointer;
+    font-weight: 600;
   }
   .restart-cta button {
     padding: 0.5rem 0.9rem;

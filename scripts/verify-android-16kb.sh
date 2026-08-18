@@ -33,14 +33,14 @@ python3 - "$APK" "$TMP" <<'PY'
 import sys, zipfile
 apk, tmp = sys.argv[1], sys.argv[2]
 with zipfile.ZipFile(apk) as z:
-    so_list = [n for n in z.namelist() if n.startswith('lib/arm64-v8a/') and n.endswith('.so')]
+    so_list = [n for n in z.namelist() if n.endswith('.so') and n.startswith(('lib/arm64-v8a/', 'arm64-v8a/'))]
     if not so_list:
         raise SystemExit(f'No arm64-v8a .so found in {apk}')
     for n in so_list:
         z.extract(n, tmp)
 PY
 
-for LIB in "$TMP"/lib/arm64-v8a/*.so; do
+for LIB in "$TMP"/lib/arm64-v8a/*.so "$TMP"/arm64-v8a/*.so; do
   if [ -f "$LIB" ]; then
     if ! "$READELF" -l "$LIB" | awk '/LOAD/ && $NF != "0x4000" { bad=1; print } END { exit bad }'; then
       echo "ELF LOAD segments are not 16 KB-aligned in $LIB from $APK" >&2
@@ -50,7 +50,7 @@ for LIB in "$TMP"/lib/arm64-v8a/*.so; do
 done
 
 "$ZIPALIGN" -c -v 4 "$APK" | awk '
-  /lib\/arm64-v8a\/.*\.so/ { seen=1; if ($NF != "(OK)" && $NF != "compressed)") bad=1; print }
+  /(^| )((lib\/)?arm64-v8a\/.*\.so)/ { seen=1; if ($NF != "(OK)" && $NF != "compressed)") bad=1; print }
   /Verification/ { print }
   END { if (!seen || bad) exit 1 }
 '

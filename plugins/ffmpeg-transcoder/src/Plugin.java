@@ -2,7 +2,15 @@ package ai.viewit.plugins.ffmpeg_transcoder;
 
 import android.content.Context;
 import android.net.Uri;
+import com.arthenica.ffmpegkit.FFmpegKit;
+import com.arthenica.ffmpegkit.FFmpegSession;
+import com.arthenica.ffmpegkit.FFprobeKit;
+import com.arthenica.ffmpegkit.MediaInformation;
+import com.arthenica.ffmpegkit.MediaInformationSession;
+import com.arthenica.ffmpegkit.ReturnCode;
+import com.arthenica.ffmpegkit.StreamInformation;
 import java.io.File;
+import java.util.List;
 
 public class Plugin implements ai.viewit.app.ViewItPlugin {
     private Context context;
@@ -11,7 +19,7 @@ public class Plugin implements ai.viewit.app.ViewItPlugin {
     public String getId() { return "ffmpeg-transcoder"; }
 
     @Override
-    public String getVersion() { return "1.0.0"; }
+    public String getVersion() { return "1.0.2"; }
 
     @Override
     public java.util.List<String> getSupportedFormats() {
@@ -82,20 +90,44 @@ public class Plugin implements ai.viewit.app.ViewItPlugin {
             String inputPath = resolveInputPath(input);
             if (inputPath == null) return false;
 
-            String outputStr = output.getAbsolutePath();
             String inputStr = "\"" + inputPath + "\"";
-            String outputQ = "\"" + outputStr + "\"";
+            String outputQ = "\"" + output.getAbsolutePath() + "\"";
+            MediaInformationSession informationSession = FFprobeKit.getMediaInformation(inputPath);
+            MediaInformation information = informationSession.getMediaInformation();
+            if (information == null) return false;
+            double durationMs = parseDurationMs(information.getDuration());
+            boolean hasVideo = hasStream(information.getStreams(), "video");
+            boolean hasAudio = hasStream(information.getStreams(), "audio");
+            if (!hasVideo && !hasAudio) return false;
 
-            String[] cmds = {
-                "-y -i " + inputStr + " -c copy -movflags +faststart " + outputQ,
-                "-y -i " + inputStr + " -c:v h264_mediacodec -b:v 2M -c:a aac -b:a 128k " + outputQ,
-                "-y -i " + inputStr + " -c:v mpeg4 -q:v 5 -c:a aac -b:a 128k " + outputQ,
+            String[] cmds = hasVideo ? new String[] {
+                "-y -i " + inputStr + " -map 0:v:0 -map 0:a? -c:v h264_mediacodec -b:v 2M -c:a aac -b:a 128k -movflags +faststart " + outputQ,
+            } : new String[] {
+                "-y -i " + inputStr + " -map 0:a:0 -vn -c:a aac -b:a 128k -movflags +faststart " + outputQ,
             };
 
+            final float[] lastProgress = {0.0f};
             for (String cmd : cmds) {
-                com.arthenica.ffmpegkit.FFmpegKit.execute(cmd);
-                if (output.exists() && output.length() > 0) {
-                    if (onProgress != null) onProgress.update(1.0f);
+                updateProgress(onProgress, lastProgress, 0.01f);
+                FFmpegSession session = FFmpegKit.executeAsync(
+                    cmd,
+                    completed -> {},
+                    null,
+                    statistics -> {
+                        if (onProgress != null && durationMs > 0) {
+                            updateProgress(
+                                onProgress,
+                                lastProgress,
+                                (float) Math.min(0.99, statistics.getTime() / durationMs)
+                            );
+                        }
+                    }
+                );
+                while (session.getReturnCode() == null) {
+                    Thread.sleep(25);
+                }
+                if (ReturnCode.isSuccess(session.getReturnCode()) && output.isFile() && output.length() > 0) {
+                    updateProgress(onProgress, lastProgress, 1.0f);
                     return true;
                 }
                 output.delete();
@@ -109,6 +141,36 @@ public class Plugin implements ai.viewit.app.ViewItPlugin {
 
     @Override
     public void cleanup() {}
+
+    private static synchronized void updateProgress(
+        ai.viewit.app.PluginProgress callback,
+        float[] lastProgress,
+        float value
+    ) {
+        if (callback == null) return;
+        float bounded = Math.max(lastProgress[0], Math.min(1.0f, value));
+        if (bounded > lastProgress[0] || bounded == 1.0f) {
+            lastProgress[0] = bounded;
+            callback.update(bounded);
+        }
+    }
+
+    private static boolean hasStream(List<StreamInformation> streams, String type) {
+        if (streams == null) return false;
+        for (StreamInformation stream : streams) {
+            if (type.equals(stream.getType())) return true;
+        }
+        return false;
+    }
+
+    private static double parseDurationMs(String duration) {
+        if (duration == null) return 0;
+        try {
+            return Double.parseDouble(duration) * 1000.0;
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
+    }
 
     private String resolveInputPath(Uri uri) {
         String scheme = uri.getScheme();

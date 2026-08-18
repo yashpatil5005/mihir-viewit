@@ -15,6 +15,7 @@ object MediaWorkerProtocol {
     const val KEY_PROGRESS = "progress"
     const val KEY_DELAY_MS = "delayMs"
     const val KEY_ERROR = "error"
+    const val KEY_PLUGIN_ID = "pluginId"
 
     const val MAX_PATH_LENGTH = 16_384
 

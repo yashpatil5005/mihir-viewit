@@ -1,43 +1,6 @@
 {
   "plugins": [
     {
-      "id": "ffmpeg-transcoder",
-      "name": "FFmpeg Transcoder",
-      "description": "Optional media transcode plugin for unsupported video and audio formats. Converts legacy containers/codecs to MP4 using FFmpeg.",
-      "version": "1.0.0",
-      "entryClass": "ai.viewit.plugins.ffmpeg_transcoder.Plugin",
-      "capabilities": [
-        "media.inspect",
-        "media.convert"
-      ],
-      "runtime": "android-dex-jni",
-      "abi": "arm64-v8a",
-      "abiVersion": 1,
-      "sizeBytes": 17980167,
-      "installedSizeBytes": 38304481,
-      "supportedFormats": [
-        "avi",
-        "mkv",
-        "mov",
-        "webm",
-        "3gp",
-        "flv",
-        "asf",
-        "wmv",
-        "wma",
-        "swf",
-        "mxf",
-        "mpg",
-        "mpeg",
-        "ts",
-        "m2ts",
-        "mts"
-      ],
-      "downloadUrl": "https://omnia.mihirpatil.co/plugins/ffmpeg-transcoder-1.0.0.zip",
-      "checksum": "4ad102c37775aa7311cb70e900d9bc67f940d0546fdf4c574934dc3f41e2c5c5",
-      "minAppVersion": 1
-    },
-    {
       "id": "pptx-vanilla",
       "name": "PPTX Vanilla Viewer",
       "version": "1.0.1",
@@ -423,6 +386,43 @@
       "downloadUrl": "https://omnia.mihirpatil.co/plugins/editor-base-0.1.0.zip",
       "jsEntry": "index.js",
       "cssEntry": ""
+    },
+    {
+      "id": "ffmpeg-transcoder",
+      "name": "FFmpeg Transcoder",
+      "description": "Adds transcoding support for unsupported video and audio formats. Converts legacy containers/codecs to MP4 using FFmpeg.",
+      "version": "1.0.2",
+      "entryClass": "ai.viewit.plugins.ffmpeg_transcoder.Plugin",
+      "capabilities": [
+        "media.inspect",
+        "media.convert"
+      ],
+      "runtime": "android-dex-jni",
+      "abi": "arm64-v8a",
+      "abiVersion": 1,
+      "sizeBytes": 18016060,
+      "installedSizeBytes": 38389410,
+      "supportedFormats": [
+        "avi",
+        "mkv",
+        "mov",
+        "webm",
+        "3gp",
+        "flv",
+        "asf",
+        "wmv",
+        "wma",
+        "swf",
+        "mxf",
+        "mpg",
+        "mpeg",
+        "ts",
+        "m2ts",
+        "mts"
+      ],
+      "downloadUrl": "https://omnia.mihirpatil.co/plugins/ffmpeg-transcoder-1.0.2.zip",
+      "checksum": "5ba112811ff387e095a08186706714241179b3a1221ea65f23a9e52cf732d9a9",
+      "minAppVersion": 1
     }
   ]
 }

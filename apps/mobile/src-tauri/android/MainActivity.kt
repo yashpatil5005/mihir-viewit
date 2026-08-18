@@ -20,6 +20,8 @@ import java.security.MessageDigest
 
 class MainActivity : TauriActivity() {
   private var bridgeWebView: WebView? = null
+  private var androidBridge: AndroidBridge? = null
+  @Volatile private var destroyed = false
 
   /** Archive "Save entry as…" flow: SAF ACTION_CREATE_DOCUMENT handed to the
    *  system picker; bytes are written on onActivityResult. */
@@ -250,7 +252,7 @@ class MainActivity : TauriActivity() {
   override fun onWebViewCreate(webView: WebView) {
     super.onWebViewCreate(webView)
     bridgeWebView = webView
-    webView.addJavascriptInterface(AndroidBridge(webView), "AndroidBridge")
+    androidBridge = AndroidBridge(webView).also { webView.addJavascriptInterface(it, "AndroidBridge") }
   }
 
   override fun onNewIntent(intent: Intent) {
@@ -451,10 +453,49 @@ class MainActivity : TauriActivity() {
     }
   }
 
+  override fun onDestroy() {
+    destroyed = true
+    androidBridge?.close()
+    androidBridge = null
+    bridgeWebView = null
+    super.onDestroy()
+  }
+
   inner class AndroidBridge(private val webView: WebView) {
     private var mediaWorkerProbe: MediaWorkerClient? = null
+    private val pendingBridgeEnvelopes = java.util.Collections.synchronizedMap(
+      object : LinkedHashMap<String, String>() {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean = size > 256
+      },
+    )
     private fun dispatchBridge(payload: JSONObject) {
-      dispatchEnvelope(webView, payload)
+      if (destroyed) return
+      val token = java.util.UUID.randomUUID().toString()
+      pendingBridgeEnvelopes[token] = payload.toString()
+      webView.post {
+        webView.evaluateJavascript(
+          "window.__viewitBridgeDispatch && window.__viewitBridgeDispatch($payload)" +
+            " ? AndroidBridge.ackBridgeEnvelope(\"$token\") : false",
+          null,
+        )
+      }
+    }
+
+    @JavascriptInterface
+    fun drainBridgeEnvelopes(): String = JSONArray().apply {
+      synchronized(pendingBridgeEnvelopes) {
+        pendingBridgeEnvelopes.values.forEach { put(JSONObject(it)) }
+        pendingBridgeEnvelopes.clear()
+      }
+    }.toString()
+
+    @JavascriptInterface
+    fun ackBridgeEnvelope(token: String) { pendingBridgeEnvelopes.remove(token) }
+
+    fun close() {
+      mediaWorkerProbe?.close()
+      mediaWorkerProbe = null
+      pendingBridgeEnvelopes.clear()
     }
 
     @JavascriptInterface
@@ -488,7 +529,9 @@ class MainActivity : TauriActivity() {
     }
 
     @JavascriptInterface
-    fun materializeExternalUri(uri: String, ext: String): String {
+    fun materializeExternalUri(uri: String, ext: String): String = materializeExternalUri(uri, ext, "")
+
+    private fun materializeExternalUri(uri: String, ext: String, cacheKey: String): String {
       val parsed = Uri.parse(uri)
       if (parsed.scheme == "file") {
         val path = parsed.path ?: throw IllegalArgumentException("Invalid file URI")
@@ -504,7 +547,8 @@ class MainActivity : TauriActivity() {
         .digest(uri.toByteArray(Charsets.UTF_8))
         .take(12)
         .joinToString("") { "%02x".format(it) }
-      val dest = File(applicationContext.cacheDir, "external-$digest.$safeExt")
+      val safeKey = cacheKey.replace(Regex("[^A-Za-z0-9._-]"), "_")
+      val dest = File(applicationContext.cacheDir, "external-$digest${if (safeKey.isEmpty()) "" else "-$safeKey"}.$safeExt")
       if (dest.exists()) dest.delete()
 
       val input = if (parsed.scheme == "content") {
@@ -752,6 +796,7 @@ class MainActivity : TauriActivity() {
       input.parentFile?.mkdirs()
       input.writeBytes(bytes)
       val output = File(cacheDir, "media-worker-probe/${System.currentTimeMillis()}.mp4")
+      val startedAt = android.os.SystemClock.elapsedRealtime()
       client.transcode(input, output, ext, object : MediaWorkerClient.Callback {
         override fun onProgress(progress: Float) {
           dispatchBridge(JSONObject().apply {
@@ -766,7 +811,10 @@ class MainActivity : TauriActivity() {
           dispatchBridge(JSONObject().apply {
             put("id", callbackId)
             put("event", "complete")
-            put("result", JSONObject().apply { put("outputPath", output.absolutePath) })
+            put("result", inspectMediaOutput(output).apply {
+              put("outputPath", output.absolutePath)
+              put("elapsedMs", android.os.SystemClock.elapsedRealtime() - startedAt)
+            })
           })
         }
 
@@ -779,6 +827,131 @@ class MainActivity : TauriActivity() {
           })
         }
       })
+    }
+
+    @JavascriptInterface
+    fun probeMediaUri(uri: String, ext: String, isolated: Boolean, callbackId: String) {
+      if (BuildConfig.VIEWIT_APP_PROFILE == RuntimeBuildPolicy.PRODUCTION ||
+        (isolated && !BuildConfig.VIEWIT_MEDIA_WORKER_ENABLED)
+      ) {
+        dispatchBridge(JSONObject().apply {
+          put("id", callbackId)
+          put("event", "error")
+          put("error", "Media URI probe is disabled")
+        })
+        return
+      }
+      Thread {
+        var input: File? = null
+        try {
+          val materialized = materializeExternalUri(uri, ext, callbackId)
+          input = File(Uri.parse(materialized).path ?: error("Materialized URI has no path"))
+          val output = File(cacheDir, "media-worker-probe/${System.currentTimeMillis()}.mp4")
+          val startedAt = android.os.SystemClock.elapsedRealtime()
+          if (isolated) {
+            runOnUiThread {
+              if (destroyed) {
+                input.delete()
+                return@runOnUiThread
+              }
+              val client = mediaWorkerProbe ?: MediaWorkerClient(this@MainActivity).also { mediaWorkerProbe = it }
+              client.transcode(input, output, ext, mediaProbeCallback(callbackId, startedAt, input))
+            }
+          } else {
+            val manager = (application as ViewItApp).pluginManager
+            val plugin = manager.canHandleExt(ext) ?: error("No media provider installed for .$ext")
+            val mediaPlugin = plugin.mediaPlugin ?: error("Provider does not implement media conversion")
+            val progressEvents = JSONArray()
+            val current = Thread.currentThread()
+            val previous = current.contextClassLoader
+            current.contextClassLoader = plugin.instance.javaClass.classLoader
+            val success = try {
+              mediaPlugin.transcode(Uri.fromFile(input), output, object : PluginProgress {
+                override fun update(progress: Float) { progressEvents.put(progress) }
+              })
+            } finally {
+              current.contextClassLoader = previous
+            }
+            if (!success) error("Media conversion failed")
+            manager.recordProviderSuccess(plugin.manifest.id)
+            dispatchBridge(JSONObject().apply {
+              put("id", callbackId)
+              put("event", "complete")
+              put("result", inspectMediaOutput(output).apply {
+                put("outputPath", output.absolutePath)
+                put("elapsedMs", android.os.SystemClock.elapsedRealtime() - startedAt)
+                put("progress", progressEvents)
+              })
+            })
+            input.delete()
+          }
+        } catch (error: Throwable) {
+          input?.delete()
+          dispatchBridge(JSONObject().apply {
+            put("id", callbackId)
+            put("event", "error")
+            put("error", error.message ?: error.javaClass.simpleName)
+          })
+        }
+      }.start()
+    }
+
+    private fun mediaProbeCallback(
+      callbackId: String,
+      startedAt: Long,
+      input: File,
+    ) = object : MediaWorkerClient.Callback {
+      override fun onProgress(progress: Float) {
+        dispatchBridge(JSONObject().apply {
+          put("id", callbackId)
+          put("event", "progress")
+          put("progress", progress)
+        })
+      }
+
+      override fun onComplete(output: File) {
+        input.delete()
+        dispatchBridge(JSONObject().apply {
+          put("id", callbackId)
+          put("event", "complete")
+          put("result", inspectMediaOutput(output).apply {
+            put("outputPath", output.absolutePath)
+            put("elapsedMs", android.os.SystemClock.elapsedRealtime() - startedAt)
+          })
+        })
+      }
+
+      override fun onError(error: String) {
+        input.delete()
+        dispatchBridge(JSONObject().apply {
+          put("id", callbackId)
+          put("event", "error")
+          put("error", error)
+        })
+      }
+    }
+
+    private fun inspectMediaOutput(output: File): JSONObject {
+      val result = JSONObject().apply { put("sizeBytes", output.length()) }
+      val extractor = android.media.MediaExtractor()
+      try {
+        extractor.setDataSource(output.absolutePath)
+        val streams = JSONArray()
+        for (index in 0 until extractor.trackCount) {
+          val format = extractor.getTrackFormat(index)
+          streams.put(JSONObject().apply {
+            put("index", index)
+            put("mime", format.getString(android.media.MediaFormat.KEY_MIME) ?: "")
+            if (format.containsKey(android.media.MediaFormat.KEY_DURATION)) {
+              put("durationUs", format.getLong(android.media.MediaFormat.KEY_DURATION))
+            }
+          })
+        }
+        result.put("streams", streams)
+      } finally {
+        extractor.release()
+      }
+      return result
     }
 
     @JavascriptInterface
@@ -799,7 +972,15 @@ class MainActivity : TauriActivity() {
 
     @JavascriptInterface
     fun fetchPluginCatalog(callbackId: String) {
-      val pm = (application as? ViewItApp)?.pluginManager ?: return
+      val pm = (application as? ViewItApp)?.pluginManager
+      if (pm == null) {
+        dispatchBridge(JSONObject().apply {
+          put("id", callbackId)
+          put("event", "error")
+          put("error", "Plugin runtime is unavailable")
+        })
+        return
+      }
       Thread {
         val result = pm.fetchCatalog()
         val plugins = if (result.isSuccess) {
@@ -851,7 +1032,15 @@ class MainActivity : TauriActivity() {
 
     @JavascriptInterface
     fun fetchPluginCatalogFromUrl(url: String, callbackId: String) {
-      val pm = (application as? ViewItApp)?.pluginManager ?: return
+      val pm = (application as? ViewItApp)?.pluginManager
+      if (pm == null) {
+        dispatchBridge(JSONObject().apply {
+          put("id", callbackId)
+          put("event", "error")
+          put("error", "Plugin runtime is unavailable")
+        })
+        return
+      }
       Thread {
         val result = pm.fetchCatalog(url)
         val plugins = JSONArray()

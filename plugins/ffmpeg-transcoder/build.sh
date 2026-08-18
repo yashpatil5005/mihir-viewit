@@ -8,9 +8,14 @@ FFMPEGKIT_URL="https://repo1.maven.org/maven2/com/mrljdx/ffmpeg-kit-full/$FFMPEG
 SMART_EXCEPTION_VERSION="0.2.1"
 SMART_EXCEPTION_COMMON_URL="https://repo1.maven.org/maven2/com/arthenica/smart-exception-common/$SMART_EXCEPTION_VERSION/smart-exception-common-$SMART_EXCEPTION_VERSION.jar"
 SMART_EXCEPTION_URL="https://repo1.maven.org/maven2/com/mrljdx/smart-exception-java/$SMART_EXCEPTION_VERSION/smart-exception-java-$SMART_EXCEPTION_VERSION.jar"
+FFMPEGKIT_SHA256="e3076e90e39b950515ea2a083e589787a26f97cb46e821643a06c846222cf832"
+SMART_EXCEPTION_COMMON_SHA256="1cad0fb4dfa01755a014331b5ed199281d2c3fab5aca5c9d7abd0b41d0ec3f7b"
+SMART_EXCEPTION_SHA256="5b96aaa5f191dedbef72fb0c38f1a2b01807920afc0d92a75a2acd6e0cc7703c"
 ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
 BUILD_TOOLS="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
 ANDROID_JAR="$ANDROID_HOME/platforms/android-36/android.jar"
+VERSION="$(python3 -c "import json; print(json.load(open('$PLUGIN_DIR/plugin.json'))['version'])")"
+OUTPUT="$BUILD_DIR/ffmpeg-transcoder-$VERSION.zip"
 
 JAVAC="$(which javac)"
 echo "=== Building FFmpeg Transcoder Plugin ==="
@@ -28,6 +33,9 @@ echo "--- Downloading FFmpegKit AAR ---"
 curl -L -o "$BUILD_DIR/aar/ffmpeg-kit.aar" "$FFMPEGKIT_URL"
 curl -L -o "$BUILD_DIR/aar/smart-exception-common.jar" "$SMART_EXCEPTION_COMMON_URL"
 curl -L -o "$BUILD_DIR/aar/smart-exception-java.jar" "$SMART_EXCEPTION_URL"
+printf '%s  %s\n' "$FFMPEGKIT_SHA256" "$BUILD_DIR/aar/ffmpeg-kit.aar" | sha256sum -c -
+printf '%s  %s\n' "$SMART_EXCEPTION_COMMON_SHA256" "$BUILD_DIR/aar/smart-exception-common.jar" | sha256sum -c -
+printf '%s  %s\n' "$SMART_EXCEPTION_SHA256" "$BUILD_DIR/aar/smart-exception-java.jar" | sha256sum -c -
 
 # 2. Extract native .so files
 echo "--- Extracting native libraries ---"
@@ -58,16 +66,27 @@ fi
 echo "--- Creating DEX ---"
 "$BUILD_TOOLS/d8" \
     --min-api 24 \
+    --lib "$ANDROID_JAR" \
     --output "$BUILD_DIR/native/dex/" \
-    $(find "$BUILD_DIR/plugin_classes" -name "*.class" ! -path "*/ai/viewit/app/*")
+    $(find "$BUILD_DIR/plugin_classes" -name "*.class" ! -path "*/ai/viewit/app/*") \
+    "$BUILD_DIR/aar/extracted/classes.jar" \
+    "$BUILD_DIR/aar/smart-exception-common.jar" \
+    "$BUILD_DIR/aar/smart-exception-java.jar"
 
 # 5. Package plugin ZIP
 echo "--- Packaging plugin ZIP ---"
 cd "$BUILD_DIR/native"
 cp "$PLUGIN_DIR/plugin.json" .
-zip -r "$PLUGIN_DIR/build/ffmpeg-transcoder-1.0.0.zip" .
+python3 -c "
+import os
+from pathlib import Path
+for entry in sorted(Path('.').rglob('*')):
+    os.utime(entry, (315532800, 315532800))
+    os.chmod(entry, 0o755 if entry.is_dir() else 0o644)
+"
+find . -type f -printf '%P\n' | LC_ALL=C sort | zip -q -X "$OUTPUT" -@
 
 echo ""
 echo "=== Build Complete ==="
-echo "Output: $PLUGIN_DIR/build/ffmpeg-transcoder-1.0.0.zip"
-ls -lh "$PLUGIN_DIR/build/ffmpeg-transcoder-1.0.0.zip"
+echo "Output: $OUTPUT"
+ls -lh "$OUTPUT"

@@ -527,6 +527,11 @@ class PluginManager(private val context: Context) {
         providerIds(plugin.manifest).forEach { providerHealth.failed(it, kind) }
     }
 
+    fun recordProviderSuccess(pluginId: String) {
+        val plugin = installed[pluginId] ?: return
+        providerIds(plugin.manifest).forEach(providerHealth::activated)
+    }
+
     fun retryProviders(pluginId: String): Boolean {
         val plugin = installed[pluginId] ?: return false
         providerIds(plugin.manifest).forEach(providerHealth::retry)
@@ -687,7 +692,8 @@ class PluginManager(private val context: Context) {
             if (!archDir.isDirectory) continue
             val soFiles = archDir.listFiles { f ->
                 f.isFile && f.extension == "so" &&
-                    !f.name.startsWith("libviewit_plugin_")
+                    !f.name.startsWith("libviewit_plugin_") &&
+                    !f.name.startsWith("libffmpegkit")
             }?.toMutableList() ?: continue
             // Retry loop: FFmpeg libs have a dependency chain (avcodec→swresample→avutil etc).
             // Keep retrying failed libs until all loaded or no progress is made.
@@ -711,6 +717,9 @@ class PluginManager(private val context: Context) {
             }
             for (so in soFiles) {
                 Log.w(TAG, "Failed to load ${so.name}: ${lastError?.message}")
+            }
+            if (soFiles.isNotEmpty()) {
+                throw lastError ?: UnsatisfiedLinkError("Failed to load native plugin dependencies")
             }
             break
         }

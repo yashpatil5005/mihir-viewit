@@ -32,6 +32,30 @@ def installed_size(zip_path: Path) -> int:
         return sum(i.file_size for i in z.infolist())
 
 
+def ffmpeg_entries() -> list[dict]:
+    manifest = json.loads((ROOT / "plugins" / "ffmpeg-transcoder" / "plugin.json").read_text())
+    zip_path = ROOT / "plugins" / "ffmpeg-transcoder" / "build" / f"ffmpeg-transcoder-{manifest['version']}.zip"
+    if not zip_path.is_file():
+        raise SystemExit(f"[catalog] missing required artifact: {zip_path}")
+    return [{
+        "id": manifest["id"],
+        "name": manifest["name"],
+        "description": manifest["description"],
+        "version": manifest["version"],
+        "entryClass": manifest["entryClass"],
+        "capabilities": manifest.get("capabilities", []),
+        "runtime": manifest.get("runtime", "android-dex-jni"),
+        "abi": manifest.get("abi", "arm64-v8a"),
+        "abiVersion": manifest.get("abiVersion", 1),
+        "sizeBytes": zip_path.stat().st_size,
+        "installedSizeBytes": installed_size(zip_path),
+        "supportedFormats": manifest.get("supportedFormats", []),
+        "downloadUrl": f"https://omnia.mihirpatil.co/plugins/{zip_path.name}",
+        "checksum": sha256(zip_path),
+        "minAppVersion": manifest.get("minAppVersion", 1),
+    }]
+
+
 def office_ooxml_entries() -> list[dict]:
     manifest = json.loads((ROOT / "plugins" / "office-ooxml" / "plugin.json").read_text())
     base = {
@@ -219,14 +243,15 @@ def build_entries(existing: list[dict], only: str | None = None) -> list[dict]:
             "pptx-vanilla": pptx_vanilla_entries,
             "player-base": player_base_entries,
             "editor-base": editor_base_entries,
+            "ffmpeg-transcoder": ffmpeg_entries,
         }
         if only not in builders:
             raise SystemExit(f"[catalog] unsupported --only plugin: {only}")
         kept = [entry for entry in existing if entry.get("id") not in rebuilt]
         return kept + builders[only]()
-    rebuilt = {"office-ooxml", "pptx-vanilla", "player-base", "editor-base", *UNIVERSAL_PLUGINS}
+    rebuilt = {"office-ooxml", "pptx-vanilla", "player-base", "editor-base", "ffmpeg-transcoder", *UNIVERSAL_PLUGINS}
     kept = [e for e in existing if e.get("id") not in rebuilt]
-    return kept + office_ooxml_entries() + pptx_vanilla_entries() + universal_entries() + player_base_entries() + editor_base_entries()
+    return kept + office_ooxml_entries() + pptx_vanilla_entries() + universal_entries() + player_base_entries() + editor_base_entries() + ffmpeg_entries()
 
 
 def reject_replaced_versions(existing: list[dict], updated: list[dict]) -> None:
@@ -234,6 +259,17 @@ def reject_replaced_versions(existing: list[dict], updated: list[dict]) -> None:
     for entry in existing:
         key = (entry.get("id"), entry.get("version"), entry.get("abi") or "")
         old.setdefault(key, set()).add(entry.get("checksum"))
+    shallow = subprocess.run(
+        ["git", "rev-parse", "--is-shallow-repository"],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if shallow.returncode != 0:
+        raise SystemExit(f"[catalog] could not inspect repository history: {shallow.stderr.strip()}")
+    if shallow.stdout.strip() == "true":
+        raise SystemExit("[catalog] refusing publication from a shallow repository")
     history = subprocess.run(
         ["git", "log", "--format=%H", "--", str(CATALOG.relative_to(ROOT))],
         cwd=ROOT,
@@ -241,6 +277,8 @@ def reject_replaced_versions(existing: list[dict], updated: list[dict]) -> None:
         capture_output=True,
         text=True,
     )
+    if history.returncode != 0:
+        raise SystemExit(f"[catalog] could not inspect catalog history: {history.stderr.strip()}")
     for commit in history.stdout.splitlines():
         snapshot = subprocess.run(
             ["git", "show", f"{commit}:{CATALOG.relative_to(ROOT)}"],
@@ -250,7 +288,7 @@ def reject_replaced_versions(existing: list[dict], updated: list[dict]) -> None:
             text=True,
         )
         if snapshot.returncode != 0:
-            continue
+            raise SystemExit(f"[catalog] could not read catalog at {commit}: {snapshot.stderr.strip()}")
         for entry in json.loads(snapshot.stdout).get("plugins", []):
             key = (entry.get("id"), entry.get("version"), entry.get("abi") or "")
             old.setdefault(key, set()).add(entry.get("checksum"))
