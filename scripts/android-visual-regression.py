@@ -120,6 +120,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--update-baselines", action="store_true")
     parser.add_argument("--settle", type=float, default=1.0)
     parser.add_argument("--ready-timeout", type=float, default=20.0)
+    parser.add_argument("--cdp-timeout", type=int, default=15)
     parser.add_argument("--plugin-zip", type=Path, default=DEFAULT_PLUGIN)
     parser.add_argument("--no-reset", action="store_true", help="Keep existing app/plugin state")
     parser.add_argument(
@@ -252,7 +253,7 @@ def main() -> int:
         try:
             session.open_file(case.path, case.mime)
             time.sleep(args.settle)
-            with session.cdp() as client:
+            with session.cdp(timeout=args.cdp_timeout) as client:
                 client.call("Page.enable")
                 wait_until(client, case.ready, args.ready_timeout)
                 resources = client.evaluate(RESOURCE_READY_JS)

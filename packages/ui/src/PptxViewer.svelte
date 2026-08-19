@@ -57,11 +57,22 @@
   let errorMsg = $state("");
   let idx = $state(0);
   let total = $state(0);
+  let stageEl: HTMLDivElement | null = $state(null);
+  let stageWidthPx = $state(0);
   let preParsedSlides: PptxSlide[] = $state([]);
   let pluginHtml = $derived(((docProp as any).html ?? "") as string);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let viewer: any = null;
+
+  $effect(() => {
+    if (!stageEl) return;
+    const observer = new ResizeObserver(([entry]) => {
+      stageWidthPx = entry.contentRect.width;
+    });
+    observer.observe(stageEl);
+    return () => observer.disconnect();
+  });
 
   async function loadDeck() {
     status = "loading";
@@ -198,7 +209,9 @@
     const top = (element.y / height) * 100;
     const w = (element.w / width) * 100;
     const h = (element.h / height) * 100;
-    const fontSize = element.font_size ? `font-size:${element.font_size / 12}vw;` : "";
+    const fontSize = element.font_size
+      ? `font-size:${(element.font_size / 1200) * (stageWidthPx || window.innerWidth)}px;`
+      : "";
     const fillColor = safeColor(element.fill_color);
     const borderColor = safeColor(element.border_color);
     const fill = fillColor ? `background-color:${fillColor};` : "";
@@ -232,7 +245,7 @@
         >
       </div>
     {/if}
-    <div class="stage">
+    <div class="stage" bind:this={stageEl}>
       {#if preParsedSlides.length > 0}
         <div
           class:slide-layout={hasLayout(preParsedSlides[idx])}
@@ -256,7 +269,9 @@
                             class:pptx-italic={run.italic}
                             class:pptx-underline={run.underline}
                             style={[
-                              run.font_size ? `font-size:${run.font_size / 12}vw` : "",
+                              run.font_size
+                                ? `font-size:${(run.font_size / 1200) * (stageWidthPx || window.innerWidth)}px`
+                                : "",
                               safeColor(run.color) ? `color:${safeColor(run.color)}` : "",
                               safeFontFamily(run.font_family)
                                 ? `font-family:${safeFontFamily(run.font_family)}`
@@ -337,6 +352,8 @@
     border-radius: 0.3rem;
     background: var(--bg-secondary);
     color: var(--text-primary);
+    min-width: 44px;
+    min-height: 44px;
   }
   .bar button:disabled {
     opacity: 0.35;
@@ -345,7 +362,7 @@
     width: 100%;
     aspect-ratio: 16/9;
     max-height: 70vh;
-    min-height: 200px;
+    max-width: 124.444vh;
     overflow: hidden;
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -353,6 +370,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    margin: 0 auto;
   }
   canvas {
     max-width: 100%;

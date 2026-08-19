@@ -1,7 +1,7 @@
 {
   "id": "player-base",
   "name": "Player Base",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Custom media player (base=play). Swaps the built-in web player with a custom UI/engine for video/audio.",
   "minAppVersion": 1,
   "entryClass": "",
@@ -10,7 +10,7 @@
   "base": "play",
   "runtime": "js",
   "jsEntry": "index.js",
-  "downloadUrl": "https://omnia.mihirpatil.co/plugins/player-base-0.1.1.zip",
+  "downloadUrl": "https://omnia.mihirpatil.co/plugins/player-base-0.1.2.zip",
   "sizeBytes": 0,
   "installedSizeBytes": 0,
   "checksum": "",

@@ -1,6 +1,7 @@
 <script lang="ts">
   // Phase 3.2 — XLSX viewer. Multi-sheet: tab strip + virtualized grid.
   import SearchBar from "./SearchBar.svelte";
+  import Icon from "./Icon.svelte";
   import { findAllMatches, escapeHtml } from "./search";
 
   let { document: docProp = {} }: { document?: any } = $props();
@@ -73,6 +74,39 @@
     );
   });
   let maxRenderRows = $state(200);
+  let selectedCell = $state<{ row: number; col: number; value: string; formula: string } | null>(
+    null,
+  );
+
+  function handleTabKeydown(event: KeyboardEvent) {
+    if (!["ArrowRight", "ArrowLeft", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    let next = activeSheet;
+    if (event.key === "ArrowRight") next = (activeSheet + 1) % sheets.length;
+    else if (event.key === "ArrowLeft") next = (activeSheet - 1 + sheets.length) % sheets.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = sheets.length - 1;
+    activeSheet = next;
+    requestAnimationFrame(() => document.getElementById(`xlsx-tab-${next}`)?.focus());
+  }
+
+  function selectCell(row: number, col: number) {
+    if (selectedCell?.row === row && selectedCell.col === col) {
+      selectedCell = null;
+      return;
+    }
+    selectedCell = {
+      row,
+      col,
+      value: visibleRows[row]?.[col] ?? "",
+      formula: formulaGrid[row]?.[col] ?? "",
+    };
+  }
+
+  $effect(() => {
+    activeSheet;
+    selectedCell = null;
+  });
 
   function loadMoreRows() {
     maxRenderRows += 200;
@@ -284,100 +318,142 @@
       }}
     />
     {#if sheets.length > 1}
-      <div class="tabs" role="tablist">
+      <div class="tabs" role="tablist" aria-label="Worksheets">
         {#each sheets as s, i}
-          <button class:active={i === activeSheet} onclick={() => (activeSheet = i)} role="tab"
-            >{s.name}</button
+          <button
+            id="xlsx-tab-{i}"
+            class:active={i === activeSheet}
+            onclick={() => (activeSheet = i)}
+            onkeydown={handleTabKeydown}
+            role="tab"
+            aria-selected={i === activeSheet}
+            aria-controls="xlsx-tabpanel-{i}"
+            tabindex={i === activeSheet ? 0 : -1}>{s.name}</button
           >
         {/each}
       </div>
     {/if}
     {#if sheet}
-      <aside class="meta">
-        <strong>{sheet.name}</strong>
-        <span
-          >{visibleRows.length}{sheet.total_rows_hint ? "/" + sheet.total_rows_hint : ""} rows</span
-        >
-        <span
-          >{columnCount}{sheet.total_cols_hint && sheet.total_cols_hint !== columnCount
-            ? "/" + sheet.total_cols_hint
-            : ""} cols</span
-        >
-        {#if sheet.merged_cells && sheet.merged_cells.length > 0}<span
-            >{sheet.merged_cells.length} merged</span
-          >{/if}
-        {#if sheet.frozen_panes}<span
-            >frozen x:{sheet.frozen_panes.x_split} y:{sheet.frozen_panes.y_split}</span
-          >{/if}
-        {#if hasFormulas}<span>{formulaCount} formula{formulaCount === 1 ? "" : "s"}</span>{/if}
-        {#if matches.length > 0}<span>{matches.length} matches</span>{/if}
-      </aside>
-      <div class="table-frame">
-        <table>
-          <thead>
-            <tr>
-              <th class="corner"></th>
-              {#each columnLabels as label, i}
-                <th
-                  class="col-label"
-                  class:frozen-c={i < frozenCols}
-                  style={colStyle(i) + frozenLeft(i)}>{label}</th
-                >
-              {/each}
-            </tr>
-            <tr style={rowStyle(0)}>
-              <th class="row-label header-row">1</th>
-              {#each headerCells as h, i}
-                {#if !headerCovered(i)}
+      <div
+        id="xlsx-tabpanel-{activeSheet}"
+        role={sheets.length > 1 ? "tabpanel" : undefined}
+        aria-labelledby={sheets.length > 1 ? `xlsx-tab-${activeSheet}` : undefined}
+      >
+        <aside class="meta">
+          <strong>{sheet.name}</strong>
+          <span
+            >{visibleRows.length}{sheet.total_rows_hint ? "/" + sheet.total_rows_hint : ""} rows</span
+          >
+          <span
+            >{columnCount}{sheet.total_cols_hint && sheet.total_cols_hint !== columnCount
+              ? "/" + sheet.total_cols_hint
+              : ""} cols</span
+          >
+          {#if sheet.merged_cells && sheet.merged_cells.length > 0}<span
+              >{sheet.merged_cells.length} merged</span
+            >{/if}
+          {#if sheet.frozen_panes}<span
+              >frozen x:{sheet.frozen_panes.x_split} y:{sheet.frozen_panes.y_split}</span
+            >{/if}
+          {#if hasFormulas}<span>{formulaCount} formula{formulaCount === 1 ? "" : "s"}</span>{/if}
+          {#if matches.length > 0}<span>{matches.length} matches</span>{/if}
+        </aside>
+        <div class="table-frame">
+          <table>
+            <thead>
+              <tr>
+                <th class="corner"></th>
+                {#each columnLabels as label, i}
                   <th
-                    colspan={headerMerge(i)?.colspan ?? 1}
-                    rowspan={headerMerge(i)?.rowspan ?? 1}
+                    class="col-label"
                     class:frozen-c={i < frozenCols}
-                    data-number-format={numberFormat(0, i)}
-                    style={colStyle(i) + frozenLeft(i) + cellStyle(0, i)}>{@html cellMatches(h)}</th
+                    style={colStyle(i) + frozenLeft(i)}>{label}</th
                   >
-                {/if}
-              {/each}
-            </tr>
-          </thead>
-          <tbody>
-            {#each renderRows as row, rowIndex}
-              <tr style={rowStyle(rowIndex + 1)}>
-                <th class="row-label">{rowIndex + 2}</th>
-                {#each row as cell, c}
-                  {@const fmt = formulaGrid[rowIndex][c]}
-                  {#if !cellCovered(rowIndex, c)}
-                    <td
-                      colspan={cellColSpan(rowIndex, c)}
-                      rowspan={cellRowSpan(rowIndex, c)}
-                      class:formula={(cell ?? "").startsWith("=") ||
-                        (!(cell ?? "").trim() && !!fmt)}
-                      class:frozen-c={c < frozenCols}
-                      data-number-format={numberFormat(rowIndex + 1, c)}
-                      style={colStyle(c) + frozenLeft(c) + cellStyle(rowIndex + 1, c)}
-                      title={fmt ? fmt + "\n" + (cell ?? "") : cell}
+                {/each}
+              </tr>
+              <tr style={rowStyle(0)}>
+                <th class="row-label header-row">1</th>
+                {#each headerCells as h, i}
+                  {#if !headerCovered(i)}
+                    <th
+                      colspan={headerMerge(i)?.colspan ?? 1}
+                      rowspan={headerMerge(i)?.rowspan ?? 1}
+                      class:frozen-c={i < frozenCols}
+                      data-number-format={numberFormat(0, i)}
+                      style={colStyle(i) + frozenLeft(i) + cellStyle(0, i)}
+                      >{@html cellMatches(h)}</th
                     >
-                      {#if !(cell ?? "").trim() && fmt}
-                        <span class="fx-empty" title={fmt}>{fmt}</span>
-                      {:else}
-                        {@html cellMatches(cell ?? "")}
-                      {/if}
-                    </td>
                   {/if}
                 {/each}
               </tr>
-            {/each}
-          </tbody>
-        </table>
-        {#if visibleRows.length > maxRenderRows}
-          <div class="virtual-scroll-footer">
-            <span>Showing {maxRenderRows} of {visibleRows.length} rows</span>
-            <button class="load-more-btn" onclick={loadMoreRows}>Load 200 More Rows</button>
-            <button class="load-more-btn" onclick={() => (maxRenderRows = visibleRows.length)}
-              >Show All</button
-            >
-          </div>
-        {/if}
+            </thead>
+            <tbody>
+              {#each renderRows as row, rowIndex}
+                <tr style={rowStyle(rowIndex + 1)}>
+                  <th class="row-label">{rowIndex + 2}</th>
+                  {#each row as cell, c}
+                    {@const fmt = formulaGrid[rowIndex][c]}
+                    {#if !cellCovered(rowIndex, c)}
+                      <td
+                        colspan={cellColSpan(rowIndex, c)}
+                        rowspan={cellRowSpan(rowIndex, c)}
+                        class:formula={(cell ?? "").startsWith("=") ||
+                          (!(cell ?? "").trim() && !!fmt)}
+                        class:frozen-c={c < frozenCols}
+                        class:selected-cell={selectedCell?.row === rowIndex &&
+                          selectedCell.col === c}
+                        data-number-format={numberFormat(rowIndex + 1, c)}
+                        style={colStyle(c) + frozenLeft(c) + cellStyle(rowIndex + 1, c)}
+                        role="button"
+                        tabindex="0"
+                        aria-label={`Cell ${columnLabel(c)}${rowIndex + 2}: ${cell || fmt || "empty"}`}
+                        onclick={() => selectCell(rowIndex, c)}
+                        onkeydown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            selectCell(rowIndex, c);
+                          }
+                        }}
+                      >
+                        {#if !(cell ?? "").trim() && fmt}
+                          <span class="fx-empty">{fmt}</span>
+                        {:else}
+                          {@html cellMatches(cell ?? "")}
+                        {/if}
+                      </td>
+                    {/if}
+                  {/each}
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+          {#if selectedCell}
+            <div class="cell-detail" role="status" aria-live="polite" aria-atomic="true">
+              <strong>{columnLabel(selectedCell.col)}{selectedCell.row + 2}</strong>
+              {#if selectedCell.formula}
+                <span class="cell-detail-formula">{selectedCell.formula}</span>
+              {/if}
+              <span class="cell-detail-value">{selectedCell.value || "(empty)"}</span>
+              <button
+                type="button"
+                class="cell-detail-close"
+                onclick={() => (selectedCell = null)}
+                aria-label="Close cell detail"><Icon name="x" /></button
+              >
+            </div>
+          {/if}
+          {#if visibleRows.length > maxRenderRows}
+            <div class="virtual-scroll-footer">
+              <span class="virtual-scroll-status"
+                >Showing {maxRenderRows} of {visibleRows.length} rows</span
+              >
+              <button class="load-more-btn" onclick={loadMoreRows}>Load 200 More Rows</button>
+              <button class="load-more-btn" onclick={() => (maxRenderRows = visibleRows.length)}
+                >Show All</button
+              >
+            </div>
+          {/if}
+        </div>
       </div>
     {/if}
   {/if}
@@ -406,6 +482,7 @@
     border: 1px solid var(--border);
     border-radius: 0.5rem;
     font-size: 0.8rem;
+    min-height: 44px;
   }
   .tabs button.active {
     background: var(--link);
@@ -508,6 +585,50 @@
   td.formula {
     color: var(--link);
   }
+  td.selected-cell {
+    outline: 2px solid var(--link);
+    outline-offset: -2px;
+  }
+  .cell-detail {
+    position: sticky;
+    left: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 44px;
+    padding: 0.4rem 0.75rem;
+    border-top: 1px solid var(--border);
+    background: var(--bg-secondary);
+    font-size: 0.82rem;
+  }
+  .cell-detail strong,
+  .cell-detail-formula {
+    flex-shrink: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .cell-detail strong {
+    color: var(--text-secondary);
+  }
+  .cell-detail-formula {
+    color: var(--link);
+  }
+  .cell-detail-value {
+    min-width: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .cell-detail-close {
+    display: grid;
+    place-items: center;
+    flex: 0 0 44px;
+    min-width: 44px;
+    min-height: 44px;
+    margin-left: auto;
+    border: 0;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
   .fx-empty {
     color: var(--text-secondary);
     font-style: italic;
@@ -521,11 +642,16 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 1rem;
+    gap: 0.5rem 1rem;
     padding: 0.75rem;
     background: var(--bg-surface-secondary, rgba(255, 255, 255, 0.05));
     border-top: 1px solid var(--border-color, #30363d);
     font-size: 0.85rem;
+    flex-wrap: wrap;
+  }
+  .virtual-scroll-status {
+    flex-basis: 100%;
+    text-align: center;
   }
   .load-more-btn {
     padding: 0.35rem 0.85rem;
@@ -535,6 +661,7 @@
     border: 1px solid var(--border-color, #30363d);
     cursor: pointer;
     font-weight: 500;
+    min-height: 44px;
   }
   .load-more-btn:hover {
     background: var(--button-hover, #30363d);

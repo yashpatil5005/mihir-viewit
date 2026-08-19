@@ -788,4 +788,36 @@
       grid-row: 2;
     }
   }
+  @media (max-width: 374px) {
+    .controls {
+      grid-template-columns: auto minmax(3rem, 1fr) auto;
+      grid-template-rows: auto auto auto;
+      gap: 0.35rem;
+      padding: 0.5rem;
+    }
+    .play-button {
+      grid-column: 1;
+      grid-row: 1;
+    }
+    .seek {
+      grid-column: 2;
+      grid-row: 1;
+    }
+    .time:first-of-type {
+      grid-column: 3;
+      grid-row: 1;
+    }
+    .time:last-of-type {
+      display: none;
+    }
+    .volume-control {
+      grid-column: 1 / -1;
+      grid-row: 2;
+    }
+    .speed-control {
+      grid-column: 1 / -1;
+      grid-row: 3;
+      justify-self: end;
+    }
+  }
 </style>

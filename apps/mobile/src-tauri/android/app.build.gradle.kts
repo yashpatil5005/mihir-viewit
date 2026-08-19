@@ -85,9 +85,3 @@ dependencies {
 }
 
 apply(from = "tauri.build.gradle.kts")
-
-tasks.configureEach {
-    if (name.startsWith("strip") && name.endsWith("DebugSymbols")) {
-        onlyIf { !name.contains("Debug", ignoreCase = true) }
-    }
-}

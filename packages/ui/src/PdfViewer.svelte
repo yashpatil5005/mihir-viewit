@@ -210,7 +210,10 @@
       const unscaled = page.getViewport({ scale: 1 });
       const scale = thumbnail
         ? Math.min(140 / unscaled.width, 180 / unscaled.height)
-        : Math.min(2048 / unscaled.width, 2048 / unscaled.height, 1.5);
+        : Math.min(
+            ((containerEl?.clientWidth ?? 800) * (window.devicePixelRatio || 1)) / unscaled.width,
+            3,
+          );
       const viewport = page.getViewport({ scale });
       const canvas = document.createElement("canvas");
       canvas.width = Math.ceil(viewport.width);
@@ -267,6 +270,13 @@
 
   function onKey(e: KeyboardEvent) {
     if (!containerEl) return;
+    const target = e.target as HTMLElement | null;
+    if (
+      target?.matches("input, textarea, select") ||
+      target?.isContentEditable ||
+      target?.closest('[role="dialog"]')
+    )
+      return;
     const pageEls = Array.from(containerEl.querySelectorAll(".page"));
     if (pageEls.length === 0) return;
     const scrollY = window.scrollY;
@@ -414,8 +424,8 @@
   }
   .thumbnail-sidebar {
     position: sticky;
-    top: 0.5rem;
-    max-height: calc(100vh - 2rem);
+    top: calc(var(--header-h, 3.5rem) + 0.5rem);
+    max-height: calc(100vh - var(--header-h, 3.5rem) - 1rem);
     overflow-y: auto;
     display: flex;
     flex-direction: column;
@@ -431,6 +441,8 @@
     align-items: center;
     gap: 0.25rem;
     padding: 0.35rem;
+    min-width: 44px;
+    min-height: 44px;
     border: 1px solid transparent;
     border-radius: 0.35rem;
     color: var(--text-secondary);
@@ -455,7 +467,7 @@
   .native-page {
     width: 100%;
     min-height: 28rem;
-    scroll-margin-top: 1rem;
+    scroll-margin-top: calc(var(--header-h, 3.5rem) + 0.5rem);
   }
   .page-placeholder {
     width: min(100%, 40rem);
@@ -511,13 +523,17 @@
     }
     .thumbnail-sidebar {
       position: sticky;
+      top: calc(var(--header-h, 3.5rem) + 0.25rem);
       z-index: 2;
       flex-direction: row;
       max-height: none;
       overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scroll-snap-type: x mandatory;
     }
     .thumbnail {
       min-width: 5rem;
+      scroll-snap-align: start;
     }
     .thumbnail-canvas,
     .thumbnail-placeholder {

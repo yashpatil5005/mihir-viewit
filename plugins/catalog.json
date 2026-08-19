@@ -297,46 +297,6 @@
       "minAppVersion": 1
     },
     {
-      "id": "player-base",
-      "name": "Player Base",
-      "version": "0.1.1",
-      "description": "Custom media player (base=play). Swaps the built-in web player with a custom UI/engine for video/audio.",
-      "minAppVersion": 1,
-      "entryClass": "",
-      "capabilities": [
-        "play"
-      ],
-      "base": "play",
-      "supportedFormats": [
-        "mp4",
-        "webm",
-        "mkv",
-        "mov",
-        "avi",
-        "m4v",
-        "3gp",
-        "mpg",
-        "mpeg",
-        "wmv",
-        "mp3",
-        "m4a",
-        "aac",
-        "flac",
-        "ogg",
-        "wav",
-        "opus"
-      ],
-      "runtime": "js",
-      "abi": "",
-      "abiVersion": 1,
-      "sizeBytes": 2713,
-      "installedSizeBytes": 5886,
-      "checksum": "54971674b18a62e76e57f39592d63fc351bed9b042bec43f88f5d9d204a8cfbb",
-      "downloadUrl": "https://omnia.mihirpatil.co/plugins/player-base-0.1.1.zip",
-      "jsEntry": "index.js",
-      "cssEntry": ""
-    },
-    {
       "id": "office-universal",
       "name": "Office Universal Plugin",
       "version": "0.1.6",
@@ -423,6 +383,46 @@
       "sizeBytes": 2747332,
       "installedSizeBytes": 8792150,
       "checksum": "82ab7d3f7d956088256db032303271fe792f5baad2d489dcad583b91a4e626f8"
+    },
+    {
+      "id": "player-base",
+      "name": "Player Base",
+      "version": "0.1.2",
+      "description": "Custom media player (base=play). Swaps the built-in web player with a custom UI/engine for video/audio.",
+      "minAppVersion": 1,
+      "entryClass": "",
+      "capabilities": [
+        "play"
+      ],
+      "base": "play",
+      "supportedFormats": [
+        "mp4",
+        "webm",
+        "mkv",
+        "mov",
+        "avi",
+        "m4v",
+        "3gp",
+        "mpg",
+        "mpeg",
+        "wmv",
+        "mp3",
+        "m4a",
+        "aac",
+        "flac",
+        "ogg",
+        "wav",
+        "opus"
+      ],
+      "runtime": "js",
+      "abi": "",
+      "abiVersion": 1,
+      "sizeBytes": 2738,
+      "installedSizeBytes": 5987,
+      "checksum": "558d538f8a162bb0ab3221afb3aac09cbd57e739c297a3600470b493cfa87ad4",
+      "downloadUrl": "https://omnia.mihirpatil.co/plugins/player-base-0.1.2.zip",
+      "jsEntry": "index.js",
+      "cssEntry": ""
     }
   ]
 }

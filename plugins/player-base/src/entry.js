@@ -1,8 +1,12 @@
 // player-base (base=play): a functional custom media player that replaces the
 // built-in <video>/<audio> UI. Owns source resolution, playback controls and
 // resume-position persistence, so the base is genuinely "the plugin's job".
-export function createPlayer(host, { source = "", stream = "", kind = "video", name = "", persistKey = "", tracks = [] } = {}) {
-  const icon = (path) => `<svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
+export function createPlayer(
+  host,
+  { source = "", stream = "", kind = "video", name = "", persistKey = "", tracks = [] } = {},
+) {
+  const icon = (path) =>
+    `<svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
   const playIcon = icon('<path d="m6 3 14 9-14 9Z"/>');
   const pauseIcon = icon('<path d="M8 5v14M16 5v14"/>');
   const root = document.createElement("div");
@@ -12,8 +16,7 @@ export function createPlayer(host, { source = "", stream = "", kind = "video", n
 
   const media = document.createElement(kind === "audio" ? "audio" : "video");
   media.controls = false;
-  media.style.cssText =
-    "flex:1;width:100%;max-height:100%;object-fit:contain;background:#000;";
+  media.style.cssText = "flex:1;width:100%;max-height:100%;object-fit:contain;background:#000;";
   if (stream) media.src = stream;
   else if (source) media.src = source;
   // Subtitles/captions are entirely plugin-owned: pass [{src,label,lang,default}].
@@ -29,32 +32,39 @@ export function createPlayer(host, { source = "", stream = "", kind = "video", n
 
   const bar = document.createElement("div");
   bar.style.cssText =
-    "display:flex;align-items:center;gap:8px;padding:6px 8px;border-top:1px solid #222;";
+    "display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:6px 8px;border-top:1px solid #222;";
 
   const label = document.createElement("span");
   label.textContent = "Player Base · " + (name || "media");
-  label.style.cssText = "flex:1;color:#9aa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+  label.style.cssText =
+    "flex:1;color:#9aa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
 
   const btn = document.createElement("button");
   btn.innerHTML = playIcon;
   btn.setAttribute("aria-label", "Play");
-  btn.style.cssText = "display:grid;place-items:center;width:44px;height:44px;border:0;border-radius:50%;background:#2a9;color:#fff;cursor:pointer;";
+  btn.style.cssText =
+    "display:grid;place-items:center;width:44px;height:44px;border:0;border-radius:50%;background:#2a9;color:#fff;cursor:pointer;";
 
   const cur = document.createElement("span");
-  cur.style.cssText = "min-width:44px;text-align:center;color:#888;font-variant-numeric:tabular-nums;";
+  cur.style.cssText =
+    "min-width:44px;text-align:center;color:#888;font-variant-numeric:tabular-nums;";
   const dur = document.createElement("span");
   dur.style.cssText = "color:#888;font-variant-numeric:tabular-nums;";
 
   const seek = document.createElement("input");
   seek.type = "range";
-  seek.min = 0; seek.max = 1000; seek.value = 0;
-  seek.style.cssText = "flex:1;accent-color:#2a9;";
+  seek.min = 0;
+  seek.max = 1000;
+  seek.value = 0;
+  seek.style.cssText = "flex:1 1 120px;min-width:80px;min-height:44px;accent-color:#2a9;";
 
   const rate = document.createElement("select");
-  rate.style.cssText = "background:#111;color:#eee;border:1px solid #333;border-radius:4px;";
+  rate.style.cssText =
+    "background:#111;color:#eee;border:1px solid #333;border-radius:4px;min-height:44px;";
   ["0.5", "0.75", "1", "1.25", "1.5", "2"].forEach((r) => {
     const o = document.createElement("option");
-    o.value = r; o.textContent = r + "×";
+    o.value = r;
+    o.textContent = r + "×";
     if (r === "1") o.selected = true;
     rate.appendChild(o);
   });
@@ -62,24 +72,28 @@ export function createPlayer(host, { source = "", stream = "", kind = "video", n
   const pip = document.createElement("button");
   pip.textContent = "PiP";
   pip.title = "Picture in picture";
-  pip.style.cssText = "background:#111;color:#eee;border:1px solid #333;border-radius:4px;padding:4px;cursor:pointer;";
+  pip.style.cssText =
+    "background:#111;color:#eee;border:1px solid #333;border-radius:4px;padding:4px;cursor:pointer;min-width:44px;min-height:44px;";
   const full = document.createElement("button");
   full.title = "Fullscreen";
   full.setAttribute("aria-label", "Enter fullscreen");
-  full.innerHTML = icon('<path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/>');
+  full.innerHTML = icon(
+    '<path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/>',
+  );
   full.style.cssText = pip.style.cssText;
   pip.hidden = !("requestPictureInPicture" in media) || kind === "audio";
   pip.addEventListener("click", () => media.requestPictureInPicture?.().catch(() => {}));
   full.addEventListener("click", () => root.requestFullscreen?.().catch(() => {}));
 
-  bar.append(btn, cur, seek, dur, rate, pip, full, label);
+  bar.append(btn, cur, dur, label, seek, rate, pip, full);
   root.append(media, bar);
   host.replaceChildren(root);
 
   const fmt = (s) => {
     if (!isFinite(s)) return "0:00";
     s = Math.floor(s);
-    const m = Math.floor(s / 60), sec = s % 60;
+    const m = Math.floor(s / 60),
+      sec = s % 60;
     return m + ":" + String(sec).padStart(2, "0");
   };
   const resumeKey = persistKey || (name ? "vbp:" + name : "");
@@ -100,38 +114,85 @@ export function createPlayer(host, { source = "", stream = "", kind = "video", n
   media.addEventListener("timeupdate", () => {
     cur.textContent = fmt(media.currentTime);
     seek.value = media.duration ? (media.currentTime / media.duration) * 1000 : 0;
-    if (resumeKey) { try { localStorage.setItem(resumeKey, String(media.currentTime)); } catch {} }
+    if (resumeKey) {
+      try {
+        localStorage.setItem(resumeKey, String(media.currentTime));
+      } catch {}
+    }
   });
-  media.addEventListener("play", () => { btn.innerHTML = pauseIcon; btn.setAttribute("aria-label", "Pause"); });
-  media.addEventListener("pause", () => { btn.innerHTML = playIcon; btn.setAttribute("aria-label", "Play"); });
-  media.addEventListener("ended", () => { btn.innerHTML = playIcon; btn.setAttribute("aria-label", "Play"); });
+  media.addEventListener("play", () => {
+    btn.innerHTML = pauseIcon;
+    btn.setAttribute("aria-label", "Pause");
+  });
+  media.addEventListener("pause", () => {
+    btn.innerHTML = playIcon;
+    btn.setAttribute("aria-label", "Play");
+  });
+  media.addEventListener("ended", () => {
+    btn.innerHTML = playIcon;
+    btn.setAttribute("aria-label", "Play");
+  });
 
-  const toggle = () => { if (media.paused) media.play().catch(() => {}); else media.pause(); };
+  const toggle = () => {
+    if (media.paused) media.play().catch(() => {});
+    else media.pause();
+  };
   btn.addEventListener("click", toggle);
-  seek.addEventListener("input", () => { if (media.duration) media.currentTime = (seek.value / 1000) * media.duration; });
+  seek.addEventListener("input", () => {
+    if (media.duration) media.currentTime = (seek.value / 1000) * media.duration;
+  });
   rate.addEventListener("change", () => (media.playbackRate = parseFloat(rate.value)));
 
   if (media.play) media.play().catch(() => {});
 
   return {
-    setSource(src) { media.src = src; media.play().catch(() => {}); },
+    setSource(src) {
+      media.src = src;
+      media.play().catch(() => {});
+    },
     play: () => media.play(),
     pause: () => media.pause(),
-    stop() { media.pause(); media.currentTime = 0; },
-    seekTo(s) { media.currentTime = s; },
+    stop() {
+      media.pause();
+      media.currentTime = 0;
+    },
+    seekTo(s) {
+      media.currentTime = s;
+    },
     getCurrentTime: () => media.currentTime,
     getDuration: () => media.duration,
-    setRate(r) { media.playbackRate = r; rate.value = String(r); },
-    setVolume(v) { media.volume = Math.max(0, Math.min(1, v)); },
+    setRate(r) {
+      media.playbackRate = r;
+      rate.value = String(r);
+    },
+    setVolume(v) {
+      media.volume = Math.max(0, Math.min(1, v));
+    },
     getMedia: () => media,
     enterFullscreen: () => root.requestFullscreen?.(),
     exitFullscreen: () => document.exitFullscreen?.(),
     enterPictureInPicture: () => media.requestPictureInPicture?.(),
-    addTrack(t) { const el=document.createElement("track"); Object.assign(el,{kind:t.kind||"subtitles",src:t.src,label:t.label||"Subtitles",srclang:t.lang||"en",default:!!t.default}); media.appendChild(el); },
-    onError(cb) { media.addEventListener("error", () => cb(media.error && media.error.message)); },
+    addTrack(t) {
+      const el = document.createElement("track");
+      Object.assign(el, {
+        kind: t.kind || "subtitles",
+        src: t.src,
+        label: t.label || "Subtitles",
+        srclang: t.lang || "en",
+        default: !!t.default,
+      });
+      media.appendChild(el);
+    },
+    onError(cb) {
+      media.addEventListener("error", () => cb(media.error && media.error.message));
+    },
     destroy() {
-      try { media.pause(); media.removeAttribute("src"); media.load?.(); } catch {}
+      try {
+        media.pause();
+        media.removeAttribute("src");
+        media.load?.();
+      } catch {}
       root.remove();
-    }
+    },
   };
 }

@@ -155,6 +155,7 @@
   });
 
   let mode: "view" | "browse" = $state("view");
+  let headerEl: HTMLElement | null = $state(null);
 
   // True inside a Tauri webview (desktop/mobile); false in a plain browser.
   const isTauriHost =
@@ -344,6 +345,23 @@
       void drainOpenedQueue();
     }, 1500);
     appScope.register("opened-files-poll", () => clearInterval(poll));
+  });
+
+  // Expose the header's rendered height as a CSS custom property so child
+  // viewers (PDF sidebar, etc.) can sticky-offset below it.
+  $effect(() => {
+    if (!headerEl) return;
+    const ro = new ResizeObserver(([entry]) => {
+      const borderBox = Array.isArray(entry.borderBoxSize)
+        ? entry.borderBoxSize[0]
+        : entry.borderBoxSize;
+      document.documentElement.style.setProperty(
+        "--header-h",
+        `${borderBox?.blockSize ?? entry.contentRect.height}px`,
+      );
+    });
+    ro.observe(headerEl);
+    return () => ro.disconnect();
   });
 
   onDestroy(() => {
@@ -1195,7 +1213,7 @@
   ondragleave={handleDragLeave}
   ondrop={handleDrop}
 >
-  <header class="app-header">
+  <header class="app-header" bind:this={headerEl}>
     <div class="brand">
       <h1>ViewIt</h1>
       <span>Universal file viewer</span>
@@ -1386,7 +1404,19 @@
         {/key}
       {:else if doc.kind === "archive" && ArchiveViewer}
         {#key docUri}
-          <ArchiveViewer {...doc as any} name={pendingName ?? ""} uri={docUri ?? ""} />
+          <ArchiveViewer
+            {...doc as any}
+            name={pendingName ?? ""}
+            uri={docUri ?? ""}
+            onOpenDocument={(nestedDoc, nestedUrl, nestedName) => {
+              const scope = replaceDocumentScope(`archive-member:${nestedName}`);
+              scope.ownObjectUrl(nestedUrl);
+              doc = nestedDoc;
+              docUri = nestedUrl;
+              pendingName = nestedName;
+              pendingExt = extFromUri(nestedName);
+            }}
+          />
         {/key}
       {:else if isOfficePluginHtml()}
         {#key docUri}
@@ -1559,6 +1589,7 @@
     box-sizing: border-box;
   }
   :global(:root) {
+    --header-h: 3.5rem;
     --text-primary: #222;
     --text-secondary: #888;
     --bg-primary: #fff;

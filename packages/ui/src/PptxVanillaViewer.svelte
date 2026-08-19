@@ -148,6 +148,8 @@
     border-radius: 0.3rem;
     background: var(--bg-secondary);
     color: var(--text-primary);
+    min-width: 44px;
+    min-height: 44px;
   }
   .bar button:disabled {
     opacity: 0.35;
@@ -156,7 +158,7 @@
     width: 100%;
     aspect-ratio: 16/9;
     max-height: 70vh;
-    min-height: 200px;
+    max-width: 124.444vh;
     overflow: hidden;
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -164,6 +166,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    margin: 0 auto;
   }
   .muted {
     color: var(--text-secondary);

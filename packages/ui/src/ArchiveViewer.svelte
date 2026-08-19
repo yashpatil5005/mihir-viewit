@@ -14,6 +14,7 @@
     name = "",
     uri = "",
     renderer = undefined,
+    onOpenDocument = undefined,
   }: {
     entries: { name: string; size: number; is_dir: boolean; compressed_size: number }[];
     format: string;
@@ -21,10 +22,15 @@
     name?: string;
     uri?: string;
     renderer?: { id?: string; label?: string };
+    onOpenDocument?: (
+      document: Awaited<ReturnType<typeof openFile>>,
+      url: string,
+      name: string,
+    ) => void;
   } = $props();
 
   import { onMount } from "svelte";
-  import { openFile } from "@viewit/platform";
+  import { openFile, openFileFromPicker } from "@viewit/platform";
   import {
     archiveBridgeFor,
     hasAndroidBridge,
@@ -148,10 +154,14 @@
           return;
         }
         const bytes = decodeB64(res.base64 ?? "");
-        const blob = new Blob([bytes.buffer as ArrayBuffer], { type: "application/octet-stream" });
-        const url = URL.createObjectURL(blob);
-        await openFile(url, entry.name.split("/").pop() ?? entry.name);
-        URL.revokeObjectURL(url);
+        const displayName = entry.name.split("/").pop() ?? entry.name;
+        const file = new File([bytes.buffer as ArrayBuffer], displayName, {
+          type: "application/octet-stream",
+        });
+        const url = URL.createObjectURL(file);
+        const document = await openFileFromPicker(file);
+        if (onOpenDocument) onOpenDocument(document, url, displayName);
+        else URL.revokeObjectURL(url);
         return;
       }
       if (typeof (window as any).__TAURI_INTERNALS__ === "undefined") {
@@ -163,10 +173,14 @@
         uri,
         entryName: entry.name,
       });
-      const blob = new Blob([new Uint8Array(bytes)], { type: "application/octet-stream" });
-      const url = URL.createObjectURL(blob);
-      await openFile(url);
-      URL.revokeObjectURL(url);
+      const displayName = entry.name.split("/").pop() ?? entry.name;
+      const file = new File([new Uint8Array(bytes)], displayName, {
+        type: "application/octet-stream",
+      });
+      const url = URL.createObjectURL(file);
+      const document = await openFileFromPicker(file);
+      if (onOpenDocument) onOpenDocument(document, url, displayName);
+      else URL.revokeObjectURL(url);
     } catch (e) {
       console.error("archive member open failed:", e);
       error = `Failed to open ${entry.name}: ${e instanceof Error ? e.message : String(e)}`;
@@ -343,6 +357,7 @@
     border-radius: 0.4rem;
     padding: 0.35rem 0.8rem;
     font-size: 0.85rem;
+    min-height: 44px;
   }
   .act:hover {
     background: var(--border);
@@ -394,7 +409,8 @@
   }
   .breadcrumbs button {
     border: 0;
-    padding: 0.1rem 0.2rem;
+    padding: 0.35rem 0.4rem;
+    min-height: 44px;
     color: var(--link);
     background: transparent;
     cursor: pointer;
@@ -430,7 +446,8 @@
     cursor: pointer;
     background: none;
     border: none;
-    padding: 0;
+    width: 100%;
+    padding: 0.35rem 0;
     color: var(--link);
     font-family: inherit;
     font-size: inherit;
@@ -448,12 +465,43 @@
     background: none;
     border: 1px solid var(--border);
     border-radius: 999px;
-    padding: 0.1rem 0.5rem;
+    min-height: 44px;
+    padding: 0.35rem 0.65rem;
     color: var(--text-secondary);
     font-size: 0.72rem;
   }
   .save:hover {
     color: var(--text-primary);
     background: var(--bg-secondary);
+  }
+  @media (max-width: 560px) {
+    .archive-viewer {
+      padding-inline: 0;
+    }
+    .toolbar,
+    .meta,
+    .busy,
+    .notice,
+    .error,
+    .scope {
+      margin-inline: 0.25rem;
+    }
+    th:nth-child(3),
+    td:nth-child(3) {
+      display: none;
+    }
+    th,
+    td {
+      padding: 0.25rem 0.45rem;
+    }
+    td:first-child {
+      min-width: 11rem;
+      max-width: 15rem;
+    }
+    .drill span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
   }
 </style>
