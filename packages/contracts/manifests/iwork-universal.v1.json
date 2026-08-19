@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "iwork-universal",
   "name": "iWork Universal",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Enhanced offline Apple iWork renderer for Pages, Numbers, and Keynote.",
   "publisher": "viewit",
   "minAppVersion": 1,
