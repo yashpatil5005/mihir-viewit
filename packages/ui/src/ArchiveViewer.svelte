@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from "./Icon.svelte";
   // Archive viewer with drill-down.
   // Tap on a file entry → open it in-place (native plugin: single-member
   // preview without extracting the whole archive; Tauri/web: wasm extract).
@@ -268,7 +269,7 @@
           <tr class="dir">
             <td>
               <button class="drill folder" onclick={() => goToBreadcrumb(breadcrumbs.length - 2)}>
-                📁 ..
+                <Icon name="folder-open" size={18} /> <span>..</span>
               </button>
             </td>
             <td></td><td></td>{#if plugin}<td></td>{/if}
@@ -279,7 +280,7 @@
             <td>
               {#if entry.is_dir}
                 <button class="drill folder" onclick={() => openFolder(entry.path)}>
-                  📁 {entry.displayName}
+                  <Icon name="folder" size={18} /> <span>{entry.displayName}</span>
                 </button>
               {:else}
                 <button
@@ -287,7 +288,7 @@
                   onclick={() => openMember(entry)}
                   aria-label="Open {entry.name}"
                 >
-                  📄 {entry.displayName}
+                  <Icon name="file" size={18} /> <span>{entry.displayName}</span>
                 </button>
               {/if}
             </td>
@@ -315,6 +316,12 @@
   .archive-viewer {
     padding: 0.5rem 1rem;
     color: var(--text-primary);
+  }
+  .drill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-height: 44px;
   }
   .meta {
     color: var(--text-secondary);

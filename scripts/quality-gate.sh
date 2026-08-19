@@ -135,7 +135,7 @@ else
     "apps/mobile/plugins/font-universal/build/output/font-universal-$(plugin_version apps/mobile/plugins/font-universal/plugin.json)-arm64-v8a.zip"
     "apps/mobile/plugins/iwork-universal/build/output/iwork-universal-$(plugin_version apps/mobile/plugins/iwork-universal/plugin.json)-arm64-v8a.zip"
     plugins/pptx-vanilla-1.0.1.zip
-    plugins/player-base-0.1.0.zip
+    "plugins/player-base-$(plugin_version plugins/player-base/plugin.json).zip"
     plugins/editor-base-0.1.0.zip
   )
 fi

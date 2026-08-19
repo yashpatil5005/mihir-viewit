@@ -532,11 +532,7 @@ fn extract_spine_hrefs(opf: &str, opf_path: &str) -> Vec<String> {
 }
 
 fn resolve_relative(href: String, base: &str) -> String {
-    if let Some(idx) = base.rfind('/') {
-        format!("{}/{}", &base[..idx], href)
-    } else {
-        href
-    }
+    normalize_relative_path(base, &href)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

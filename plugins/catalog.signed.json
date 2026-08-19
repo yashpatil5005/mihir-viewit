@@ -316,46 +316,6 @@
         "checksum": "5dfc7c0ac6e5f41cd4d990dae751026afacfec31545a18e2e0cf29f7945804f8"
       },
       {
-        "id": "player-base",
-        "name": "Player Base",
-        "version": "0.1.0",
-        "description": "Custom media player (base=play). Swaps the built-in web player with a custom UI/engine for video/audio.",
-        "minAppVersion": 1,
-        "entryClass": "",
-        "capabilities": [
-          "play"
-        ],
-        "base": "play",
-        "supportedFormats": [
-          "mp4",
-          "webm",
-          "mkv",
-          "mov",
-          "avi",
-          "m4v",
-          "3gp",
-          "mpg",
-          "mpeg",
-          "wmv",
-          "mp3",
-          "m4a",
-          "aac",
-          "flac",
-          "ogg",
-          "wav",
-          "opus"
-        ],
-        "runtime": "js",
-        "abi": "",
-        "abiVersion": 1,
-        "sizeBytes": 2468,
-        "installedSizeBytes": 5314,
-        "checksum": "b07a93b34d8e7666654b96039c2db896cf5a264688df235090a8c7ee274e36a2",
-        "downloadUrl": "https://omnia.mihirpatil.co/plugins/player-base-0.1.0.zip",
-        "jsEntry": "index.js",
-        "cssEntry": ""
-      },
-      {
         "id": "editor-base",
         "name": "Editor Base",
         "version": "0.1.0",
@@ -424,8 +384,48 @@
         "downloadUrl": "https://omnia.mihirpatil.co/plugins/ffmpeg-transcoder-1.0.5.zip",
         "checksum": "d5edab3587332cb58ba1e511739be51b904f82234c4562afeb2e1e92fb18b338",
         "minAppVersion": 1
+      },
+      {
+        "id": "player-base",
+        "name": "Player Base",
+        "version": "0.1.1",
+        "description": "Custom media player (base=play). Swaps the built-in web player with a custom UI/engine for video/audio.",
+        "minAppVersion": 1,
+        "entryClass": "",
+        "capabilities": [
+          "play"
+        ],
+        "base": "play",
+        "supportedFormats": [
+          "mp4",
+          "webm",
+          "mkv",
+          "mov",
+          "avi",
+          "m4v",
+          "3gp",
+          "mpg",
+          "mpeg",
+          "wmv",
+          "mp3",
+          "m4a",
+          "aac",
+          "flac",
+          "ogg",
+          "wav",
+          "opus"
+        ],
+        "runtime": "js",
+        "abi": "",
+        "abiVersion": 1,
+        "sizeBytes": 2713,
+        "installedSizeBytes": 5886,
+        "checksum": "54971674b18a62e76e57f39592d63fc351bed9b042bec43f88f5d9d204a8cfbb",
+        "downloadUrl": "https://omnia.mihirpatil.co/plugins/player-base-0.1.1.zip",
+        "jsEntry": "index.js",
+        "cssEntry": ""
       }
     ]
   },
-  "signature": "nhtoVqtTOsHJmI/K2KTeWMw4xIB+qB5HvYdAZC71RIZ07qTkptbvUdJPWREIiJ4aDPtuEN69ysoErKA3la0vAQ=="
+  "signature": "zPndwK4jDJDcoUgJWCp0PjM/cssVyUaSB/G+dYs+QPTz14NgO3dmLhchRHCmiMLDqdkZTL6yk/cKXluvq5o1Cw=="
 }

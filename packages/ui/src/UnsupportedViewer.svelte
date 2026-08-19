@@ -1,5 +1,6 @@
 <script lang="ts">
   import { openWithExternal } from "@viewit/platform";
+  import Icon from "./Icon.svelte";
   import {
     resolveAvailableFormat,
     installPlugin,
@@ -59,7 +60,7 @@
 </script>
 
 <article class="unsupported">
-  <div class="icon" aria-hidden="true">🔓</div>
+  <div class="icon" aria-hidden="true"><Icon name="lock" size={38} strokeWidth={1.6} /></div>
   <h2>Can't open this file inside ViewIt</h2>
   <p><code>{format}</code></p>
   <p class="reason">{reason}</p>
@@ -106,7 +107,8 @@
     color: var(--text-secondary);
   }
   .icon {
-    font-size: 3rem;
+    display: grid;
+    place-items: center;
     opacity: 0.6;
     margin-bottom: 0.5rem;
   }

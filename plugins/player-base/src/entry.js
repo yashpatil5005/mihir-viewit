@@ -2,6 +2,9 @@
 // built-in <video>/<audio> UI. Owns source resolution, playback controls and
 // resume-position persistence, so the base is genuinely "the plugin's job".
 export function createPlayer(host, { source = "", stream = "", kind = "video", name = "", persistKey = "", tracks = [] } = {}) {
+  const icon = (path) => `<svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
+  const playIcon = icon('<path d="m6 3 14 9-14 9Z"/>');
+  const pauseIcon = icon('<path d="M8 5v14M16 5v14"/>');
   const root = document.createElement("div");
   root.className = "playerbase-root";
   root.style.cssText =
@@ -33,8 +36,9 @@ export function createPlayer(host, { source = "", stream = "", kind = "video", n
   label.style.cssText = "flex:1;color:#9aa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
 
   const btn = document.createElement("button");
-  btn.textContent = "▶";
-  btn.style.cssText = "width:30px;height:30px;border:0;border-radius:50%;background:#2a9;color:#fff;cursor:pointer;";
+  btn.innerHTML = playIcon;
+  btn.setAttribute("aria-label", "Play");
+  btn.style.cssText = "display:grid;place-items:center;width:44px;height:44px;border:0;border-radius:50%;background:#2a9;color:#fff;cursor:pointer;";
 
   const cur = document.createElement("span");
   cur.style.cssText = "min-width:44px;text-align:center;color:#888;font-variant-numeric:tabular-nums;";
@@ -60,8 +64,9 @@ export function createPlayer(host, { source = "", stream = "", kind = "video", n
   pip.title = "Picture in picture";
   pip.style.cssText = "background:#111;color:#eee;border:1px solid #333;border-radius:4px;padding:4px;cursor:pointer;";
   const full = document.createElement("button");
-  full.textContent = "⛶";
   full.title = "Fullscreen";
+  full.setAttribute("aria-label", "Enter fullscreen");
+  full.innerHTML = icon('<path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/>');
   full.style.cssText = pip.style.cssText;
   pip.hidden = !("requestPictureInPicture" in media) || kind === "audio";
   pip.addEventListener("click", () => media.requestPictureInPicture?.().catch(() => {}));
@@ -87,7 +92,8 @@ export function createPlayer(host, { source = "", stream = "", kind = "video", n
         if (t > 1 && t < media.duration - 5) media.currentTime = t;
       } catch {}
     }
-    if (!media.paused) btn.textContent = "⏸"; else btn.textContent = "▶";
+    btn.innerHTML = media.paused ? playIcon : pauseIcon;
+    btn.setAttribute("aria-label", media.paused ? "Play" : "Pause");
   }
 
   media.addEventListener("loadedmetadata", loaded);
@@ -96,9 +102,9 @@ export function createPlayer(host, { source = "", stream = "", kind = "video", n
     seek.value = media.duration ? (media.currentTime / media.duration) * 1000 : 0;
     if (resumeKey) { try { localStorage.setItem(resumeKey, String(media.currentTime)); } catch {} }
   });
-  media.addEventListener("play", () => (btn.textContent = "⏸"));
-  media.addEventListener("pause", () => (btn.textContent = "▶"));
-  media.addEventListener("ended", () => (btn.textContent = "▶"));
+  media.addEventListener("play", () => { btn.innerHTML = pauseIcon; btn.setAttribute("aria-label", "Pause"); });
+  media.addEventListener("pause", () => { btn.innerHTML = playIcon; btn.setAttribute("aria-label", "Play"); });
+  media.addEventListener("ended", () => { btn.innerHTML = playIcon; btn.setAttribute("aria-label", "Play"); });
 
   const toggle = () => { if (media.paused) media.play().catch(() => {}); else media.pause(); };
   btn.addEventListener("click", toggle);

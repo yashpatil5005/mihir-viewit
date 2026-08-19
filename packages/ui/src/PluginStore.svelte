@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tick } from "svelte";
+  import Icon from "./Icon.svelte";
   import {
     formatPluginSize,
     fetchPluginCatalogSources,
@@ -37,6 +39,8 @@
   let acceptedPrivacy = $state(false);
   let customCatalogUrl = $state("");
   let wasOpen = $state(false);
+  let modalEl = $state<HTMLElement | null>(null);
+  let previousFocus: HTMLElement | null = null;
 
   const isAndroid = $derived(hasAndroidBridge());
   const buildProfile = viewitBuildProfile();
@@ -165,25 +169,42 @@
   $effect(() => {
     if (open && !wasOpen) {
       wasOpen = true;
+      previousFocus = document.activeElement as HTMLElement | null;
       void refresh();
+      void tick().then(() => modalEl?.focus());
     } else if (!open) {
       wasOpen = false;
+      previousFocus?.focus();
+      previousFocus = null;
     }
   });
+
+  function handleDialogKeydown(event: KeyboardEvent) {
+    event.stopPropagation();
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+    }
+  }
 </script>
 
 {#if open}
   <div class="overlay" onclick={onClose} role="presentation">
     <div
       class="modal"
+      bind:this={modalEl}
       onclick={(e) => e.stopPropagation()}
-      onkeydown={(e) => e.stopPropagation()}
+      onkeydown={handleDialogKeydown}
       role="dialog"
+      aria-modal="true"
+      aria-labelledby="plugin-store-title"
       tabindex="-1"
     >
       <header>
-        <h2>Plugin Store</h2>
-        <button class="close-btn" onclick={onClose}>&times;</button>
+        <h2 id="plugin-store-title">Plugin Store</h2>
+        <button class="close-btn" onclick={onClose} aria-label="Close plugin store"
+          ><Icon name="x" /></button
+        >
       </header>
 
       {#if !acceptedPrivacy}
@@ -195,9 +216,9 @@
           </div>
         </section>
       {:else if loading}
-        <div class="loading">Loading plugins...</div>
+        <div class="loading" role="status" aria-live="polite">Loading plugins...</div>
       {:else if errorMsg}
-        <div class="error">{errorMsg}</div>
+        <div class="error" role="alert">{errorMsg}</div>
         {#if restartRequired}
           <div class="restart-cta">
             <button type="button" onclick={restartApp}>Restart app to apply</button>
@@ -307,7 +328,12 @@
           <h3>Add Custom Catalog</h3>
           <p>Custom public catalog URLs are shown separately from the ViewIt default catalog.</p>
           <div class="catalog-form">
-            <input bind:value={customCatalogUrl} placeholder="https://example.com/catalog.json" />
+            <label for="custom-catalog-url">Catalog URL</label>
+            <input
+              id="custom-catalog-url"
+              bind:value={customCatalogUrl}
+              placeholder="https://example.com/catalog.json"
+            />
             <button type="button" onclick={addCustomCatalog}>Add</button>
           </div>
         </section>
@@ -325,13 +351,17 @@
     align-items: center;
     justify-content: center;
     z-index: 1000;
+    padding: max(0.75rem, env(safe-area-inset-top, 0px))
+      max(0.75rem, env(safe-area-inset-right, 0px)) max(0.75rem, env(safe-area-inset-bottom, 0px))
+      max(0.75rem, env(safe-area-inset-left, 0px));
   }
   .modal {
     background: var(--bg-primary, #fff);
     color: var(--text-primary, #000);
     border-radius: 12px;
-    width: min(90vw, 480px);
-    max-height: 80vh;
+    width: min(100%, 520px);
+    max-height: 86vh;
+    max-height: 86dvh;
     overflow-y: auto;
     padding: 1.5rem;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
@@ -605,6 +635,30 @@
   .catalog-form {
     display: flex;
     gap: 0.5rem;
+  }
+  .catalog-form label {
+    flex-basis: 100%;
+    color: var(--text-secondary, #666);
+    font-size: 0.75rem;
+    font-weight: 650;
+  }
+  @media (max-width: 520px) {
+    .modal {
+      padding: 1rem;
+    }
+    .plugin-card {
+      align-items: stretch;
+      flex-direction: column;
+    }
+    .plugin-actions {
+      justify-content: flex-start;
+    }
+    .install-btn,
+    .remove-btn,
+    .remove-source,
+    .catalog-form button {
+      min-height: 44px;
+    }
   }
   .catalog-form input {
     flex: 1;

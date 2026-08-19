@@ -1,5 +1,6 @@
 <script lang="ts">
   import { debugLogLines, debugLogClear } from "@viewit/platform";
+  import Icon from "./Icon.svelte";
 
   let { open = $bindable(false) }: { open?: boolean } = $props();
   let text = $state("");
@@ -20,7 +21,9 @@
     <header>
       <strong>Debug</strong> (no Chrome needed)
       <button type="button" onclick={() => debugLogClear()}>Clear</button>
-      <button type="button" onclick={() => (open = false)}>✕</button>
+      <button type="button" onclick={() => (open = false)} aria-label="Close debug log"
+        ><Icon name="x" size={16} /></button
+      >
     </header>
     <pre>{text}</pre>
   </aside>
@@ -33,6 +36,7 @@
     right: 0;
     bottom: 0;
     max-height: 40vh;
+    max-height: 40dvh;
     z-index: 100;
     background: #111;
     color: #8f8;
@@ -50,6 +54,8 @@
   }
   header button {
     font-size: 0.65rem;
+    min-width: 44px;
+    min-height: 44px;
     padding: 0.2rem 0.4rem;
   }
   pre {

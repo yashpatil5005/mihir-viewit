@@ -1,5 +1,7 @@
 <script lang="ts">
   import { openWithExternal } from "@viewit/platform";
+  import { tick } from "svelte";
+  import Icon from "./Icon.svelte";
   import {
     fetchPluginCatalogSources,
     formatPluginSize,
@@ -39,6 +41,8 @@
   let installed = $state<PluginInfo[]>([]);
   let downloadable = $state<PluginInfo[]>([]);
   let errorMsg = $state("");
+  let chooserEl = $state<HTMLElement | null>(null);
+  let previousFocus: HTMLElement | null = null;
 
   async function refresh() {
     if (!open) return;
@@ -113,26 +117,45 @@
   }
 
   $effect(() => {
-    if (open) void refresh();
+    if (open) {
+      previousFocus = document.activeElement as HTMLElement | null;
+      void refresh();
+      void tick().then(() => chooserEl?.focus());
+    } else if (previousFocus) {
+      previousFocus.focus();
+      previousFocus = null;
+    }
   });
+
+  function handleDialogKeydown(event: KeyboardEvent) {
+    event.stopPropagation();
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+    }
+  }
 </script>
 
 {#if open}
   <div class="overlay" onclick={onClose} role="presentation">
-    <section
+    <div
       class="chooser"
+      bind:this={chooserEl}
       role="dialog"
       aria-modal="true"
+      aria-labelledby="runtime-title"
       tabindex="-1"
       onclick={(e) => e.stopPropagation()}
-      onkeydown={(e) => e.stopPropagation()}
+      onkeydown={handleDialogKeydown}
     >
       <header>
         <div>
           <p class="eyebrow">Runtime</p>
-          <h2>Open {name}</h2>
+          <h2 id="runtime-title">Open {name}</h2>
         </div>
-        <button class="close" type="button" onclick={onClose} aria-label="Close">×</button>
+        <button class="close" type="button" onclick={onClose} aria-label="Close runtime chooser"
+          ><Icon name="x" /></button
+        >
       </header>
 
       <p class="summary">
@@ -147,9 +170,11 @@
 
       {#if hasAndroidBridge()}
         {#if loading}
-          <p class="muted">Checking installed and downloadable plugins…</p>
+          <p class="muted" role="status" aria-live="polite">
+            Checking installed and downloadable plugins…
+          </p>
         {:else if errorMsg}
-          <p class="error">{errorMsg}</p>
+          <p class="error" role="alert">{errorMsg}</p>
         {:else}
           {#each installed as plugin}
             <button class="option" type="button" onclick={() => chooseInstalled(plugin)}>
@@ -199,7 +224,7 @@
         <strong>Open with another app</strong>
         <span>Use Android or the host OS if ViewIt cannot handle this file.</span>
       </button>
-    </section>
+    </div>
   </div>
 {/if}
 
@@ -211,11 +236,13 @@
     background: rgba(0, 0, 0, 0.58);
     display: grid;
     place-items: center;
-    padding: 1rem;
+    padding: max(1rem, env(safe-area-inset-top, 0px)) max(1rem, env(safe-area-inset-right, 0px))
+      max(1rem, env(safe-area-inset-bottom, 0px)) max(1rem, env(safe-area-inset-left, 0px));
   }
   .chooser {
     width: min(94vw, 34rem);
     max-height: 86vh;
+    max-height: 86dvh;
     overflow: auto;
     background: var(--bg-primary);
     color: var(--text-primary);
@@ -298,6 +325,11 @@
   }
   .download {
     cursor: default;
+  }
+  .download > div,
+  .option > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
   .download button {
     flex: 0 0 auto;

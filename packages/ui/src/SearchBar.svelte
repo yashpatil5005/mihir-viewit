@@ -1,5 +1,6 @@
 <script lang="ts">
   // Phase 5.2 — Search bar used by text-bearing viewers.
+  import Icon from "./Icon.svelte";
   let {
     onSearch = (q: string, cs: boolean) => {},
     matchCount = 0,
@@ -34,12 +35,17 @@
     class:active={caseSensitive}
     onclick={() => (caseSensitive = !caseSensitive)}
     aria-label="Case sensitive"
+    aria-pressed={caseSensitive}
     title="Case sensitive">Aa</button
   >
   {#if query}
-    <span class="count">{currentMatch}/{matchCount}</span>
-    <button onclick={onPrev} aria-label="Previous match">↑</button>
-    <button onclick={onNext} aria-label="Next match">↓</button>
+    <span class="count" aria-live="polite">{currentMatch}/{matchCount}</span>
+    <button onclick={onPrev} aria-label="Previous match" disabled={matchCount === 0}
+      ><Icon name="arrow-left" size={17} /></button
+    >
+    <button onclick={onNext} aria-label="Next match" disabled={matchCount === 0}
+      ><Icon name="arrow-right" size={17} /></button
+    >
   {/if}
 </div>
 
@@ -48,6 +54,7 @@
     display: flex;
     gap: 0.4rem;
     align-items: center;
+    flex-wrap: wrap;
     padding: 0.4rem 1rem;
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border);
@@ -60,6 +67,7 @@
     border: 1px solid var(--border);
     border-radius: 0.3rem;
     font-size: 0.85rem;
+    min-height: 44px;
   }
   button {
     cursor: pointer;
@@ -69,6 +77,8 @@
     border-radius: 0.3rem;
     padding: 0.3rem 0.6rem;
     font-size: 0.85rem;
+    min-width: 44px;
+    min-height: 44px;
   }
   .cs-toggle.active {
     background: var(--border);

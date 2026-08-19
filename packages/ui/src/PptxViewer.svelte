@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from "./Icon.svelte";
   import { onDestroy } from "svelte";
   import { readMaterializedBytes, resolvePptxAssetPath, debugLog } from "@viewit/platform";
 
@@ -200,9 +201,19 @@
     {#if status === "error"}<p class="err">{errorMsg}</p>{/if}
     {#if status === "ready"}
       <div class="bar">
-        <button type="button" onclick={() => nav(-1)} disabled={idx <= 0}>←</button>
+        <button
+          type="button"
+          onclick={() => nav(-1)}
+          disabled={idx <= 0}
+          aria-label="Previous slide"><Icon name="arrow-left" /></button
+        >
         <span>{idx + 1} / {total}</span>
-        <button type="button" onclick={() => nav(1)} disabled={idx >= total - 1}>→</button>
+        <button
+          type="button"
+          onclick={() => nav(1)}
+          disabled={idx >= total - 1}
+          aria-label="Next slide"><Icon name="arrow-right" /></button
+        >
       </div>
     {/if}
     <div class="stage">

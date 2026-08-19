@@ -14,7 +14,7 @@ ANDROID_JAR="$ANDROID_HOME/platforms/android-36/android.jar"
 STUBS="$ROOT/build/plugin-stubs"
 ONLY_PLUGIN=""
 
-KNOWN_PLUGINS="office-universal font-universal compression-universal iwork-universal pptx-vanilla ffmpeg-transcoder"
+KNOWN_PLUGINS="office-universal font-universal compression-universal iwork-universal pptx-vanilla player-base ffmpeg-transcoder"
 if [ "${1:-}" = "--plugin" ] && [ "$#" -eq 2 ]; then
   ONLY_PLUGIN="${2:?usage: package-plugins.sh [--plugin ID]}"
 elif [ "$#" -ne 0 ]; then
@@ -190,4 +190,17 @@ if selected pptx-vanilla; then
   normalize_tree "$PVV/zipout"
   (cd "$PVV/zipout" && zip -q -X -r "$ROOT/plugins/pptx-vanilla-1.0.1.zip" .)
   echo "[package] pptx-vanilla zip: $(du -h "$ROOT/plugins/pptx-vanilla-1.0.1.zip" | cut -f1)"
+fi
+
+# Standalone player-base zip (js, per its plugin.json).
+if selected player-base; then
+  PLAYER="$ROOT/plugins/player-base"
+  VERSION="$(python3 -c "import json;print(json.load(open('$PLAYER/plugin.json'))['version'])")"
+  rm -rf "$PLAYER/zipout" && mkdir -p "$PLAYER/zipout"
+  (cd "$PLAYER" && npm run build >/dev/null 2>&1)
+  cp "$PLAYER/dist/index.js" "$PLAYER/zipout/index.js"
+  cp "$PLAYER/plugin.json" "$PLAYER/zipout/plugin.json"
+  normalize_tree "$PLAYER/zipout"
+  (cd "$PLAYER/zipout" && zip -q -X -r "$ROOT/plugins/player-base-$VERSION.zip" .)
+  echo "[package] player-base zip: $(du -h "$ROOT/plugins/player-base-$VERSION.zip" | cut -f1)"
 fi

@@ -56,6 +56,18 @@ DEFAULT_CASES = (
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "document.querySelectorAll('table').length > 0 && document.body.innerText.includes('MyLinks')",
     ),
+    VisualCase(
+        "epub-reader",
+        "/sdcard/Download/testing_viewit/sample.epub",
+        "application/epub+zip",
+        "document.querySelector('.epub-fullscreen') && !document.querySelector('.touch-layer') && document.querySelector('.epub-frame')?.contentDocument?.body",
+    ),
+    VisualCase(
+        "mobi-reader",
+        "/sdcard/Download/testing_viewit/sample.mobi",
+        "application/x-mobipocket-ebook",
+        "document.querySelector('.epub-fullscreen') && !document.querySelector('.touch-layer') && document.querySelector('.epub-frame')?.contentDocument?.body?.innerText?.length > 40",
+    ),
 )
 
 STABILIZE_JS = """(() => {

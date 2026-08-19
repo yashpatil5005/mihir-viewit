@@ -45,7 +45,7 @@ fn parse_epub(bytes: &[u8]) -> Result<Document, Error> {
 
     // 2) OPF → title, author, spine manifest-ids in reading order
     let opf = read_entry(&mut archive, &opf_path)?;
-    let (title, author, spine_paths) = parse_opf(&opf)?;
+    let (title, author, spine_paths) = parse_opf(&opf, &opf_path)?;
 
     // 3) First chapter's XHTML eagerly. The rest is paginated.
     let spine_len = spine_paths.len();
@@ -292,7 +292,7 @@ fn parse_container(xml: &str) -> Result<String, Error> {
 }
 
 /// Parse OPF (XML), return (title, author, ordered list of entry paths).
-fn parse_opf(xml: &str) -> Result<(String, Option<String>, Vec<String>), Error> {
+fn parse_opf(xml: &str, opf_path: &str) -> Result<(String, Option<String>, Vec<String>), Error> {
     use quick_xml::events::Event;
     use quick_xml::Reader;
 
@@ -333,7 +333,7 @@ fn parse_opf(xml: &str) -> Result<(String, Option<String>, Vec<String>), Error> 
                             }
                         }
                         if !id_v.is_empty() {
-                            manifest.insert(id_v, href_v);
+                            manifest.insert(id_v, normalize_relative_path(opf_path, &href_v));
                         }
                     }
                     b"itemref" if in_spine_section => {
@@ -456,5 +456,47 @@ mod tests {
         };
         assert!(first_chapter_xhtml.contains("data:image/jpeg;base64,"));
         assert!(!first_chapter_xhtml.contains("images/cover.jpg"));
+    }
+
+    #[test]
+    fn epub_resolves_chapter_from_nested_opf_directory() {
+        let mut bytes = Vec::new();
+        {
+            let cursor = std::io::Cursor::new(&mut bytes);
+            let mut zip = zip::ZipWriter::new(cursor);
+            let opts = zip::write::SimpleFileOptions::default();
+            zip.start_file("META-INF/container.xml", opts).unwrap();
+            std::io::Write::write_all(
+                &mut zip,
+                br#"<container><rootfiles><rootfile full-path="OPS/package/content.opf"/></rootfiles></container>"#,
+            )
+            .unwrap();
+            zip.start_file("OPS/package/content.opf", opts).unwrap();
+            std::io::Write::write_all(
+                &mut zip,
+                br#"<package><metadata><dc:title>Nested</dc:title></metadata><manifest><item id="chapter" href="../text/chapter.xhtml"/></manifest><spine><itemref idref="chapter"/></spine></package>"#,
+            )
+            .unwrap();
+            zip.start_file("OPS/text/chapter.xhtml", opts).unwrap();
+            std::io::Write::write_all(
+                &mut zip,
+                br#"<html><body><p>Nested chapter resolved</p><img src="../images/pixel.png"/></body></html>"#,
+            )
+            .unwrap();
+            zip.start_file("OPS/images/pixel.png", opts).unwrap();
+            std::io::Write::write_all(&mut zip, b"fake-png").unwrap();
+            zip.finish().unwrap();
+        }
+
+        let doc = parse_epub(&bytes).unwrap();
+        let Document::Epub {
+            first_chapter_xhtml,
+            ..
+        } = doc
+        else {
+            panic!("expected epub document")
+        };
+        assert!(first_chapter_xhtml.contains("Nested chapter resolved"));
+        assert!(first_chapter_xhtml.contains("data:image/png;base64,"));
     }
 }

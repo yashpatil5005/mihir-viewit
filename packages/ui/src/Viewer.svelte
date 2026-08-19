@@ -38,6 +38,7 @@
   import DebugPanel from "./DebugPanel.svelte";
   import PluginStore from "./PluginStore.svelte";
   import RuntimeChooser from "./RuntimeChooser.svelte";
+  import Icon from "./Icon.svelte";
   import OfficePluginHtmlViewer from "./OfficePluginHtmlViewer.svelte";
   import {
     archiveBridgeFor,
@@ -1174,13 +1175,17 @@
   data-root={root}
   role="region"
   aria-label="ViewIt file viewer"
+  aria-busy={busy}
   ondragover={handleDragOver}
   ondragenter={handleDragEnter}
   ondragleave={handleDragLeave}
   ondrop={handleDrop}
 >
-  <header>
-    <h1>ViewIt</h1>
+  <header class="app-header">
+    <div class="brand">
+      <h1>ViewIt</h1>
+      <span>Universal file viewer</span>
+    </div>
     <div class="header-actions">
       <button
         class="theme-toggle"
@@ -1188,7 +1193,7 @@
         aria-label="Toggle dark mode"
         title="Toggle theme"
       >
-        {theme.mode === "dark" ? "☀" : "☾"}
+        <Icon name={theme.mode === "dark" ? "sun" : "moon"} />
       </button>
       {#if root === "mobile"}
         <button
@@ -1197,23 +1202,31 @@
           aria-label="Plugin store"
           title="Plugin store"
         >
-          ⚡
+          <Icon name="package" />
         </button>
       {/if}
-      <button onclick={pick}>Open file…</button>
+      <button class="primary-action" onclick={pick}>
+        <Icon name="file-plus" />
+        <span>Open file</span>
+      </button>
       <button
         type="button"
         class="hint-btn"
         title="Tap for on-device debug log (replaces Chrome inspect)"
-        onclick={() => (debugOpen = !debugOpen)}>{debugOpen ? "▾ log" : "▸ log"}</button
+        aria-label={debugOpen ? "Hide debug log" : "Show debug log"}
+        onclick={() => (debugOpen = !debugOpen)}
       >
+        <Icon name="terminal" />
+        <span>Log</span>
+        <Icon name={debugOpen ? "chevron-up" : "chevron-down"} size={14} />
+      </button>
       <button
         class="mode-toggle"
         onclick={() => (mode = mode === "view" ? "browse" : "view")}
-        aria-label="Toggle browse mode"
-        title="Toggle browse mode"
+        aria-label={mode === "view" ? "Browse files" : "Return to viewer"}
+        title={mode === "view" ? "Browse files" : "Return to viewer"}
       >
-        {mode === "view" ? "▦" : "↩"}
+        <Icon name={mode === "view" ? "grid" : "arrow-left"} />
       </button>
     </div>
   </header>
@@ -1238,9 +1251,16 @@
         }}
       />
     {:else if busy}
-      <p class="status">{busyHint || "Reading file…"}</p>
+      <div class="state-card" role="status" aria-live="polite">
+        <span class="spinner" aria-hidden="true"></span>
+        <p class="status">{busyHint || "Reading file…"}</p>
+      </div>
     {:else if error}
-      <pre class="error">{error}</pre>
+      <div class="state-card error-card" role="alert">
+        <strong>ViewIt could not open this file</strong>
+        <pre class="error">{error}</pre>
+        <button type="button" onclick={pick}>Choose another file</button>
+      </div>
     {:else if doc}
       {#if formatInstallCta}
         <div class="plugin-cta">
@@ -1254,7 +1274,8 @@
             type="button"
             class="dismiss"
             onclick={() => (formatInstallCta = null)}
-            title="Dismiss">×</button
+            aria-label="Dismiss plugin suggestion"
+            title="Dismiss"><Icon name="x" /></button
           >
         </div>
       {/if}
@@ -1551,43 +1572,54 @@
     display: flex;
     flex-direction: column;
     min-height: 100vh;
+    min-height: 100dvh;
     transition: outline-color 0.15s ease;
   }
   .viewit-root.dragover {
     outline: 3px dashed var(--link);
     outline-offset: -8px;
   }
-  header {
+  .app-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: calc(0.5rem + env(safe-area-inset-top, 0px)) max(1rem, env(safe-area-inset-right, 0px))
-      0.5rem max(1rem, env(safe-area-inset-left, 0px));
+    padding: calc(0.65rem + env(safe-area-inset-top, 0px))
+      max(1rem, env(safe-area-inset-right, 0px)) 0.65rem max(1rem, env(safe-area-inset-left, 0px));
     border-bottom: 1px solid var(--border);
     background: var(--bg-primary);
     position: sticky;
     top: 0;
     z-index: 10;
   }
-  header h1 {
+  .brand {
+    min-width: 0;
+  }
+  .brand h1 {
     font-size: 1.2rem;
     margin: 0;
     letter-spacing: -0.01em;
     color: var(--text-primary);
+  }
+  .brand span {
+    display: block;
+    margin-top: 0.08rem;
+    color: var(--text-secondary);
+    font-size: 0.7rem;
+    letter-spacing: 0.02em;
   }
   .header-actions {
     display: flex;
     gap: 0.5rem;
     align-items: center;
     flex-wrap: wrap;
+    justify-content: flex-end;
   }
   .hint-btn {
-    font-size: 0.65rem;
-    padding: 0.25rem 0.45rem;
+    padding: 0.25rem 0.55rem;
     min-width: 44px;
     min-height: 44px;
   }
-  header button {
+  .app-header button {
     cursor: pointer;
     background: var(--bg-secondary);
     color: var(--text-primary);
@@ -1597,9 +1629,19 @@
     font-size: 0.85rem;
     min-width: 44px;
     min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
   }
-  header button:hover {
+  .app-header button:hover {
     background: var(--border);
+  }
+  .app-header .primary-action {
+    background: var(--text-primary);
+    border-color: var(--text-primary);
+    color: var(--bg-primary);
+    font-weight: 650;
   }
   .theme-toggle {
     font-size: 1rem;
@@ -1617,6 +1659,50 @@
     padding: 1rem max(1rem, env(safe-area-inset-right, 0px))
       max(1rem, env(safe-area-inset-bottom, 0px)) max(1rem, env(safe-area-inset-left, 0px));
     flex: 1;
+    width: 100%;
+  }
+  .state-card {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: min(100%, 34rem);
+    margin: clamp(2rem, 12vh, 8rem) auto 0;
+    padding: 1rem 1.1rem;
+    border: 1px solid var(--border);
+    border-radius: 0.8rem;
+    background: var(--bg-secondary);
+  }
+  .state-card p,
+  .state-card pre {
+    margin: 0;
+  }
+  .state-card.error-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .state-card button {
+    align-self: flex-start;
+    min-height: 44px;
+    padding: 0.45rem 0.8rem;
+    border: 1px solid var(--border);
+    border-radius: 0.45rem;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    cursor: pointer;
+  }
+  .spinner {
+    width: 1.15rem;
+    height: 1.15rem;
+    flex: 0 0 auto;
+    border: 2px solid var(--border);
+    border-top-color: var(--link);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
   .status,
   .empty {
@@ -1756,5 +1842,58 @@
   }
   .editor-details[open] summary {
     margin-bottom: 0.6rem;
+  }
+  :global(button:focus-visible),
+  :global(a:focus-visible),
+  :global(input:focus-visible),
+  :global(select:focus-visible),
+  :global(summary:focus-visible),
+  :global([tabindex]:focus-visible) {
+    outline: 3px solid color-mix(in srgb, var(--link) 70%, white);
+    outline-offset: 2px;
+  }
+  @media (max-width: 680px) {
+    .app-header {
+      align-items: stretch;
+      flex-direction: column;
+      gap: 0.55rem;
+    }
+    .brand span {
+      display: none;
+    }
+    .header-actions {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(44px, auto));
+      justify-content: stretch;
+      gap: 0.4rem;
+    }
+    .header-actions > button {
+      width: 100%;
+    }
+    .header-actions .primary-action {
+      grid-column: span 2;
+    }
+    .hint-btn span {
+      display: none;
+    }
+    main {
+      padding-top: 0.75rem;
+    }
+  }
+  @media (max-width: 420px) {
+    .header-actions {
+      grid-template-columns: repeat(4, minmax(44px, 1fr));
+    }
+    .header-actions .primary-action {
+      grid-column: span 2;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .viewit-root {
+      transition: none;
+    }
+    .spinner {
+      animation-duration: 1.6s;
+    }
   }
 </style>
