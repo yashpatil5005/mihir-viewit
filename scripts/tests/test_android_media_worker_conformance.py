@@ -51,6 +51,12 @@ class MediaWorkerConformanceTests(unittest.TestCase):
 
 
 class AndroidFormatSmokeScriptTests(unittest.TestCase):
+    def test_internal_contract_diagnostics_fail_visual_smoke(self):
+        self.assertEqual(
+            FORMAT_MODULE._no_error({"hasInternalDiagnostic": True}),
+            "internal diagnostic text visible in DOM",
+        )
+
     def test_archive_preview_reaches_digest(self):
         self.assertNotIn(
             "      }\n      return true;\n      try {",

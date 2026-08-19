@@ -154,6 +154,7 @@ DOM_QUERY = """(() => {
     // Error detection — only actual error elements, not CSS class names
     hasError: errText.length > 0,
     errorText: errText.slice(0, 200),
+    hasInternalDiagnostic: /ExternalDocumentV1|validation failed|Unknown document kind|must have required property/i.test(body),
     hasNotDecoded: body.includes('not decoded') || body.includes('not supported') || body.includes('Unsupported'),
     hasRawHtml: body.includes('<html') || body.includes('<head') || body.includes('<body') || body.includes('<p ') || body.includes('<div ') || body.includes('<guide') || body.includes('<reference '),
     hasPartial: body.includes('Partial') || body.includes('partial'),
@@ -345,6 +346,8 @@ def _no_error(m: dict) -> str:
         return f"error element visible: {m.get('errorText', '')[:100]}"
     if m.get("hasNotDecoded"):
         return "'not decoded' text visible in DOM"
+    if m.get("hasInternalDiagnostic"):
+        return "internal diagnostic text visible in DOM"
     return ""
 
 

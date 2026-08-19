@@ -58,6 +58,7 @@
     NON_ARCHIVE_BUNDLE_EXTS,
     OFFICE_ALL_EXTS,
     OFFICE_KINDS,
+    hasMeaningfulPresentationContent,
     resolveIworkFormat,
     resolveInstalledProvider,
   } from "./runtimeRouting";
@@ -822,6 +823,9 @@
               ext,
               documentScope.signal,
             )) as Document;
+            if ((ext === "odp" || ext === "otp") && !hasMeaningfulPresentationContent(rendered)) {
+              throw new Error("Office plugin returned an empty presentation");
+            }
             await dbg(
               `runtime[${ext}] plugin ${plugin.id} returned kind=${(rendered as any)?.kind} renderer=${(rendered as any)?.renderer?.id ?? "none"}`,
             );
@@ -832,7 +836,7 @@
             await dbg(
               `runtime[${ext}] plugin ${plugin.id} failed: ${e instanceof Error ? e.message : String(e)}`,
             );
-            officePluginNotice = `${plugin.name} could not render this file: ${e instanceof Error ? e.message : String(e)}. Using the built-in lightweight viewer.`;
+            officePluginNotice = `${plugin.name} was unavailable. Using the built-in lightweight viewer.`;
             selectedOfficePlugin = null;
             failedPluginId = plugin.id;
           }
@@ -945,6 +949,13 @@
               ext,
               documentScope.signal,
             )) as Document;
+            if (
+              detectedKind === "pptx" &&
+              (ext === "odp" || ext === "otp") &&
+              !hasMeaningfulPresentationContent(rendered)
+            ) {
+              throw new Error("Office plugin returned an empty presentation");
+            }
             if (rendered.kind !== "unsupported") return rendered;
             await dbg(`runtime[${ext}] plugin ${plugin.id} declined the file`);
           } catch (e) {
@@ -1058,7 +1069,7 @@
             await dbg(
               `runtime[${detectedKind}] retry plugin ${plugin.id} failed: ${e instanceof Error ? e.message : String(e)}`,
             );
-            officePluginNotice = `${plugin.name} could not render this file: ${e instanceof Error ? e.message : String(e)}. Using the built-in lightweight viewer.`;
+            officePluginNotice = `${plugin.name} was unavailable. Using the built-in lightweight viewer.`;
             selectedOfficePlugin = null;
           }
         }
@@ -1097,6 +1108,9 @@
         ext,
         documentScope.signal,
       )) as Document;
+      if ((ext === "odp" || ext === "otp") && !hasMeaningfulPresentationContent(nextDoc)) {
+        throw new Error("Office plugin returned an empty presentation");
+      }
       if (seq !== loadSeq || docUri !== uri) return;
       doc = nextDoc;
       await dbg(
@@ -1106,7 +1120,7 @@
       saveRuntimePref(ext, plugin.id);
     } catch (e) {
       if (seq !== loadSeq || docUri !== uri) return;
-      officePluginNotice = `${plugin.name} could not render this file: ${e instanceof Error ? e.message : String(e)}. Using the built-in lightweight viewer.`;
+      officePluginNotice = `${plugin.name} was unavailable. Using the built-in lightweight viewer.`;
       if (pendingUri) doc = await openFile(pendingUri);
       selectedOfficePlugin = null;
     } finally {

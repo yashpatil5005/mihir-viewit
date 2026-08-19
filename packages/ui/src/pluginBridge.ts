@@ -560,7 +560,9 @@ export function archiveBridgeFor(
       return normalizeArchiveBridgeResult(await callPluginArchive("list", plugin, uri, name));
     },
     async detectFormat() {
-      const res = normalizeArchiveBridgeResult(await callPluginArchive("detect", plugin, uri, name));
+      const res = normalizeArchiveBridgeResult(
+        await callPluginArchive("detect", plugin, uri, name),
+      );
       return res.format ?? "unknown";
     },
     async readEntry(entryName) {
@@ -571,7 +573,9 @@ export function archiveBridgeFor(
       return res;
     },
     async extractAll() {
-      return normalizeArchiveBridgeResult(await callPluginArchive("extract-all", plugin, uri, name));
+      return normalizeArchiveBridgeResult(
+        await callPluginArchive("extract-all", plugin, uri, name),
+      );
     },
     async saveEntry(entryName, displayName, mime) {
       return normalizeArchiveBridgeResult(
@@ -650,11 +654,17 @@ export async function renderDocumentWithPlugin(
     { timeoutMs: 60_000, signal },
   );
   try {
-    return parseExternalDocumentV1(result);
+    return parseExternalDocumentV1(normalizeDocumentBridgeResult(result));
   } catch (error) {
     if (error instanceof ContractValidationError || error instanceof Error) {
       (window as any).AndroidBridge.recordProviderFailure?.(plugin.id, "invalid-output");
     }
     throw error;
   }
+}
+
+export function normalizeDocumentBridgeResult(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const record = value as Record<string, unknown>;
+  return record.document ?? record.result ?? value;
 }

@@ -133,7 +133,23 @@
   }
 
   function hasLayout(slide: PptxSlide | undefined): boolean {
-    return (slide?.elements?.length ?? 0) > 0;
+    if (!slide?.elements?.length) return false;
+    const width = slide.width || 9144000;
+    const height = slide.height || 5143500;
+    return slide.elements.some((element) => {
+      const hasUsableSize = element.w / width >= 0.005 && element.h / height >= 0.005;
+      if (!hasUsableSize) return false;
+      if (element.kind === "image") return Boolean(safeImageSrc(element.src));
+      const text = [
+        element.text,
+        ...(element.paragraphs ?? []).flatMap((paragraph) => paragraph.runs.map((run) => run.text)),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .replace(/<[^>]+>/g, "")
+        .trim();
+      return text.length > 2 && !/^(number|date|time|footer|header)$/i.test(text);
+    });
   }
 
   function slideStyle(slide: PptxSlide | undefined): string {

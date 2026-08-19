@@ -94,6 +94,35 @@ export function pluginSupportsFormat(plugin: PluginInfo, ext: string): boolean {
   return providerSupportsFormat(plugin, ext);
 }
 
+export function hasMeaningfulPresentationContent(document: unknown): boolean {
+  const slides = (document as { slides?: unknown[] } | null)?.slides;
+  if (!Array.isArray(slides)) return false;
+  const meaningful = (value: unknown) =>
+    typeof value === "string" && value.replace(/<[^>]+>/g, "").trim().length > 2;
+  return slides.some((slide) => {
+    if (!slide || typeof slide !== "object") return false;
+    const record = slide as Record<string, unknown>;
+    if (meaningful(record.title) || meaningful(record.body)) return true;
+    const elements = Array.isArray(record.elements) ? record.elements : [];
+    return elements.some((element) => {
+      if (!element || typeof element !== "object") return false;
+      const item = element as Record<string, unknown>;
+      if (meaningful(item.text)) return true;
+      const paragraphs = Array.isArray(item.paragraphs) ? item.paragraphs : [];
+      return paragraphs.some((paragraph) => {
+        if (!paragraph || typeof paragraph !== "object") return false;
+        const runs = Array.isArray((paragraph as Record<string, unknown>).runs)
+          ? ((paragraph as Record<string, unknown>).runs as unknown[])
+          : [];
+        return runs.some(
+          (run) =>
+            run && typeof run === "object" && meaningful((run as Record<string, unknown>).text),
+        );
+      });
+    });
+  });
+}
+
 export function resolveInstalledProvider(
   installed: PluginInfo[],
   service: `viewit.${string}`,

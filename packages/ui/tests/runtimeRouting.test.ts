@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { PluginInfo } from "../src/pluginBridge";
 import {
   NON_ARCHIVE_BUNDLE_EXTS,
+  hasMeaningfulPresentationContent,
   resolveIworkFormat,
   resolveInstalledProvider,
 } from "../src/runtimeRouting";
@@ -83,5 +84,26 @@ describe("format plugin routing", () => {
     expect(resolveIworkFormat(".NUMBERS")).toBe("numbers");
     expect(resolveIworkFormat("blob", "iwork-key")).toBe("key");
     expect(resolveIworkFormat("docx")).toBeNull();
+  });
+
+  it("rejects placeholder-only presentation output", () => {
+    expect(
+      hasMeaningfulPresentationContent({
+        slides: [{ title: "", body: "", elements: [{ kind: "text", text: "<number>" }] }],
+      }),
+    ).toBe(false);
+    expect(
+      hasMeaningfulPresentationContent({
+        slides: [
+          {
+            title: "",
+            body: "",
+            elements: [
+              { paragraphs: [{ runs: [{ text: "Runtime rendering verifies content" }] }] },
+            ],
+          },
+        ],
+      }),
+    ).toBe(true);
   });
 });

@@ -4,6 +4,7 @@ import {
   ensureBridgeDispatch,
   isRestartToApplyError,
   normalizeArchiveBridgeResult,
+  normalizeDocumentBridgeResult,
   pluginHealthSummary,
   RestartRequiredError,
   unloadJsPlugin,
@@ -52,6 +53,13 @@ describe("plugin install contract", () => {
     };
     expect(normalizeArchiveBridgeResult({ ok: true, manifest })).toBe(manifest);
     expect(normalizeArchiveBridgeResult({ ok: true, result: manifest })).toBe(manifest);
+  });
+
+  it("unwraps native document callback payloads at the bridge boundary", () => {
+    const document = { kind: "unsupported", format: "docx", reason: "test", suggestion: "none" };
+    expect(normalizeDocumentBridgeResult({ id: "request", document })).toBe(document);
+    expect(normalizeDocumentBridgeResult({ id: "request", result: document })).toBe(document);
+    expect(normalizeDocumentBridgeResult(document)).toBe(document);
   });
 
   it("removes host-managed JavaScript globals and styles on unload", () => {
