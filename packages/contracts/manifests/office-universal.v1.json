@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "office-universal",
   "name": "Office Universal Plugin",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Unified parser for all Office formats: OOXML (docx/xlsx/pptx + templates), Legacy Binary (doc/ppt), OpenDocument (odt/ods/odp + templates)",
   "publisher": "viewit",
   "minAppVersion": 1,

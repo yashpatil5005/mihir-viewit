@@ -66,8 +66,16 @@ EOF
 normalize_tree() { python3 -c "
 import os
 from pathlib import Path
-for e in sorted(Path('$1').rglob('*')): os.utime(e,(315532800,315532800))
+for e in sorted(Path('$1').rglob('*')):
+ os.chmod(e, 0o755 if e.is_dir() else 0o644)
+ os.utime(e,(315532800,315532800))
+os.chmod('$1',0o755)
 os.utime('$1',(315532800,315532800))"; }
+
+deterministic_zip() { # source directory, output zip
+  local source="$1" output="$2"
+  (cd "$source" && find . -mindepth 1 -printf '%P\n' | LC_ALL=C sort | zip -q -X "$output" -@)
+}
 
 compile_dex() { # name, srcDir
   local name="$1" srcDir="$2"
@@ -126,7 +134,7 @@ package_plugin() { # pid, name, srcDir, sobase, with_js
     cp "$PLUGIN_DIR/plugin.json" "$pkg/plugin.json"
     if [ "$with_js" = "1" ]; then cp "$ROOT/build/plugins/office-universal/index.js" "$pkg/index.js"; fi
     normalize_tree "$pkg"
-    (cd "$pkg" && zip -q -X -r "$out" .)
+    deterministic_zip "$pkg" "$out"
     if [ -x "$D8" ]; then
       BUILD_TOOLS="$(dirname "$D8")"
       if [ -x "$BUILD_TOOLS/zipalign" ]; then
@@ -188,7 +196,7 @@ if selected pptx-vanilla; then
   PVV="$ROOT/plugins/pptx-vanilla"; rm -rf "$PVV/zipout" && mkdir -p "$PVV/zipout"
   cp "$PVV/dist/index.js" "$PVV/zipout/index.js"; cp "$PVV/plugin.json" "$PVV/zipout/plugin.json"
   normalize_tree "$PVV/zipout"
-  (cd "$PVV/zipout" && zip -q -X -r "$ROOT/plugins/pptx-vanilla-1.0.1.zip" .)
+  deterministic_zip "$PVV/zipout" "$ROOT/plugins/pptx-vanilla-1.0.1.zip"
   echo "[package] pptx-vanilla zip: $(du -h "$ROOT/plugins/pptx-vanilla-1.0.1.zip" | cut -f1)"
 fi
 
@@ -201,6 +209,6 @@ if selected player-base; then
   cp "$PLAYER/dist/index.js" "$PLAYER/zipout/index.js"
   cp "$PLAYER/plugin.json" "$PLAYER/zipout/plugin.json"
   normalize_tree "$PLAYER/zipout"
-  (cd "$PLAYER/zipout" && zip -q -X -r "$ROOT/plugins/player-base-$VERSION.zip" .)
+  deterministic_zip "$PLAYER/zipout" "$ROOT/plugins/player-base-$VERSION.zip"
   echo "[package] player-base zip: $(du -h "$ROOT/plugins/player-base-$VERSION.zip" | cut -f1)"
 fi

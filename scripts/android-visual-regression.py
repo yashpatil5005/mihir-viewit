@@ -20,7 +20,12 @@ from visual_diff import compare_images
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUTPUT = ROOT / "build/android-visual"
 DEFAULT_BASELINES = ROOT / "e2e/android-visual/baselines"
-DEFAULT_PLUGIN = ROOT / "apps/mobile/plugins/office-universal/build/output/office-universal-0.1.5-arm64-v8a.zip"
+OFFICE_MANIFEST = ROOT / "apps/mobile/plugins/office-universal/plugin.json"
+DEFAULT_PLUGIN = (
+    ROOT
+    / "apps/mobile/plugins/office-universal/build/output"
+    / f"office-universal-{json.loads(OFFICE_MANIFEST.read_text())['version']}-arm64-v8a.zip"
+)
 
 
 @dataclass(frozen=True)
