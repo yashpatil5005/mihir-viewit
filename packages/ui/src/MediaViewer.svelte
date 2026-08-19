@@ -499,6 +499,11 @@
     src = "";
 
     if (code === 4) {
+      if (isAndroidTauri && media_kind === "audio") {
+        debugLog(`[media] WebView codec unsupported (${ext}), launching native player`);
+        await launchNativePlayer();
+        return;
+      }
       if (
         currentStrategy === "stream_url" ||
         currentStrategy === "stream" ||

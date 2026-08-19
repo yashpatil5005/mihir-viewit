@@ -19,7 +19,7 @@ public class Plugin implements ai.viewit.app.ViewItPlugin {
     public String getId() { return "ffmpeg-transcoder"; }
 
     @Override
-    public String getVersion() { return "1.0.2"; }
+    public String getVersion() { return "1.0.5"; }
 
     @Override
     public java.util.List<String> getSupportedFormats() {
@@ -86,6 +86,7 @@ public class Plugin implements ai.viewit.app.ViewItPlugin {
 
     @Override
     public boolean transcode(Uri input, File output, ai.viewit.app.PluginProgress onProgress) {
+        String lastError = "";
         try {
             String inputPath = resolveInputPath(input);
             if (inputPath == null) return false;
@@ -102,6 +103,7 @@ public class Plugin implements ai.viewit.app.ViewItPlugin {
 
             String[] cmds = hasVideo ? new String[] {
                 "-y -i " + inputStr + " -map 0:v:0 -map 0:a? -c:v h264_mediacodec -b:v 2M -c:a aac -b:a 128k -movflags +faststart " + outputQ,
+                "-y -i " + inputStr + " -map 0:v:0 -map 0:a? -c:v libopenh264 -b:v 2M -c:a aac -b:a 128k -movflags +faststart " + outputQ,
             } : new String[] {
                 "-y -i " + inputStr + " -map 0:a:0 -vn -c:a aac -b:a 128k -movflags +faststart " + outputQ,
             };
@@ -130,12 +132,14 @@ public class Plugin implements ai.viewit.app.ViewItPlugin {
                     updateProgress(onProgress, lastProgress, 1.0f);
                     return true;
                 }
+                lastError = session.getAllLogsAsString();
+                android.util.Log.w("FFmpegPlugin", "Transcode attempt failed: " + lastError);
                 output.delete();
             }
-            return false;
+            throw new IllegalStateException(lastError.isEmpty() ? "Media conversion failed" : lastError);
         } catch (Exception e) {
             android.util.Log.e("FFmpegPlugin", "Transcode failed", e);
-            return false;
+            throw new RuntimeException(e.getMessage() == null ? "Media conversion failed" : e.getMessage(), e);
         }
     }
 

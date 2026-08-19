@@ -168,7 +168,7 @@ DOM_QUERY = """(() => {
     // Runtime / metadata
     runtimeChooser: runtimeChooser,
     externalOpen: body.includes('Open with another app'),
-    nativePlayer: body.includes('Native Android player'),
+    nativePlayer: body.includes('Native Android player') || body.includes('Playing in native player'),
     nativePlayerBtn: !!([...document.querySelectorAll('button, [role="button"], .option')].find(e => e.textContent?.includes('Native Android player'))),
 
     // Iframe content (epub/mobi chapter rendering)
@@ -501,13 +501,12 @@ ASSERTIONS: dict[str, list[tuple[str, callable]]] = {
     "sample.mp3": [
         ("no error", _no_error),
         ("media viewer", lambda m: assert_truthy(m.get("mediaViewer"), what="mediaViewer")),
-        ("audio element", lambda m: assert_truthy(m.get("audio"), what="audio")),
-        ("audio has src", lambda m: assert_truthy(m.get("audioSrcs"), what="audioSrcs")),
+        ("audio or native player", lambda m: "" if m.get("audio") or m.get("nativePlayer") else "audio element or native player expected"),
     ],
     "sample.wav": [
         ("no error", _no_error),
         ("media viewer", lambda m: assert_truthy(m.get("mediaViewer"), what="mediaViewer")),
-        ("audio element", lambda m: assert_truthy(m.get("audio"), what="audio")),
+        ("audio or native player", lambda m: "" if m.get("audio") or m.get("nativePlayer") else "audio element or native player expected"),
     ],
     "sample.flac": [
         ("no error", _no_error),
@@ -914,6 +913,10 @@ def main() -> int:
         try:
             ws_url = wait_for_cdp(args.port)
             metrics = ws_eval(ws_url, DOM_QUERY)
+            ready_deadline = time.time() + 30
+            while "Opening…" in metrics.get("text", "") and time.time() < ready_deadline:
+                time.sleep(0.5)
+                metrics = ws_eval(ws_url, DOM_QUERY)
             assert metrics is not None, f"no metrics returned for {name}"
 
             # Nested archives can expose only a directory at their root. Descend

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "ffmpeg-transcoder",
   "name": "FFmpeg Transcoder",
-  "version": "1.0.2",
+  "version": "1.0.5",
   "description": "Adds transcoding support for unsupported video and audio formats. Converts legacy containers/codecs to MP4 using FFmpeg.",
   "publisher": "viewit",
   "minAppVersion": 1,

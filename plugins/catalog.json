@@ -391,7 +391,7 @@
       "id": "ffmpeg-transcoder",
       "name": "FFmpeg Transcoder",
       "description": "Adds transcoding support for unsupported video and audio formats. Converts legacy containers/codecs to MP4 using FFmpeg.",
-      "version": "1.0.2",
+      "version": "1.0.5",
       "entryClass": "ai.viewit.plugins.ffmpeg_transcoder.Plugin",
       "capabilities": [
         "media.inspect",
@@ -400,8 +400,8 @@
       "runtime": "android-dex-jni",
       "abi": "arm64-v8a",
       "abiVersion": 1,
-      "sizeBytes": 18016060,
-      "installedSizeBytes": 38389410,
+      "sizeBytes": 18016223,
+      "installedSizeBytes": 38389826,
       "supportedFormats": [
         "avi",
         "mkv",
@@ -420,8 +420,8 @@
         "m2ts",
         "mts"
       ],
-      "downloadUrl": "https://omnia.mihirpatil.co/plugins/ffmpeg-transcoder-1.0.2.zip",
-      "checksum": "5ba112811ff387e095a08186706714241179b3a1221ea65f23a9e52cf732d9a9",
+      "downloadUrl": "https://omnia.mihirpatil.co/plugins/ffmpeg-transcoder-1.0.5.zip",
+      "checksum": "d5edab3587332cb58ba1e511739be51b904f82234c4562afeb2e1e92fb18b338",
       "minAppVersion": 1
     }
   ]
