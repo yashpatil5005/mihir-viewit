@@ -109,7 +109,8 @@ function requestId(prefix: string): string {
 export type ViewItBuildProfile = "development" | "device-test" | "production";
 
 export function viewitBuildProfile(): ViewItBuildProfile {
-  const profile = import.meta.env.VITE_VIEWIT_APP_PROFILE;
+  // @ts-expect-error import.meta.env is injected by Vite at runtime/test
+  const profile = (import.meta.env?.VITE_VIEWIT_APP_PROFILE ?? process.env.VITE_VIEWIT_APP_PROFILE) as string | undefined;
   return profile === "production" || profile === "device-test" ? profile : "development";
 }
 
@@ -541,7 +542,7 @@ export interface ArchiveBridgeApi {
 export function normalizeArchiveBridgeResult(value: ArchiveBridgeResult): ArchiveBridgeResult {
   if (value.manifest) return value.manifest;
   if (value.result && typeof value.result === "object") {
-    return value.result as ArchiveBridgeResult;
+    return value.result as unknown as ArchiveBridgeResult;
   }
   return value;
 }

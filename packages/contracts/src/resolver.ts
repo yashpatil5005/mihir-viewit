@@ -1,5 +1,5 @@
 import providersCatalog from "../catalog/providers.v1.json" with { type: "json" };
-import { parseProviderDescriptorV1, type ProviderDescriptorV1 } from "./index.ts";
+import { parseProviderDescriptorV1, type ProviderDescriptorV1 } from "./index";
 
 export type ProviderAvailability = "built-in" | "installed" | "downloadable";
 export type ProviderHealth = "active" | "degraded" | "failed" | "disabled" | "quarantined";

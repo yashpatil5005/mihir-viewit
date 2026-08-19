@@ -968,7 +968,6 @@
               documentScope.signal,
             )) as Document;
             if (
-              detectedKind === "pptx" &&
               (ext === "odp" || ext === "otp") &&
               !hasMeaningfulPresentationContent(rendered)
             ) {
@@ -1408,7 +1407,7 @@
             {...doc as any}
             name={pendingName ?? ""}
             uri={docUri ?? ""}
-            onOpenDocument={(nestedDoc, nestedUrl, nestedName) => {
+            onOpenDocument={(nestedDoc: any, nestedUrl: string, nestedName: string) => {
               const scope = replaceDocumentScope(`archive-member:${nestedName}`);
               scope.ownObjectUrl(nestedUrl);
               doc = nestedDoc;

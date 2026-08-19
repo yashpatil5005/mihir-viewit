@@ -3,6 +3,8 @@ import { providerSupportsFormat } from "@viewit/platform";
 import {
   providersForPackages,
   resolveProvider,
+  type ProviderCandidate,
+  type ProviderHealth,
   type ProviderRequirementKey,
   type ProviderResolutionDecision,
 } from "@viewit/contracts/resolver";
@@ -130,13 +132,13 @@ export function resolveInstalledProvider(
   preferredPackageId: string | null,
   availableServices: ProviderRequirementKey[] = [],
 ): ProviderResolutionDecision {
-  const candidates = providersForPackages(
+  const candidates: ProviderCandidate[] = providersForPackages(
     installed.map((plugin) => plugin.id),
     "installed",
   ).map((provider) => ({
     ...provider,
     version: installed.find((plugin) => plugin.id === provider.packageId)?.version,
-    health: (() => {
+    health: ((): ProviderHealth => {
       const state = installed.find((plugin) => plugin.id === provider.packageId)?.providerHealth?.[
         provider.id
       ]?.state;
