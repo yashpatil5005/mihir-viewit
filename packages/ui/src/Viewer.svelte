@@ -316,7 +316,9 @@
       const { invoke } = await import("@tauri-apps/api/core");
       const report = async () => {
         const media = document.querySelector<HTMLMediaElement>("audio, video");
-        const errorElement = [...document.querySelectorAll<HTMLElement>(".err, .error, .error-card")].find(
+        const errorElement = [
+          ...document.querySelectorAll<HTMLElement>(".err, .error, .error-card"),
+        ].find(
           (element) => !element.closest(".editor-details") && element.getClientRects().length > 0,
         );
         const payload = JSON.stringify({
@@ -994,10 +996,7 @@
               ext,
               documentScope.signal,
             )) as Document;
-            if (
-              (ext === "odp" || ext === "otp") &&
-              !hasMeaningfulPresentationContent(rendered)
-            ) {
+            if ((ext === "odp" || ext === "otp") && !hasMeaningfulPresentationContent(rendered)) {
               throw new Error("Office plugin returned an empty presentation");
             }
             if (rendered.kind !== "unsupported") return rendered;

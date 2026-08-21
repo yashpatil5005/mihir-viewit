@@ -109,8 +109,10 @@ function requestId(prefix: string): string {
 export type ViewItBuildProfile = "development" | "device-test" | "production";
 
 export function viewitBuildProfile(): ViewItBuildProfile {
-  // @ts-expect-error import.meta.env is injected by Vite at runtime/test
-  const profile = (import.meta.env?.VITE_VIEWIT_APP_PROFILE ?? process.env.VITE_VIEWIT_APP_PROFILE) as string | undefined;
+  const viteEnv = (import.meta as { env?: Record<string, string | undefined> }).env;
+  const nodeEnv = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process
+    ?.env;
+  const profile = viteEnv?.VITE_VIEWIT_APP_PROFILE ?? nodeEnv?.VITE_VIEWIT_APP_PROFILE;
   return profile === "production" || profile === "device-test" ? profile : "development";
 }
 
