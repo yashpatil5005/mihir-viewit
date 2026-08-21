@@ -382,6 +382,13 @@
       return;
     }
 
+    // Desktop WebKit reliably plays local IPC-backed Blob URLs. Android uses
+    // its stream/asset protocols to avoid loading large media into WebView RAM.
+    if (!("AndroidBridge" in window)) {
+      await tryBlobUrl();
+      return;
+    }
+
     if (!(await tryStreamProtocol())) {
       if (!(await tryConvertFileSrc())) {
         await tryBlobUrl();
@@ -393,7 +400,7 @@
   onMount(async () => {
     const { debugLog: log } = await import("@viewit/platform");
 
-    isAndroidTauri = "__TAURI_INTERNALS__" in window;
+    isAndroidTauri = "__TAURI_INTERNALS__" in window && "AndroidBridge" in window;
 
     log(`[media] uri=${uri?.slice(0, 80)}`);
     log(`[media] asset_path=${asset_path?.slice(0, 80)}`);

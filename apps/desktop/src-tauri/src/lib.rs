@@ -67,7 +67,26 @@ async fn open_uri(uri: String, name: Option<String>) -> Result<Document, String>
             .to_string()
     });
     if is_stream_ext(&ext) {
-        return open_stream(&ext, &display_name).map_err(|e| e.to_string());
+        let byte_len = std::fs::metadata(&path).map(|metadata| metadata.len() as usize).unwrap_or(0);
+        let asset_path = path.to_string_lossy().to_string();
+        let mut document = open_stream(&ext, &display_name).map_err(|e| e.to_string())?;
+        match &mut document {
+            Document::Pdf {
+                byte_len: length,
+                asset_path: path,
+                ..
+            }
+            | Document::Media {
+                byte_len: length,
+                asset_path: path,
+                ..
+            } => {
+                *length = byte_len;
+                *path = asset_path;
+            }
+            _ => {}
+        }
+        return Ok(document);
     }
     // Sniff from a small header first: images stream to the WebView via the
     // asset protocol (`convertFileSrc`) — no full-file read, no 32 MB cap, no
@@ -188,11 +207,22 @@ fn probe_uri(_app: tauri::AppHandle, _uri: String, _name: Option<String>) -> Res
     Ok(None)
 }
 
+#[tauri::command]
+fn desktop_e2e_report(payload: String) -> Result<bool, String> {
+    let Some(path) = std::env::var_os("VIEWIT_DESKTOP_E2E_REPORT") else {
+        return Ok(false);
+    };
+    std::fs::write(path, payload).map_err(|error| error.to_string())?;
+    Ok(true)
+}
+
 /// Raw bytes of a materialized (`asset_path`) file for JS viewers (pdf.js, media,
 /// docx-preview). Desktop returns an `ipc::Response` (zero-copy `ArrayBuffer`).
 #[tauri::command]
 fn read_materialized_bytes(asset_path: String) -> Result<tauri::ipc::Response, String> {
-    let bytes = std::fs::read(&asset_path).map_err(|e| e.to_string())?;
+    let path = resolve_path(&asset_path)
+        .ok_or_else(|| format!("not a file URI or path: {}", asset_path))?;
+    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
     Ok(tauri::ipc::Response::new(bytes))
 }
 
@@ -557,7 +587,8 @@ pub fn run() {
             csv_page,
             epub_chapter,
             archive_extract,
-            pdf_page
+            pdf_page,
+            desktop_e2e_report
         ])
         .setup(|app| {
             // CLI/file-manager open: on Linux/Windows a file passed as an

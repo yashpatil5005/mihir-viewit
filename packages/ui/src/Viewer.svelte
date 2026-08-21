@@ -114,7 +114,7 @@
       else loader = undefined;
     }
     const isOdtLike = officeExt() === "odt" || officeExt() === "ott";
-    const isStructuredDocx = isOdtLike || isIworkDocument();
+    const isStructuredDocx = isOdtLike || isIworkDocument() || Array.isArray((doc as any).blocks);
     if (k === "docx" && isStructuredDocx) {
       // ODT/OTT: plugin produces Document::Docx with structured blocks —
       // render via the block-based DocxViewer instead of docx-preview.
@@ -312,6 +312,33 @@
 
   onMount(async () => {
     applyTheme();
+    if (root === "desktop" && "__TAURI_INTERNALS__" in window) {
+      const { invoke } = await import("@tauri-apps/api/core");
+      const report = async () => {
+        const media = document.querySelector<HTMLMediaElement>("audio, video");
+        const errorElement = [...document.querySelectorAll<HTMLElement>(".err, .error, .error-card")].find(
+          (element) => !element.closest(".editor-details") && element.getClientRects().length > 0,
+        );
+        const payload = JSON.stringify({
+          body: document.body.innerText.slice(0, 1000),
+          error: errorElement?.textContent?.trim() ?? "",
+          controls: Boolean(document.querySelector(".controls")),
+          media: Boolean(media),
+          mediaSrc: media?.getAttribute("src") ?? "",
+          mediaError: media?.error?.message ?? "",
+          archive: Boolean(document.querySelector(".archive-viewer")),
+          pdf: Boolean(document.querySelector(".pdf-viewer")),
+          docx: Boolean(document.querySelector(".docx-viewer")),
+          xlsx: Boolean(document.querySelector(".xlsx-viewer")),
+          pptx: Boolean(document.querySelector(".pptx-root")),
+        });
+        return invoke<boolean>("desktop_e2e_report", { payload }).catch(() => false);
+      };
+      if (await report()) {
+        const timer = setInterval(() => void report(), 500);
+        appScope.register("desktop-e2e-report", () => clearInterval(timer));
+      }
+    }
     docUri = initialFile ?? null;
     pendingUri = initialFile ?? null;
     const { debugLog } = await import("@viewit/platform");
@@ -1474,7 +1501,7 @@
               />{/if}
           </div>
         {/key}
-      {:else if doc.kind === "docx" && (officeExt() === "odt" || officeExt() === "ott" || isIworkDocument() ? DocxViewer : DocxPreview)}
+      {:else if doc.kind === "docx" && (officeExt() === "odt" || officeExt() === "ott" || isIworkDocument() || Array.isArray((doc as any).blocks) ? DocxViewer : DocxPreview)}
         {#key docUri}
           <div class="plugin-renderer-shell">
             {#if isIworkDocument()}
@@ -1497,7 +1524,7 @@
                   </details>{/if}
               </div>
             {/if}
-            {#if officeExt() === "odt" || officeExt() === "ott" || isIworkDocument()}
+            {#if officeExt() === "odt" || officeExt() === "ott" || isIworkDocument() || Array.isArray((doc as any).blocks)}
               <DocxViewer document={doc} />
             {:else}
               <DocxPreview source_uri={docUri ?? ""} />

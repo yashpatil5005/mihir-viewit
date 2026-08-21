@@ -19,7 +19,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' ipc: http://ipc.localhost asset: http://asset.localhost blob: data:; img-src 'self' asset: http://asset.localhost blob: data:; media-src 'self' asset: http://asset.localhost blob: data:; frame-src 'self' asset: http://asset.localhost blob: data:",
+      "csp": "default-src 'self' ipc: http://ipc.localhost asset: http://asset.localhost blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost blob: data:; media-src 'self' asset: http://asset.localhost blob: data:; frame-src 'self' asset: http://asset.localhost blob: data:",
       "assetProtocol": {
         "enable": true,
         "scope": ["**/*"]
@@ -32,7 +32,7 @@
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
-      "icons/[email protected]",
+      "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
     ],

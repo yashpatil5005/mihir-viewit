@@ -31,6 +31,7 @@
     "check:contracts": "npm run test:contracts && node --experimental-strip-types scripts/generate-package-manifests.mjs --check && node --experimental-strip-types scripts/generate-contract-projections.mjs --check",
     "test:rust": "cargo test --workspace --exclude viewit-mobile --exclude viewit-desktop --lib",
     "test:e2e": "npm run build:web && playwright test --config e2e/web/playwright.config.ts",
+    "test:e2e:desktop": "./scripts/test-desktop-linux-e2e.sh",
     "test:intent:android": "python3 scripts/android-intent-tests.py",
     "test:visual:android": "python3 scripts/android-visual-regression.py --confirm-device-reset",
     "test:visual:android:update": "python3 scripts/android-visual-regression.py --confirm-device-reset --update-baselines",
