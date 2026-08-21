@@ -43,6 +43,17 @@ CASES = (
     VisualCase("sample.pdf", ("sample.pdf", "hide thumbnails")),
     VisualCase("sample.zip", ("archive", "hello")),
     VisualCase("sample.wav", ("sample.wav", "volume", "speed")),
+    VisualCase("sample.png", ("sample.png", "png")),
+    VisualCase("sample.jpg", ("sample.jpg", "jpg")),
+    VisualCase("sample.xml", ("offline xml",)),
+    VisualCase("sample.html", ("desktop html viewer", "offline paragraph")),
+    VisualCase("sample.vcf", ("tester desktop", "1234567890")),
+    VisualCase("sample.ics", ("desktop release testing",)),
+    VisualCase("sample.desktop", ("viewit desktop",)),
+    VisualCase("sample.pages", ("apple pages", "pages offline desktop extract")),
+    VisualCase("sample.numbers", ("apple numbers", "50000")),
+    VisualCase("sample.key", ("apple keynote", "keynote presentation slide 1")),
+    VisualCase("sample.ttf", ("liberation",)),
 )
 
 

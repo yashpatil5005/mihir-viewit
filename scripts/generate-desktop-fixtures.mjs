@@ -158,3 +158,9 @@ await createZip("sample.key", {
 });
 
 console.log("Desktop offline fixtures generated successfully!");
+
+// 25. Font (copied from local node_modules — no network access).
+const fontSource = path.resolve("node_modules/pdfjs-dist/standard_fonts/LiberationSans-Regular.ttf");
+if (fs.existsSync(fontSource)) {
+  fs.copyFileSync(fontSource, path.join(FIXTURES_DIR, "sample.ttf"));
+}
