@@ -150,12 +150,6 @@
     <div class="plugin-html-surface">{@html pluginHtml}</div>
   {:else}
     <div class="toolbar">
-      <SearchBar
-        onSearch={(q, cs) => {
-          query = q;
-          caseSensitive = cs;
-        }}
-      />
       <aside class="meta">
         <span>{stats.words.toLocaleString()} words</span>
         <span>{stats.blocks.toLocaleString()} blocks</span>

@@ -1,5 +1,4 @@
 <script lang="ts">
-  import SearchBar from "./SearchBar.svelte";
   import { fullscreenState } from "./fullscreen.svelte";
   import { findAllMatches, escapeHtml, type Match } from "./search";
 
@@ -189,13 +188,6 @@
 </script>
 
 <article class="text-viewer" class:fs={fullscreenState.active}>
-  <SearchBar
-    onSearch={runSearch}
-    matchCount={matches.length}
-    currentMatch={currentIdx + 1}
-    onNext={() => scrollToMatch(currentIdx + 1)}
-    onPrev={() => scrollToMatch(currentIdx - 1)}
-  />
   {#if byte_len > 0}
     <aside class="meta">
       <strong>{byte_len.toLocaleString()} bytes</strong> · {lineCount.toLocaleString()} lines · encoding:

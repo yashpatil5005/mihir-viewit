@@ -311,12 +311,6 @@
   {#if pluginHtml}
     <div class="plugin-html-surface">{@html pluginHtml}</div>
   {:else}
-    <SearchBar
-      onSearch={(q, cs) => {
-        query = q;
-        caseSensitive = cs;
-      }}
-    />
     {#if sheets.length > 1}
       <div class="tabs" role="tablist" aria-label="Worksheets">
         {#each sheets as s, i}

@@ -15,14 +15,14 @@
     "web-wasm-bundle-gz": 3000000
   },
   "last_measured": {
-    "_status": "measured 2026-08-22T20:01:21.851Z",
-    "android-aab-arm64-v8a": 11316284,
-    "android-apk-arm64-v8a": 14104029,
+    "_status": "measured 2026-08-22T21:14:27.365Z",
+    "android-aab-arm64-v8a": 11317753,
+    "android-apk-arm64-v8a": 14104118,
     "ios-ipa": null,
     "desktop-linux": null,
     "windows-msi": null,
     "macos-dmg": null,
-    "web-wasm-bundle": 7739224,
-    "web-wasm-bundle-gz": 2384957
+    "web-wasm-bundle": 7740389,
+    "web-wasm-bundle-gz": 2385949
   }
 }
