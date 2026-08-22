@@ -126,6 +126,9 @@
   let visiblePaths = $state<Set<string>>(new Set());
   let failedPreviews = $state<Set<string>>(new Set());
   let observer: IntersectionObserver | null = null;
+  const MAX_CONCURRENT_PREVIEWS = 6;
+  let activePreviewCount = 0;
+  let previewQueue: Array<{ path: string; node: HTMLElement }> = [];
 
   void (async () => {
     await warmFileSrc();
@@ -143,6 +146,13 @@
     return {
       destroy() {
         observer?.unobserve(node);
+        previewQueue = previewQueue.filter((item) => item.node !== node);
+        if (visiblePaths.has(path)) {
+          const next = new Set(visiblePaths);
+          next.delete(path);
+          visiblePaths = next;
+          activePreviewCount = Math.max(0, activePreviewCount - 1);
+        }
       },
     };
   }
@@ -254,25 +264,44 @@
     }
   });
 
-  // Shared IntersectionObserver gating preview media until cells scroll
-  // into view (folders can hold hundreds of entries).
+  function drainPreviewQueue() {
+    while (activePreviewCount < MAX_CONCURRENT_PREVIEWS && previewQueue.length > 0) {
+      const item = previewQueue.shift();
+      if (!item) break;
+      activePreviewCount++;
+      const next = new Set(visiblePaths);
+      next.add(item.path);
+      visiblePaths = next;
+    }
+  }
+
   observer =
     typeof IntersectionObserver === "function"
       ? new IntersectionObserver(
           (entries) => {
-            let changed = false;
-            const next = new Set(visiblePaths);
+            const entering: Array<{ path: string; node: HTMLElement }> = [];
+            const leaving: string[] = [];
             for (const e of entries) {
               const path = (e.target as HTMLElement).dataset.previewPath;
               if (!path) continue;
-              if (e.isIntersecting && !next.has(path)) {
-                next.add(path);
-                changed = true;
+              if (e.isIntersecting) {
+                entering.push({ path, node: e.target as HTMLElement });
+              } else {
+                leaving.push(path);
               }
             }
-            if (changed) visiblePaths = next;
+            if (leaving.length > 0) {
+              const next = new Set(visiblePaths);
+              for (const p of leaving) next.delete(p);
+              visiblePaths = next;
+              activePreviewCount = Math.max(0, activePreviewCount - leaving.length);
+            }
+            if (entering.length > 0) {
+              previewQueue.push(...entering);
+              drainPreviewQueue();
+            }
           },
-          { root: null, rootMargin: "256px" },
+          { root: null, rootMargin: "128px" },
         )
       : null;
   onDestroy(() => {

@@ -97,6 +97,28 @@ export function fileExtension(name: string | null | undefined): string {
 export type PickerReject =
   { reject: true; reason: string; openWithExternal: boolean } | { reject: false };
 
+const ARCHIVE_EXT = new Set([
+  "zip",
+  "7z",
+  "rar",
+  "tar",
+  "gz",
+  "tgz",
+  "bz2",
+  "tbz2",
+  "xz",
+  "txz",
+  "zst",
+  "tzst",
+  "lz4",
+  "lzma",
+  "tlz",
+  "cab",
+  "iso",
+  "jar",
+  "apk",
+]);
+
 export function checkFileBeforeRead(file: File): PickerReject {
   const viewitUri = (file as File & { viewitUri?: string }).viewitUri;
   if (viewitUri) return { reject: false };
@@ -107,7 +129,9 @@ export function checkFileBeforeRead(file: File): PickerReject {
     return { reject: false };
   }
   if (ext === "pdf" || ext === "txt" || ext === "log" || ext === "csv") {
-    // Text, logs, CSVs, and PDFs can be paged/streamed
+    return { reject: false };
+  }
+  if (ARCHIVE_EXT.has(ext)) {
     return { reject: false };
   }
   if (file.size > OPEN_BYTES_CAP) {
