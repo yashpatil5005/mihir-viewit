@@ -39,6 +39,7 @@
   import PluginStore from "./PluginStore.svelte";
   import RuntimeChooser from "./RuntimeChooser.svelte";
   import Icon from "./Icon.svelte";
+  import SearchBar from "./SearchBar.svelte";
   import { fullscreenState, setFullscreen } from "./fullscreen.svelte";
   import OfficePluginHtmlViewer from "./OfficePluginHtmlViewer.svelte";
   import {
@@ -182,6 +183,45 @@
   let error: string | null = $state(null);
   let debugOpen = $state(false);
   let pluginStoreOpen = $state(false);
+  let searchOpen = $state(false);
+  let searchQuery = $state("");
+  let searchCaseSensitive = $state(false);
+  let searchMatchCount = $state(0);
+  let searchCurrentMatch = $state(0);
+
+  function extractSearchableText(doc: Document | null): string {
+    if (!doc) return "";
+    const d = doc as any;
+    if (typeof d.content === "string") return d.content;
+    if (typeof d.pretty === "string") return d.pretty;
+    if (typeof d.html === "string") return d.html.replace(/<[^>]*>/g, " ");
+    if (Array.isArray(d.blocks)) {
+      return d.blocks
+        .map((b: any) => b.text ?? (b.inlines ?? []).map((i: any) => i.text ?? "").join(""))
+        .join("\n");
+    }
+    if (Array.isArray(d.sheets)) {
+      return d.sheets
+        .map((s: any) => [...(s.header ?? []), ...(s.preview_rows ?? []).flat()].join("\t"))
+        .join("\n");
+    }
+    return "";
+  }
+
+  async function onGlobalSearch(q: string, cs: boolean) {
+    searchQuery = q;
+    searchCaseSensitive = cs;
+    if (!q) {
+      searchMatchCount = 0;
+      searchCurrentMatch = 0;
+      return;
+    }
+    const text = extractSearchableText(doc);
+    const { findAllMatches } = await import("./search");
+    const matches = findAllMatches(text, q, cs);
+    searchMatchCount = matches.length;
+    searchCurrentMatch = matches.length > 0 ? 1 : 0;
+  }
   let officeRuntimeChooserOpen = $state(false);
   let selectedOfficePlugin: PluginInfo | null = $state(null);
   let pptxVanillaPlugin: PluginInfo | null = $state(null);
@@ -1705,6 +1745,11 @@
   </main>
   {#if doc && !busy}
     <footer class="bottom-bar">
+      <SearchBar
+        onSearch={onGlobalSearch}
+        matchCount={searchMatchCount}
+        currentMatch={searchCurrentMatch}
+      />
       <button
         type="button"
         class="fs-toggle"
@@ -1941,7 +1986,7 @@
     min-height: 0;
     width: 100%;
     overflow-y: auto;
-    overflow-x: hidden;
+    overflow-x: auto;
     overscroll-behavior: contain;
   }
   .state-card {
