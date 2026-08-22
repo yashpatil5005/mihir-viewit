@@ -48,7 +48,7 @@ test("back exits full screen first, then leaves the document", async ({ page }) 
   await openTextFixture(page);
   await expect(page.locator(".text-viewer")).toBeVisible();
 
-  await page.locator(".app-header .fs-toggle").click();
+  await page.locator(".bottom-bar .fs-toggle").click();
   await expect(page.locator(".viewit-root")).toHaveClass(/fs-mode/);
 
   await page.keyboard.press("Alt+ArrowLeft");

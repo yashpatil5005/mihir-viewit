@@ -1394,34 +1394,8 @@
       >
         <Icon name={mode === "view" ? "grid" : "arrow-left"} />
       </button>
-      <!-- Always occupies its slot so opening a file never shifts any
-           pre-existing control (hard-freeze contract); enabled only when a
-           document is actually shown. -->
-      <button
-        class="fs-toggle"
-        class:pending={!(doc && !busy)}
-        disabled={!(doc && !busy)}
-        onclick={() => setFullscreen(!fullscreenState.active)}
-        aria-label={fullscreenState.active ? "Exit full screen" : "Enter full screen"}
-        aria-pressed={fullscreenState.active}
-        title={fullscreenState.active ? "Exit full screen" : "Full screen"}
-      >
-        <Icon name={fullscreenState.active ? "minimize" : "maximize"} />
-      </button>
     </div>
   </header>
-
-  {#if fullscreenState.active && doc && !busy}
-    <button
-      type="button"
-      class="fs-exit-chip"
-      onclick={() => setFullscreen(false)}
-      aria-label="Exit full screen"
-      title="Exit full screen (Esc)"
-    >
-      <Icon name="minimize" size={16} />
-    </button>
-  {/if}
 
   <main bind:this={mainEl}>
     {#if mode === "browse"}
@@ -1729,6 +1703,21 @@
       <p class="empty">Drop a file or pick one — everything opens.</p>
     {/if}
   </main>
+  {#if doc && !busy}
+    <footer class="bottom-bar">
+      <button
+        type="button"
+        class="fs-toggle"
+        onclick={() => setFullscreen(!fullscreenState.active)}
+        aria-label={fullscreenState.active ? "Exit full screen" : "Enter full screen"}
+        aria-pressed={fullscreenState.active}
+        title={fullscreenState.active ? "Exit full screen" : "Full screen"}
+      >
+        <Icon name={fullscreenState.active ? "minimize" : "maximize"} />
+        <span>{fullscreenState.active ? "Exit" : "Expand"}</span>
+      </button>
+    </footer>
+  {/if}
   <DebugPanel bind:open={debugOpen} />
   <PluginStore open={pluginStoreOpen} onClose={() => (pluginStoreOpen = false)} />
   <RuntimeChooser
@@ -1892,7 +1881,27 @@
   }
   /* Full screen mode: chrome steps aside; each handler restyles its own
      interior via `fullscreenState`. The chip guarantees a visible exit. */
-  .viewit-root.fs-mode .app-header {
+  .bottom-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    padding: 0.5rem max(1rem, env(safe-area-inset-right, 0px))
+      calc(0.5rem + env(safe-area-inset-bottom, 0px)) max(1rem, env(safe-area-inset-left, 0px));
+    border-top: 1px solid var(--border);
+    background: var(--bg-primary);
+    flex-shrink: 0;
+    z-index: 10;
+  }
+  .bottom-bar .fs-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 120px;
+    justify-content: center;
+  }
+  .viewit-root.fs-mode .app-header,
+  .viewit-root.fs-mode .bottom-bar {
     display: none;
   }
   .viewit-root.fs-mode main {

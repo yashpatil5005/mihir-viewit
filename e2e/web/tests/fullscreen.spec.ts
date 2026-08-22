@@ -16,14 +16,12 @@ test("header toggle enters and exits full screen for text documents", async ({ p
   await openTextFixture(page);
   await expect(page.locator(".text-viewer")).toBeVisible();
 
-  // Toggle button lives in the header controls pane next to Open file.
-  await expect(page.locator(".app-header .fs-toggle")).toBeVisible();
+  await expect(page.locator(".bottom-bar .fs-toggle")).toBeVisible();
 
-  await page.locator(".app-header .fs-toggle").click();
+  await page.locator(".bottom-bar .fs-toggle").click();
   await expect(page.locator(".viewit-root")).toHaveClass(/fs-mode/);
   await expect(page.locator(".app-header")).toBeHidden();
-  // A guaranteed exit affordance floats above the document.
-  await expect(page.locator(".fs-exit-chip")).toBeVisible();
+  await expect(page.locator(".bottom-bar")).toBeHidden();
   // Handler adaptation: the text meta line is hidden in full screen.
   await expect(page.locator(".text-viewer .meta")).toBeHidden();
 
@@ -38,11 +36,11 @@ test("exit chip returns to normal chrome", async ({ page }) => {
   await openTextFixture(page);
   await expect(page.locator(".text-viewer")).toBeVisible();
 
-  await page.locator(".app-header .fs-toggle").click();
+  await page.locator(".bottom-bar .fs-toggle").click();
   await expect(page.locator(".app-header")).toBeHidden();
-  await page.locator(".fs-exit-chip").click();
+  await page.keyboard.press("Escape");
   await expect(page.locator(".app-header")).toBeVisible();
-  await expect(page.locator(".fs-exit-chip")).toHaveCount(0);
+  await expect(page.locator(".bottom-bar .fs-toggle")).toBeVisible();
 });
 
 test("media full screen requests native element fullscreen once", async ({ page }) => {
@@ -82,7 +80,7 @@ test("media full screen requests native element fullscreen once", async ({ page 
   await chooser.setFiles({ name: "tone.wav", mimeType: "audio/wav", buffer: wav });
   await expect(page.locator(".media-viewer")).toBeVisible({ timeout: 15_000 });
 
-  await page.locator(".app-header .fs-toggle").click();
+  await page.locator(".bottom-bar .fs-toggle").click();
   await expect(page.locator(".media-viewer")).toHaveClass(/fs/);
   expect(await page.evaluate(() => (window as any).__fsCalls)).toBeGreaterThanOrEqual(1);
 });
