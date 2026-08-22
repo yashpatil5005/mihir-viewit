@@ -41,7 +41,71 @@ export interface BrowseListing {
   entries: BrowseEntry[];
 }
 
-/** List a directory via the native side. Returns null when unsupported. */
+/**
+ * Friendly display names for storage roots. `/sdcard` and
+ * `/storage/emulated/0` are the emulated INTERNAL storage — never call them
+ * "sdcard" in the UI. Removable cards surface as `/storage/XXXX-XXXX`.
+ */
+const STORAGE_ROOT_LABELS: Array<{ prefix: string; label: string }> = [
+  { prefix: "/storage/emulated/0", label: "Internal storage" },
+  { prefix: "/sdcard", label: "Internal storage" },
+  { prefix: "/mnt/sdcard", label: "Internal storage" },
+  { prefix: "/mnt/shell/emulated", label: "Internal storage" },
+];
+
+export interface Crumb {
+  label: string;
+  path: string;
+}
+
+/** Build human-labeled breadcrumb segments for a filesystem path. */
+export function friendlyCrumbs(path: string): Crumb[] {
+  const normalized = path.replace(/\/+$/, "");
+  let rootLabel: string | null = null;
+  let rest = normalized;
+  for (const root of STORAGE_ROOT_LABELS) {
+    if (normalized === root.prefix || normalized.startsWith(`${root.prefix}/`)) {
+      rootLabel = root.label;
+      rest = normalized.slice(root.prefix.length);
+      break;
+    }
+  }
+  if (rootLabel === null) {
+    const removable = normalized.match(/^\/storage\/([0-9A-Fa-f]{4}-[0-9A-Fa-f]{4})(\/|$)/);
+    if (removable) {
+      rootLabel = "SD card";
+      rest = normalized.slice(`/storage/${removable[1]}`.length);
+    }
+  }
+  const crumbs: Crumb[] = [];
+  if (rootLabel !== null) {
+    crumbs.push({
+      label: rootLabel,
+      path: normalized.slice(0, normalized.length - rest.length) || "/",
+    });
+  }
+  let acc = normalized.slice(0, normalized.length - rest.length);
+  for (const part of rest.split("/").filter(Boolean)) {
+    acc = `${acc}/${part}`.replace(/^\/\//, "/");
+    crumbs.push({ label: part, path: acc });
+  }
+  return crumbs.length > 0 ? crumbs : [{ label: normalized || "/", path: normalized }];
+}
+
+/**
+ * Tell the Android side whether the web layer can consume a back press.
+ * The native OnBackPressedCallback checks this flag synchronously when the
+ * user presses back/gesture, then invokes `window.__viewitConsumeBack()`.
+ */
+export function reportBackConsumer(active: boolean): void {
+  const bridge = (window as unknown as AndroidBridgeHost).AndroidBridge as unknown as {
+    reportBackConsumer?: (active: boolean) => void;
+  };
+  bridge?.reportBackConsumer?.(active);
+}
+
+/**
+ * List a directory via the native side. Returns null when unsupported. */
 export async function browseDir(path = ""): Promise<BrowseListing | null> {
   if (!IS_TAURI) return null;
   try {

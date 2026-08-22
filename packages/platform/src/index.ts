@@ -289,8 +289,11 @@ export {
   requestAllFilesAccess,
   browseDir,
   androidListDir,
+  friendlyCrumbs,
+  reportBackConsumer,
   type BrowseEntry,
   type BrowseListing,
+  type Crumb,
 } from "./browse";
 
 /** After `<input type="file">` — checks size/type first (no read for video/large). */

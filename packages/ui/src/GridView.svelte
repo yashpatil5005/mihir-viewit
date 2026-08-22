@@ -4,15 +4,32 @@
     androidBridgeAvailable,
     androidListDir,
     browseDir,
+    friendlyCrumbs,
     hasAllFilesAccess,
     pickSingleFile,
     requestAllFilesAccess,
     type BrowseEntry,
     type BrowseListing,
+    type Crumb,
   } from "@viewit/platform";
   import Icon from "./Icon.svelte";
 
-  let { onPick, root = "desktop" }: { onPick: (file: File) => void; root?: string } = $props();
+  let {
+    onPick,
+    root = "desktop",
+    initialPath = "",
+    onListed = undefined,
+    upSignal = 0,
+  }: {
+    onPick: (file: File) => void;
+    root?: string;
+    /** Folder to open on mount (back-navigation restore). */
+    initialPath?: string;
+    /** Fired after each successful listing with [path, parent|null]. */
+    onListed?: (path: string, parent: string | null) => void;
+    /** Increment to make the grid go up one folder. */
+    upSignal?: number;
+  } = $props();
 
   // Web keeps the directory-input fallback; Tauri roots get real browsing.
   let webEntries: Array<{ name: string; size: number; url: string; isImage: boolean }> = $state([]);
@@ -32,7 +49,72 @@
   }
   function extLabel(name: string) {
     const i = name.lastIndexOf(".");
-    return i >= 0 ? name.slice(i + 1).toUpperCase() : "?";
+    return i >= 0
+      ? name
+          .slice(i + 1)
+          .toUpperCase()
+          .slice(0, 4)
+      : "FILE";
+  }
+
+  type FileType = "image" | "music" | "video" | "archive" | "file-text" | "file";
+  const EXT_TYPES: Record<string, FileType> = {};
+  for (const e of [
+    "png",
+    "jpg",
+    "jpeg",
+    "gif",
+    "webp",
+    "bmp",
+    "svg",
+    "heic",
+    "heif",
+    "avif",
+    "tif",
+    "tiff",
+    "ico",
+  ])
+    EXT_TYPES[e] = "image";
+  for (const e of [
+    "mp3",
+    "wav",
+    "flac",
+    "ogg",
+    "oga",
+    "m4a",
+    "aac",
+    "opus",
+    "aiff",
+    "aif",
+    "wma",
+    "mid",
+    "midi",
+  ])
+    EXT_TYPES[e] = "music";
+  for (const e of ["mp4", "mkv", "mov", "avi", "webm", "m4v", "wmv", "flv", "ts", "3gp"])
+    EXT_TYPES[e] = "video";
+  for (const e of [
+    "zip",
+    "7z",
+    "rar",
+    "tar",
+    "gz",
+    "bz2",
+    "xz",
+    "zst",
+    "lz4",
+    "lzma",
+    "cab",
+    "iso",
+    "jar",
+    "apk",
+  ])
+    EXT_TYPES[e] = "archive";
+  function fileTypeIcon(name: string): FileType {
+    const ext = (
+      name.lastIndexOf(".") >= 0 ? name.slice(name.lastIndexOf(".") + 1) : name
+    ).toLowerCase();
+    return EXT_TYPES[ext] ?? "file-text";
   }
   function sizeLabel(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
@@ -67,8 +149,23 @@
       }
     } finally {
       loading = false;
+      if (listing) untrack(() => onListed?.(listing!.path, listing!.parent || null));
     }
   }
+
+  // Parent-driven "go up one folder" (back navigation from the app shell).
+  let lastUpSignal: number | null = null;
+  $effect(() => {
+    if (lastUpSignal === null) {
+      lastUpSignal = upSignal;
+      return;
+    }
+    if (upSignal !== lastUpSignal) {
+      lastUpSignal = upSignal;
+      const parent = untrack(() => listing?.parent ?? "");
+      if (parent && parent !== listing?.path) void untrack(() => load(parent));
+    }
+  });
 
   // Bootstrap once. `load()` writes several $state signals synchronously (the
   // Android bridge path is fully sync), so it must run untracked — otherwise
@@ -79,7 +176,8 @@
     if (bootstrapped) return;
     bootstrapped = true;
     const isAndroid = untrack(() => root === "mobile" && androidBridgeAvailable());
-    if (root !== "web") void untrack(() => load(""));
+    const start = untrack(() => initialPath);
+    if (root !== "web") void untrack(() => load(start));
     if (!isAndroid) return;
     // Re-check the Android grant when the user returns from Settings.
     const onVisible = () => {
@@ -89,16 +187,9 @@
     return () => document.removeEventListener("visibilitychange", onVisible);
   });
 
-  function crumbs(): Array<{ label: string; path: string }> {
+  function crumbs(): Crumb[] {
     if (!listing?.path) return [];
-    const parts = listing.path.split("/").filter(Boolean);
-    const out: Array<{ label: string; path: string }> = [];
-    let acc = "";
-    for (const part of parts) {
-      acc += `/${part}`;
-      out.push({ label: part, path: acc });
-    }
-    return out;
+    return friendlyCrumbs(listing.path);
   }
 
   function openEntry(entry: BrowseEntry) {
@@ -202,7 +293,10 @@
           {#if entry.isDir}
             <div class="icon dir"><Icon name="folder" /></div>
           {:else}
-            <div class="icon">{extLabel(entry.name)}</div>
+            <div class="icon ftype">
+              <Icon name={fileTypeIcon(entry.name)} size={40} strokeWidth={1.6} />
+              <span class="ext">{extLabel(entry.name)}</span>
+            </div>
           {/if}
           <span class="label">{entry.name}</span>
           {#if !entry.isDir}<span class="size">{sizeLabel(entry.size)}</span>{/if}
@@ -307,6 +401,32 @@
   }
   .icon.dir {
     color: var(--link);
+  }
+  .icon.ftype {
+    color: var(--text-secondary);
+    position: relative;
+    justify-content: center;
+  }
+  .icon.ftype :global(svg) {
+    opacity: 0.9;
+  }
+  .icon.ftype .ext {
+    position: absolute;
+    right: 0.4rem;
+    bottom: 0.4rem;
+    font-family: ui-monospace, monospace;
+    font-size: 0.55rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--text-primary);
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 0.25rem;
+    padding: 0.05rem 0.28rem;
+    max-width: 70%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .label {
     font-size: 0.75rem;

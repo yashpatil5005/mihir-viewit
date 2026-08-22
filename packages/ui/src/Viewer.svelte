@@ -201,6 +201,90 @@
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  // ---------------------------------------------------------------------------
+  // Back navigation. One priority list decides what a back press means; the
+  // Android side reports presses through the bridge, desktop/web use
+  // Alt+Left or the browser Back key.
+  // ---------------------------------------------------------------------------
+  let mainEl: HTMLElement | null = $state(null);
+
+  // Browse context preserved across "open file → back" round trips so the
+  // user lands exactly where they left: same folder, same scroll offset.
+  let browsePath = $state("");
+  let browseCanUp = $state(false);
+  let upSignal = $state(0);
+  let savedBrowseScroll = 0;
+  let restoreScrollPending = false;
+
+  function onGridListed(path: string, parent: string | null) {
+    browsePath = path;
+    // "/" (filesystem root) is never a useful place to go "back" to — at the
+    // storage root, back must fall through to backgrounding the app.
+    browseCanUp = Boolean(parent) && parent !== path && parent !== "/";
+    if (restoreScrollPending) {
+      restoreScrollPending = false;
+      const top = savedBrowseScroll;
+      void tick().then(() => requestAnimationFrame(() => mainEl?.scrollTo({ top })));
+    }
+  }
+
+  function consumeBack(): boolean {
+    // Overlays close first, innermost state first, app backgrounding last.
+    if (debugOpen) {
+      debugOpen = false;
+      return true;
+    }
+    if (pluginStoreOpen) {
+      pluginStoreOpen = false;
+      return true;
+    }
+    if (officeRuntimeChooserOpen) {
+      officeRuntimeChooserOpen = false;
+      return true;
+    }
+    if (fullscreenState.active) {
+      setFullscreen(false);
+      return true;
+    }
+    if (doc && mode === "view") {
+      mode = "browse";
+      return true;
+    }
+    if (mode === "browse" && browseCanUp) {
+      upSignal++;
+      return true;
+    }
+    return false;
+  }
+
+  $effect(() => {
+    // Report availability for the native back callback (Android). Reads of
+    // the individual flags keep this effect in sync with every state change.
+    const canConsume =
+      debugOpen ||
+      pluginStoreOpen ||
+      officeRuntimeChooserOpen ||
+      fullscreenState.active ||
+      Boolean(doc && mode === "view") ||
+      (mode === "browse" && browseCanUp);
+    if (androidBridgeAvailable()) reportBackConsumer(Boolean(canConsume));
+    if (typeof window !== "undefined") {
+      (window as unknown as { __viewitConsumeBack?: () => boolean }).__viewitConsumeBack = () =>
+        consumeBack();
+    }
+  });
+
+  $effect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
+      if ((e.altKey && e.key === "ArrowLeft") || e.key === "BrowserBack") {
+        if (consumeBack()) e.preventDefault();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
   import { onMount, onDestroy, tick } from "svelte";
   import { ActivationScope } from "@viewit/contracts/activation-scope";
   import {
@@ -210,6 +294,8 @@
     onOpenedFiles,
     checkFileBeforeRead,
     pickSingleFile,
+    reportBackConsumer,
+    androidBridgeAvailable,
   } from "@viewit/platform";
 
   let imagePreviewUrl: string | null = null;
@@ -461,6 +547,13 @@
     busy = true;
     setFullscreen(false);
     error = null;
+    // Leaving the browse screen: remember exactly where the user was so a
+    // back press restores this folder and scroll offset.
+    if (mode === "browse") {
+      savedBrowseScroll = mainEl?.scrollTop ?? 0;
+      restoreScrollPending = browsePath !== "";
+      mode = "view";
+    }
     const viewitUri = (f as File & { viewitUri?: string }).viewitUri;
     if (viewitUri) {
       const seq = ++loadSeq;
@@ -1330,24 +1423,24 @@
     </button>
   {/if}
 
-  <main>
+  <main bind:this={mainEl}>
     {#if mode === "browse"}
       <GridView
         {root}
-        onPick={(f) => {
-          mode = "view";
-          pickFile(f);
-        }}
+        initialPath={browsePath}
+        onListed={onGridListed}
+        {upSignal}
+        onPick={(f) => pickFile(f)}
       />
     {:else if !busy && !error && !doc}
       <Onboarding />
       <p class="empty">Drop a file or pick one — everything opens.</p>
       <GridView
         {root}
-        onPick={(f) => {
-          mode = "view";
-          pickFile(f);
-        }}
+        initialPath={browsePath}
+        onListed={onGridListed}
+        {upSignal}
+        onPick={(f) => pickFile(f)}
       />
     {:else if busy}
       <div class="state-card" role="status" aria-live="polite">
@@ -2035,38 +2128,33 @@
   }
   @media (max-width: 680px) {
     .app-header {
-      align-items: stretch;
-      flex-direction: column;
+      align-items: center;
       gap: 0.55rem;
+    }
+    .brand {
+      flex: 0 0 auto;
     }
     .brand span {
       display: none;
     }
+    .brand h1 {
+      font-size: 1rem;
+    }
+    /* One row always — actions scroll horizontally instead of wrapping, so
+       opening a file can never shift or reflow any control. */
     .header-actions {
-      display: grid;
-      grid-template-columns: repeat(5, minmax(44px, auto));
-      justify-content: stretch;
-      gap: 0.4rem;
+      overflow-x: auto;
+      scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
     }
-    .header-actions > button {
-      width: 100%;
-    }
-    .header-actions .primary-action {
-      grid-column: span 2;
+    .header-actions::-webkit-scrollbar {
+      display: none;
     }
     .hint-btn span {
       display: none;
     }
     main {
       padding-top: 0.75rem;
-    }
-  }
-  @media (max-width: 420px) {
-    .header-actions {
-      grid-template-columns: repeat(4, minmax(44px, 1fr));
-    }
-    .header-actions .primary-action {
-      grid-column: span 2;
     }
   }
   @media (prefers-reduced-motion: reduce) {

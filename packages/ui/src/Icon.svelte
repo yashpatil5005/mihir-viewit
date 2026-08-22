@@ -5,15 +5,19 @@
     strokeWidth = 2,
   }: {
     name:
+      | "archive"
       | "arrow-left"
       | "arrow-right"
       | "chevron-down"
       | "chevron-up"
       | "file"
+      | "file-text"
       | "file-plus"
       | "folder"
       | "folder-open"
       | "grid"
+      | "image"
+      | "music"
       | "list"
       | "lock"
       | "maximize"
@@ -22,6 +26,7 @@
       | "package"
       | "sun"
       | "terminal"
+      | "video"
       | "x";
     size?: number;
     strokeWidth?: number;
@@ -95,6 +100,27 @@
     <path d="M16 3h3a2 2 0 0 1 2 2v3" />
     <path d="M8 21H5a2 2 0 0 1-2-2v-3" />
     <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+  {:else if name === "archive"}
+    <path d="M21 8v13H3V8" />
+    <path d="M1 3h22v5H1z" />
+    <path d="M10 12h4" />
+  {:else if name === "file-text"}
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <path d="M14 2v6h6" />
+    <path d="M16 13H8" />
+    <path d="M16 17H8" />
+    <path d="M10 9H8" />
+  {:else if name === "image"}
+    <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+    <circle cx="9" cy="9" r="2" />
+    <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+  {:else if name === "music"}
+    <path d="M9 18V5l12-2v13" />
+    <circle cx="6" cy="18" r="3" />
+    <circle cx="18" cy="16" r="3" />
+  {:else if name === "video"}
+    <path d="m22 8-6 4 6 4V8Z" />
+    <rect width="14" height="12" x="2" y="6" rx="2" ry="2" />
   {:else if name === "minimize"}
     <path d="M8 3v3a2 2 0 0 1-2 2H3" />
     <path d="M21 8h-3a2 2 0 0 1-2-2V3" />

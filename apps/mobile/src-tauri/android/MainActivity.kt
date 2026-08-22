@@ -11,6 +11,7 @@ import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
 import org.json.JSONArray
 import org.json.JSONObject
@@ -20,6 +21,7 @@ import java.security.MessageDigest
 
 class MainActivity : TauriActivity() {
   private var bridgeWebView: WebView? = null
+  @Volatile private var backConsumable = false
   private var androidBridge: AndroidBridge? = null
   @Volatile private var destroyed = false
 
@@ -247,6 +249,31 @@ class MainActivity : TauriActivity() {
     )
     super.onCreate(savedInstanceState)
     consumeIncomingIntent(intent)
+    // Back never kills the app outright: the web layer reports whether it can
+    // consume (overlays > fullscreen > viewer->browse > folder up). Only when
+    // nothing is left does back background the app, keeping state intact.
+    onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+      override fun handleOnBackPressed() {
+        if (backConsumable) {
+          bridgeWebView?.evaluateJavascript(
+            "window.__viewitConsumeBack && window.__viewitConsumeBack();", null
+          )
+        } else {
+          // moveTaskToBack no-ops on some Samsung/OneUI launcher paths; the
+          // HOME intent is what the system Back/Home gesture effectively does
+          // and reliably backgrounds us without killing process state.
+          val home = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+          }
+          try {
+            startActivity(home)
+          } catch (_: Exception) {
+            moveTaskToBack(true)
+          }
+        }
+      }
+    })
   }
 
   override fun onWebViewCreate(webView: WebView) {
@@ -556,6 +583,12 @@ class MainActivity : TauriActivity() {
     fun materializeExternalUri(uri: String, ext: String): String = materializeExternalUri(uri, ext, "")
 
     // ---- Browse mode: real filesystem listing + All-files-access flow. ----
+
+    /** Web layer tells native whether a back press should be consumed in-app. */
+    @JavascriptInterface
+    fun reportBackConsumer(active: Boolean) {
+      backConsumable = active
+    }
 
     /** True when the app may read shared storage directly (Android 11+). */
     @JavascriptInterface
