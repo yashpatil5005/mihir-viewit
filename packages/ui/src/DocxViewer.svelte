@@ -1,7 +1,6 @@
 <script lang="ts">
   // Phase 3.1 — DOCX viewer. Renders blocks: paragraphs (heading-aware),
   // list items, tables, image placeholders.
-  import SearchBar from "./SearchBar.svelte";
   import { findAllMatches } from "./search";
 
   type InlineImage = { name?: string; src?: string };
@@ -18,13 +17,34 @@
 
   import { fullscreenState } from "./fullscreen.svelte";
 
-  let { document: docProp = {} }: { document?: any } = $props();
+  let {
+    document: docProp = {},
+    searchQuery = "",
+    searchCaseSensitive = false,
+    onSearchResult = (_count: number, _current: number) => {},
+  }: {
+    document?: any;
+    searchQuery?: string;
+    searchCaseSensitive?: boolean;
+    onSearchResult?: (count: number, current: number) => void;
+  } = $props();
 
   let blocks = $derived((docProp.blocks ?? []) as Array<any>);
   let pluginHtml = $derived((docProp.html ?? "") as string);
   let byte_len = $derived((docProp.byte_len ?? 0) as number);
   let query = $state("");
   let caseSensitive = $state(false);
+
+  $effect(() => {
+    const q = searchQuery;
+    const cs = searchCaseSensitive;
+    if (q === query && cs === caseSensitive) return;
+    query = q;
+    caseSensitive = cs;
+    const text = blocks.map((b) => b.text ?? inlineText(b.inlines ?? [])).join(" ");
+    const m = findAllMatches(text, q, cs);
+    onSearchResult(m.length, m.length > 0 ? 1 : 0);
+  });
 
   let outline = $derived(
     blocks

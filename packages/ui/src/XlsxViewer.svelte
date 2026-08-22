@@ -1,10 +1,19 @@
 <script lang="ts">
   // Phase 3.2 — XLSX viewer. Multi-sheet: tab strip + virtualized grid.
-  import SearchBar from "./SearchBar.svelte";
   import Icon from "./Icon.svelte";
   import { findAllMatches, escapeHtml } from "./search";
 
-  let { document: docProp = {} }: { document?: any } = $props();
+  let {
+    document: docProp = {},
+    searchQuery = "",
+    searchCaseSensitive = false,
+    onSearchResult = (_count: number, _current: number) => {},
+  }: {
+    document?: any;
+    searchQuery?: string;
+    searchCaseSensitive?: boolean;
+    onSearchResult?: (count: number, current: number) => void;
+  } = $props();
   let sheets = $derived(
     (docProp.sheets ?? []) as Array<{
       name: string;
@@ -40,6 +49,19 @@
   let activeSheet = $state(0);
   let query = $state("");
   let caseSensitive = $state(false);
+
+  $effect(() => {
+    const q = searchQuery;
+    const cs = searchCaseSensitive;
+    if (q === query && cs === caseSensitive) return;
+    query = q;
+    caseSensitive = cs;
+    const text = sheets
+      .map((s) => [...(s.header ?? []), ...(s.preview_rows ?? []).flat()].join("\t"))
+      .join("\n");
+    const m = findAllMatches(text, q, cs);
+    onSearchResult(m.length, m.length > 0 ? 1 : 0);
+  });
 
   $effect(() => {
     if (activeSheet >= sheets.length) activeSheet = 0;

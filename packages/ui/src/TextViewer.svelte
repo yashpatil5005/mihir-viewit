@@ -7,7 +7,18 @@
     encoding = "utf-8",
     byte_len = 0,
     truncated = false,
-  }: { content: string; encoding?: string; byte_len?: number; truncated?: boolean } = $props();
+    searchQuery = "",
+    searchCaseSensitive = false,
+    onSearchResult = (_count: number, _current: number) => {},
+  }: {
+    content: string;
+    encoding?: string;
+    byte_len?: number;
+    truncated?: boolean;
+    searchQuery?: string;
+    searchCaseSensitive?: boolean;
+    onSearchResult?: (count: number, current: number) => void;
+  } = $props();
 
   const CHUNK_LINES = 400;
   const CHUNKS_PER_FRAME = 6;
@@ -92,15 +103,11 @@
   let currentIdx = $state(0);
   let contentEl: HTMLElement | null = $state(null);
 
-  // Bumped whenever highlighting inputs change, so cached per-chunk HTML can
-  // be invalidated cheaply without recomputing untouched documents.
   let highlightVersion = 0;
 
-  function runSearch(q: string, cs: boolean) {
-    // The SearchBar effect can fire with unchanged inputs whenever this
-    // component re-renders (its onSearch closure is recreated). Assigning
-    // fresh match arrays on every fire would invalidate state forever, so
-    // ignore no-op searches.
+  $effect(() => {
+    const q = searchQuery;
+    const cs = searchCaseSensitive;
     if (q === query && cs === caseSensitive) return;
     caseSensitive = cs;
     query = q;
@@ -108,7 +115,8 @@
     currentIdx = 0;
     highlightVersion++;
     scrollToMatch(0);
-  }
+    onSearchResult(matches.length, matches.length > 0 ? 1 : 0);
+  });
 
   // Rendered HTML per mounted chunk, computed in a single derived so the
   // each-block re-renders deterministically when mounting ramps up or the

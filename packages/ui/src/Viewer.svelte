@@ -1513,7 +1513,15 @@
           {:else if docUri && /\.desktop$/i.test(docUri) && DesktopEntryViewer}
             <DesktopEntryViewer {...doc as any} />
           {:else}
-            <TextViewer {...doc as any} />
+            <TextViewer
+              {...doc as any}
+              {searchQuery}
+              {searchCaseSensitive}
+              onSearchResult={(count: number, current: number) => {
+                searchMatchCount = count;
+                searchCurrentMatch = current;
+              }}
+            />
           {/if}
         {/key}
       {:else if doc.kind === "image" && docUri}
@@ -1673,7 +1681,15 @@
               </div>
             {/if}
             {#if officeExt() === "odt" || officeExt() === "ott" || isIworkDocument() || Array.isArray((doc as any).blocks)}
-              <DocxViewer document={doc} />
+              <DocxViewer
+                document={doc}
+                {searchQuery}
+                {searchCaseSensitive}
+                onSearchResult={(count: number, current: number) => {
+                  searchMatchCount = count;
+                  searchCurrentMatch = current;
+                }}
+              />
             {:else}
               <DocxPreview source_uri={docUri ?? ""} />
             {/if}
@@ -1704,7 +1720,15 @@
             {/if}
             {#if (doc as any).html}<div class="plugin-html-surface">
                 {@html (doc as any).html}
-              </div>{:else}<XlsxViewer document={doc} />{/if}
+              </div>{:else}<XlsxViewer
+                document={doc}
+                {searchQuery}
+                {searchCaseSensitive}
+                onSearchResult={(count: number, current: number) => {
+                  searchMatchCount = count;
+                  searchCurrentMatch = current;
+                }}
+              />{/if}
           </div>
         {/key}
       {:else if doc.kind === "unsupported"}
