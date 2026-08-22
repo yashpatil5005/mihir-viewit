@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import {
     androidBridgeAvailable,
     androidListDir,
@@ -69,10 +70,18 @@
     }
   }
 
+  // Bootstrap once. `load()` writes several $state signals synchronously (the
+  // Android bridge path is fully sync), so it must run untracked — otherwise
+  // the write→read cycle inside this effect can wedge Svelte's flush loop
+  // (effect_update_depth_exceeded) and freeze all further UI updates.
+  let bootstrapped = false;
   $effect(() => {
-    if (root !== "web") void load("");
+    if (bootstrapped) return;
+    bootstrapped = true;
+    const isAndroid = untrack(() => root === "mobile" && androidBridgeAvailable());
+    if (root !== "web") void untrack(() => load(""));
+    if (!isAndroid) return;
     // Re-check the Android grant when the user returns from Settings.
-    if (!isAndroidBridge()) return;
     const onVisible = () => {
       if (document.visibilityState === "visible") void load(listing?.path ?? "");
     };
