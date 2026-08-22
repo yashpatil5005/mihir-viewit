@@ -279,7 +279,10 @@
       return;
     const pageEls = Array.from(containerEl.querySelectorAll(".page"));
     if (pageEls.length === 0) return;
-    const scrollY = window.scrollY;
+    // The app shell's <main> is the sole scroll container (frozen chrome), so
+    // track the current page against its scrollTop rather than the window's.
+    const scroller = containerEl.closest("main");
+    const scrollY = scroller ? scroller.scrollTop : (window.scrollY as number);
     let cur = 0;
     for (let i = 0; i < pageEls.length; i++) {
       if ((pageEls[i] as HTMLElement).offsetTop > scrollY) {
@@ -424,8 +427,8 @@
   }
   .thumbnail-sidebar {
     position: sticky;
-    top: calc(var(--header-h, 3.5rem) + 0.5rem);
-    max-height: calc(100vh - var(--header-h, 3.5rem) - 1rem);
+    top: 0.5rem;
+    max-height: calc(100vh - var(--header-h, 3.5rem) - 1.5rem);
     overflow-y: auto;
     display: flex;
     flex-direction: column;
@@ -467,7 +470,7 @@
   .native-page {
     width: 100%;
     min-height: 28rem;
-    scroll-margin-top: calc(var(--header-h, 3.5rem) + 0.5rem);
+    scroll-margin-top: 1rem;
   }
   .page-placeholder {
     width: min(100%, 40rem);
@@ -523,7 +526,7 @@
     }
     .thumbnail-sidebar {
       position: sticky;
-      top: calc(var(--header-h, 3.5rem) + 0.25rem);
+      top: 0.25rem;
       z-index: 2;
       flex-direction: row;
       max-height: none;

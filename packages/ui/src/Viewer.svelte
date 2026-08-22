@@ -1632,17 +1632,30 @@
     --error: #ff6b6b;
     --link: #6ea8ff;
   }
+  :global(html),
   :global(body) {
     margin: 0;
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  :global(body) {
     font-family: system-ui, sans-serif;
     color: var(--text-primary);
     background: var(--bg-primary);
   }
+  /* Hard-frozen app chrome: the shell is exactly the viewport and never grows
+     with document content. `main` is the only scroll container, so a file's
+     size or width can never reflow, wrap, or scale the header/controls
+     (this also prevents Android WebView zoom-out-to-fit on wide content). */
   .viewit-root {
     display: flex;
     flex-direction: column;
-    min-height: 100vh;
-    min-height: 100dvh;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
     transition: outline-color 0.15s ease;
   }
   .viewit-root.dragover {
@@ -1653,12 +1666,12 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 0.75rem;
     padding: calc(0.65rem + env(safe-area-inset-top, 0px))
       max(1rem, env(safe-area-inset-right, 0px)) 0.65rem max(1rem, env(safe-area-inset-left, 0px));
     border-bottom: 1px solid var(--border);
     background: var(--bg-primary);
-    position: sticky;
-    top: 0;
+    flex-shrink: 0;
     z-index: 10;
   }
   .brand {
@@ -1669,6 +1682,7 @@
     margin: 0;
     letter-spacing: -0.01em;
     color: var(--text-primary);
+    white-space: nowrap;
   }
   .brand span {
     display: block;
@@ -1676,13 +1690,17 @@
     color: var(--text-secondary);
     font-size: 0.7rem;
     letter-spacing: 0.02em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .header-actions {
     display: flex;
     gap: 0.5rem;
     align-items: center;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     justify-content: flex-end;
+    flex-shrink: 0;
   }
   .hint-btn {
     padding: 0.25rem 0.55rem;
@@ -1699,6 +1717,8 @@
     font-size: 0.85rem;
     min-width: 44px;
     min-height: 44px;
+    flex-shrink: 0;
+    white-space: nowrap;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1729,7 +1749,11 @@
     padding: 1rem max(1rem, env(safe-area-inset-right, 0px))
       max(1rem, env(safe-area-inset-bottom, 0px)) max(1rem, env(safe-area-inset-left, 0px));
     flex: 1;
+    min-height: 0;
     width: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
   }
   .state-card {
     display: flex;

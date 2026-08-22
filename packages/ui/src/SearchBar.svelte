@@ -1,5 +1,6 @@
 <script lang="ts">
   // Phase 5.2 — Search bar used by text-bearing viewers.
+  import { untrack } from "svelte";
   import Icon from "./Icon.svelte";
   let {
     onSearch = (q: string, cs: boolean) => {},
@@ -19,7 +20,11 @@
   let caseSensitive = $state(false);
 
   $effect(() => {
-    onSearch(query, caseSensitive);
+    const q = query;
+    const cs = caseSensitive;
+    // Depend only on the query inputs, never on the callback identity —
+    // parents recreate their onSearch closure on every render.
+    untrack(() => onSearch(q, cs));
   });
 </script>
 

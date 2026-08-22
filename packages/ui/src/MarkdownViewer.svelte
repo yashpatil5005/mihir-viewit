@@ -39,6 +39,12 @@
     margin-bottom: 1rem;
     font-size: 0.75rem;
   }
+  /* Offscreen blocks skip layout/paint, so large markdown documents never
+     freeze the shell while mounting. */
+  .prose > :global(*) {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 3rem;
+  }
   .prose :global(h1) {
     font-size: 1.8rem;
     margin: 1.5rem 0 0.75rem;

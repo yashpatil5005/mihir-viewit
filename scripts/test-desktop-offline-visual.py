@@ -54,6 +54,8 @@ CASES = (
     VisualCase("sample.numbers", ("apple numbers", "50000")),
     VisualCase("sample.key", ("apple keynote", "keynote presentation slide 1")),
     VisualCase("sample.ttf", ("liberation",)),
+    # Deterministic multi-MB stress fixture (frozen-chrome regression guard).
+    VisualCase("stress.log", ("bytes", "lines", "encoding")),
 )
 
 

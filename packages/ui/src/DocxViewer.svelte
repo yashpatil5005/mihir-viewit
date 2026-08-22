@@ -258,7 +258,7 @@
   }
   .toolbar {
     position: sticky;
-    top: 3.2rem;
+    top: 0.25rem;
     z-index: 3;
     background: var(--bg-primary);
     border-bottom: 1px solid var(--border);
@@ -287,8 +287,8 @@
   }
   .outline {
     position: sticky;
-    top: 8rem;
-    max-height: calc(100vh - 9rem);
+    top: 5rem;
+    max-height: calc(100vh - 6rem);
     overflow: auto;
     border: 1px solid var(--border);
     border-radius: 0.75rem;
@@ -328,6 +328,13 @@
   .body {
     line-height: 1.68;
     padding: clamp(1rem, 4vw, 2.5rem);
+  }
+  /* Offscreen blocks skip layout and paint, so huge documents mount and
+     scroll without locking the compositor; intrinsic size keeps the
+     scrollbar stable while blocks are skipped. */
+  .body > * {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 3rem;
   }
   .body :global(h1) {
     font-size: 1.8rem;
