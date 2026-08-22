@@ -93,6 +93,31 @@ export function friendlyCrumbs(path: string): Crumb[] {
 }
 
 /**
+ * Sync asset-protocol URL for a local file (thumbnails, posters). Returns
+ * null before `warmFileSrc()` resolves and on the plain web root.
+ */
+let convertFn: ((path: string) => string) | null | undefined;
+
+export function fileSrcUrl(path: string): string | null {
+  if (!IS_TAURI || !convertFn) return null;
+  return convertFn(path);
+}
+
+export async function warmFileSrc(): Promise<void> {
+  if (convertFn !== undefined) return;
+  if (!IS_TAURI) {
+    convertFn = null;
+    return;
+  }
+  try {
+    const { convertFileSrc } = await import("@tauri-apps/api/core");
+    convertFn = convertFileSrc;
+  } catch {
+    convertFn = null;
+  }
+}
+
+/**
  * Tell the Android side whether the web layer can consume a back press.
  * The native OnBackPressedCallback checks this flag synchronously when the
  * user presses back/gesture, then invokes `window.__viewitConsumeBack()`.

@@ -291,6 +291,8 @@ export {
   androidListDir,
   friendlyCrumbs,
   reportBackConsumer,
+  fileSrcUrl,
+  warmFileSrc,
   type BrowseEntry,
   type BrowseListing,
   type Crumb,

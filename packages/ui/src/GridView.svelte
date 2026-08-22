@@ -1,13 +1,15 @@
 <script lang="ts">
-  import { untrack } from "svelte";
+  import { onDestroy, untrack } from "svelte";
   import {
     androidBridgeAvailable,
     androidListDir,
     browseDir,
+    fileSrcUrl,
     friendlyCrumbs,
     hasAllFilesAccess,
     pickSingleFile,
     requestAllFilesAccess,
+    warmFileSrc,
     type BrowseEntry,
     type BrowseListing,
     type Crumb,
@@ -116,6 +118,35 @@
     ).toLowerCase();
     return EXT_TYPES[ext] ?? "file-text";
   }
+  // ---- Previews -----------------------------------------------------------
+  // Images render as <img>, videos as first-frame <video> posters, both fed
+  // by the asset protocol. Media mounts only once its cell scrolls into
+  // view; failures fall back to the type icon.
+  let srcVersion = $state(0);
+  let visiblePaths = $state<Set<string>>(new Set());
+  let failedPreviews = $state<Set<string>>(new Set());
+  let observer: IntersectionObserver | null = null;
+
+  void (async () => {
+    await warmFileSrc();
+    srcVersion++;
+  })();
+
+  function markPreviewFailed(path: string) {
+    const next = new Set(failedPreviews);
+    next.add(path);
+    failedPreviews = next;
+  }
+
+  function lazyPreview(node: HTMLElement, path: string) {
+    observer?.observe(node);
+    return {
+      destroy() {
+        observer?.unobserve(node);
+      },
+    };
+  }
+
   function sizeLabel(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
@@ -165,6 +196,32 @@
       const parent = untrack(() => listing?.parent ?? "");
       if (parent && parent !== listing?.path) void untrack(() => load(parent));
     }
+  });
+
+  // Shared IntersectionObserver gating preview media until cells scroll
+  // into view (folders can hold hundreds of entries).
+  observer =
+    typeof IntersectionObserver === "function"
+      ? new IntersectionObserver(
+          (entries) => {
+            let changed = false;
+            const next = new Set(visiblePaths);
+            for (const e of entries) {
+              const path = (e.target as HTMLElement).dataset.previewPath;
+              if (!path) continue;
+              if (e.isIntersecting && !next.has(path)) {
+                next.add(path);
+                changed = true;
+              }
+            }
+            if (changed) visiblePaths = next;
+          },
+          { root: null, rootMargin: "256px" },
+        )
+      : null;
+  onDestroy(() => {
+    observer?.disconnect();
+    observer = null;
   });
 
   // Bootstrap once. `load()` writes several $state signals synchronously (the
@@ -289,14 +346,56 @@
         </button>
       {/if}
       {#each listing.entries as entry (entry.path)}
-        <button type="button" class="cell" onclick={() => openEntry(entry)} role="gridcell">
+        <button
+          type="button"
+          class="cell"
+          onclick={() => openEntry(entry)}
+          role="gridcell"
+          use:lazyPreview={entry.path}
+          data-preview-path={entry.path}
+        >
           {#if entry.isDir}
             <div class="icon dir"><Icon name="folder" /></div>
           {:else}
-            <div class="icon ftype">
-              <Icon name={fileTypeIcon(entry.name)} size={40} strokeWidth={1.6} />
-              <span class="ext">{extLabel(entry.name)}</span>
-            </div>
+            {@const kind = fileTypeIcon(entry.name)}
+            {@const src = fileSrcUrl(entry.path)}
+            {@const canPreview =
+              (kind === "image" || kind === "video") &&
+              !failedPreviews.has(entry.path) &&
+              visiblePaths.has(entry.path) &&
+              src !== null &&
+              /* tracked so cells upgrade to previews once URLs warm up */
+              srcVersion >= 0}
+            {#if canPreview}
+              <div class="tile">
+                {#if kind === "image"}
+                  <img
+                    class="thumb"
+                    {src}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    onerror={() => markPreviewFailed(entry.path)}
+                  />
+                {:else}
+                  <!-- svelte-ignore a11y_media_has_caption -->
+                  <video
+                    class="thumb"
+                    {src}
+                    preload="metadata"
+                    muted
+                    playsinline
+                    onerror={() => markPreviewFailed(entry.path)}
+                  ></video>
+                {/if}
+                <span class="ext">{extLabel(entry.name)}</span>
+              </div>
+            {:else}
+              <div class="icon ftype">
+                <Icon name={kind} size={40} strokeWidth={1.6} />
+                <span class="ext">{extLabel(entry.name)}</span>
+              </div>
+            {/if}
           {/if}
           <span class="label">{entry.name}</span>
           {#if !entry.isDir}<span class="size">{sizeLabel(entry.size)}</span>{/if}
@@ -427,6 +526,20 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  /* Live previews fill the tile; the ext badge overlays like a file manager. */
+  .tile {
+    position: relative;
+    height: 96px;
+    border-radius: 0.3rem;
+    overflow: hidden;
+    background: var(--bg-secondary);
+  }
+  .thumb {
+    width: 100%;
+    height: 96px;
+    object-fit: cover;
+    display: block;
   }
   .label {
     font-size: 0.75rem;
