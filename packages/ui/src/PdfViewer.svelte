@@ -23,6 +23,8 @@
     };
   }
 
+  import { fullscreenState } from "./fullscreen.svelte";
+
   let {
     document: docProp = {},
     source_uri = "",
@@ -318,20 +320,22 @@
   });
 </script>
 
-<article class="pdf-viewer">
-  <aside class="meta">
-    {#if native}
-      <strong>{docProp.name ?? "PDF"}</strong> · pdf.js · {byte_len.toLocaleString()} bytes
-    {:else}
-      <strong>{page_count} page{page_count !== 1 ? "s" : ""}</strong> · {byte_len.toLocaleString()} bytes
-      · pdf
-    {/if}
-    {#if native && pdfjsPageCount > 0}
-      <button class="thumbnail-toggle" onclick={() => (showThumbnails = !showThumbnails)}>
-        {showThumbnails ? "Hide" : "Show"} thumbnails
-      </button>
-    {/if}
-  </aside>
+<article class="pdf-viewer" class:fs={fullscreenState.active}>
+  {#if !fullscreenState.active}
+    <aside class="meta">
+      {#if native}
+        <strong>{docProp.name ?? "PDF"}</strong> · pdf.js · {byte_len.toLocaleString()} bytes
+      {:else}
+        <strong>{page_count} page{page_count !== 1 ? "s" : ""}</strong> · {byte_len.toLocaleString()}
+        bytes · pdf
+      {/if}
+      {#if native && pdfjsPageCount > 0}
+        <button class="thumbnail-toggle" onclick={() => (showThumbnails = !showThumbnails)}>
+          {showThumbnails ? "Hide" : "Show"} thumbnails
+        </button>
+      {/if}
+    </aside>
+  {/if}
   {#if native}
     <div class="native-layout" class:with-thumbnails={showThumbnails && pdfjsPageCount > 0}>
       {#if showThumbnails && pdfjsPageCount > 0}
@@ -405,6 +409,14 @@
 <style>
   .pdf-viewer {
     padding: 0.5rem 1rem;
+  }
+  /* Full screen: pages own the whole viewport, no chrome-adjacent padding. */
+  .pdf-viewer.fs {
+    padding: 0.25rem;
+  }
+  .pdf-viewer.fs .native-page {
+    min-height: 0;
+    scroll-margin-top: 0.25rem;
   }
   .meta {
     color: var(--text-secondary);

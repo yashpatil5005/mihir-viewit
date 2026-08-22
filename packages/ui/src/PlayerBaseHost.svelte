@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import { loadJsPlugin, type PluginInfo } from "./pluginBridge";
+  import { fullscreenState, setFullscreen } from "./fullscreen.svelte";
 
   let {
     source = "",
@@ -55,9 +56,27 @@
     }
     player = null;
   });
+
+  // The plugin player's full screen mode is native element fullscreen on its
+  // host; system-level exits sync the shared chrome state back.
+  $effect(() => {
+    if (!fullscreenState.active) return;
+    const el = hostEl as (HTMLDivElement & { requestFullscreen?: () => Promise<void> }) | null;
+    if (!el || typeof el.requestFullscreen !== "function") return;
+    el.requestFullscreen().catch(() => {
+      /* plugin keeps its in-page layout as the fallback */
+    });
+  });
+  $effect(() => {
+    const onFsChange = () => {
+      if (!document.fullscreenElement && fullscreenState.active) setFullscreen(false);
+    };
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () => document.removeEventListener("fullscreenchange", onFsChange);
+  });
 </script>
 
-<div class="player-base">
+<div class="player-base" class:fs={fullscreenState.active}>
   {#if status === "loading"}<p class="status">Loading custom player…</p>{/if}
   {#if status === "error"}<p class="status error">{errorMsg}</p>{/if}
   <div class="player-host" class:busy={status !== "ready"} bind:this={hostEl}></div>
@@ -86,5 +105,13 @@
   }
   .player-host.busy {
     visibility: hidden;
+  }
+  /* Full screen: the plugin host owns the viewport. */
+  .player-base.fs {
+    height: 100dvh;
+  }
+  .player-base.fs .player-host {
+    min-height: 0;
+    border-radius: 0;
   }
 </style>

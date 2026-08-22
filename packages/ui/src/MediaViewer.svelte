@@ -25,6 +25,8 @@
   let src = $state("");
   let errorMsg = $state("");
   let showExternalBtn = $state(false);
+  import { fullscreenState, setFullscreen } from "./fullscreen.svelte";
+
   let mediaEl = $state<HTMLVideoElement | HTMLAudioElement | null>(null);
   let loadStart = 0;
   let blobUrl = $state("");
@@ -437,6 +439,26 @@
     if (blobUrl) URL.revokeObjectURL(blobUrl);
   });
 
+  // Media's full screen mode is the real native element fullscreen: the
+  // video gets OS-level immersion, rotation and system player controls.
+  // Exiting via Esc/system gesture syncs the shared state back so the app
+  // chrome returns.
+  $effect(() => {
+    if (!fullscreenState.active) return;
+    const el = mediaEl as (HTMLVideoElement & { requestFullscreen?: () => Promise<void> }) | null;
+    if (!el || typeof el.requestFullscreen !== "function") return;
+    el.requestFullscreen().catch((e) => {
+      debugLog(`[media] native fullscreen unavailable: ${String(e).slice(0, 80)}`);
+    });
+  });
+  $effect(() => {
+    const onFsChange = () => {
+      if (!document.fullscreenElement && fullscreenState.active) setFullscreen(false);
+    };
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () => document.removeEventListener("fullscreenchange", onFsChange);
+  });
+
   function onLoad() {
     const elapsed = Date.now() - loadStart;
     debugLog(`[media] loaded in ${elapsed}ms via ${currentStrategy}`);
@@ -564,7 +586,7 @@
   }
 </script>
 
-<article class="media-viewer">
+<article class="media-viewer" class:fs={fullscreenState.active}>
   <aside class="meta">
     <strong>{name}</strong>
     <span class="tag">{format}</span>
@@ -666,6 +688,19 @@
     flex-direction: column;
     height: 100%;
     min-height: 40vh;
+  }
+  /* Full screen: the stage fills everything above the control bar. */
+  .media-viewer.fs {
+    height: 100dvh;
+    min-height: 0;
+    justify-content: space-between;
+  }
+  .media-viewer.fs :global(video),
+  .media-viewer.fs :global(audio) {
+    width: 100%;
+    max-height: calc(100dvh - 96px);
+    object-fit: contain;
+    background: #000;
   }
   .meta {
     display: flex;

@@ -283,6 +283,15 @@ export {
 } from "./formatCapabilities";
 export { pickSingleFile } from "./pickFile";
 export { debugLog, debugLogLines, debugLogClear } from "./debugLog";
+export {
+  androidBridgeAvailable,
+  hasAllFilesAccess,
+  requestAllFilesAccess,
+  browseDir,
+  androidListDir,
+  type BrowseEntry,
+  type BrowseListing,
+} from "./browse";
 
 /** After `<input type="file">` — checks size/type first (no read for video/large). */
 const STREAM_PICKER_EXT = new Set([

@@ -207,6 +207,79 @@ fn probe_uri(_app: tauri::AppHandle, _uri: String, _name: Option<String>) -> Res
     Ok(None)
 }
 
+#[derive(serde::Serialize)]
+struct BrowseEntry {
+    name: String,
+    path: String,
+    is_dir: bool,
+    size: u64,
+}
+
+#[derive(serde::Serialize)]
+struct BrowseListing {
+    path: String,
+    parent: Option<String>,
+    entries: Vec<BrowseEntry>,
+}
+
+fn browse_default_root() -> String {
+    // Desktop starts in the user's Downloads directory, falling back to HOME.
+    for candidate in ["XDG_DOWNLOAD_DIR", "HOME"] {
+        if let Some(dir) = std::env::var_os(candidate) {
+            let dir = std::path::PathBuf::from(dir);
+            if candidate == "XDG_DOWNLOAD_DIR" || dir.is_dir() {
+                return dir.to_string_lossy().into_owned();
+            }
+        }
+    }
+    ".".into()
+}
+
+fn read_browse_dir(path: Option<String>) -> Result<BrowseListing, String> {
+    let path = match path {
+        Some(p) if !p.trim().is_empty() => p
+            .strip_prefix("file://")
+            .unwrap_or(&p)
+            .trim_end_matches('/')
+            .to_string(),
+        _ => browse_default_root(),
+    };
+    let dir = std::path::PathBuf::from(&path);
+    let mut entries: Vec<BrowseEntry> = Vec::new();
+    let read_dir =
+        std::fs::read_dir(&dir).map_err(|e| format!("cannot list {}: {e}", dir.display()))?;
+    for item in read_dir.flatten() {
+        let Ok(meta) = item.metadata() else { continue };
+        let name = item.file_name().to_string_lossy().into_owned();
+        if name.starts_with('.') {
+            continue;
+        }
+        entries.push(BrowseEntry {
+            name,
+            path: item.path().to_string_lossy().into_owned(),
+            is_dir: meta.is_dir(),
+            size: meta.len(),
+        });
+    }
+    entries.sort_by(|a, b| {
+        b.is_dir
+            .cmp(&a.is_dir)
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
+    let parent = dir.parent().map(|p| p.to_string_lossy().into_owned());
+    Ok(BrowseListing {
+        path: dir.to_string_lossy().into_owned(),
+        parent,
+        entries,
+    })
+}
+
+/// Real filesystem browsing for the app's Browse mode (desktop + mobile).
+#[tauri::command]
+fn browse_dir(path: Option<String>) -> Result<BrowseListing, String> {
+    read_browse_dir(path)
+}
+
 #[tauri::command]
 fn desktop_e2e_report(payload: String) -> Result<bool, String> {
     let Some(path) = std::env::var_os("VIEWIT_DESKTOP_E2E_REPORT") else {
@@ -588,6 +661,7 @@ pub fn run() {
             epub_chapter,
             archive_extract,
             pdf_page,
+            browse_dir,
             desktop_e2e_report
         ])
         .setup(|app| {

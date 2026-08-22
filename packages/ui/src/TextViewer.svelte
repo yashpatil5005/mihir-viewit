@@ -1,5 +1,6 @@
 <script lang="ts">
   import SearchBar from "./SearchBar.svelte";
+  import { fullscreenState } from "./fullscreen.svelte";
   import { findAllMatches, escapeHtml, type Match } from "./search";
 
   let {
@@ -187,7 +188,7 @@
   }
 </script>
 
-<article class="text-viewer">
+<article class="text-viewer" class:fs={fullscreenState.active}>
   <SearchBar
     onSearch={runSearch}
     matchCount={matches.length}
@@ -220,6 +221,9 @@
   .text-viewer {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 0.875rem;
+  }
+  .text-viewer.fs .meta {
+    display: none;
   }
   .meta {
     font-family: system-ui, sans-serif;

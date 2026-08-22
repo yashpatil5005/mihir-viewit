@@ -39,6 +39,7 @@
   import PluginStore from "./PluginStore.svelte";
   import RuntimeChooser from "./RuntimeChooser.svelte";
   import Icon from "./Icon.svelte";
+  import { fullscreenState, setFullscreen } from "./fullscreen.svelte";
   import OfficePluginHtmlViewer from "./OfficePluginHtmlViewer.svelte";
   import {
     archiveBridgeFor,
@@ -189,6 +190,16 @@
   let officeFidelity: string = $state("");
   let officeRendererLabel: string = $state("");
   let loadSeq = 0;
+
+  // Full screen is chrome-level (header toggle) while the look inside is each
+  // handler's own business — viewers read `fullscreenState` and adapt.
+  $effect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && fullscreenState.active) setFullscreen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   import { onMount, onDestroy, tick } from "svelte";
   import { ActivationScope } from "@viewit/contracts/activation-scope";
@@ -407,6 +418,7 @@
     const mimeHint = pendingMime ?? undefined;
     const pluginHint = pendingPlugin ?? undefined;
     busy = true;
+    setFullscreen(false);
     error = null;
     doc = null;
     docUri = uri;
@@ -447,6 +459,7 @@
 
   async function pickFile(f: File) {
     busy = true;
+    setFullscreen(false);
     error = null;
     const viewitUri = (f as File & { viewitUri?: string }).viewitUri;
     if (viewitUri) {
@@ -1126,6 +1139,7 @@
     const uri = docUri;
     const seq = ++loadSeq;
     busy = true;
+    setFullscreen(false);
     busyHint = `Opening with ${plugin.name}…`;
     error = null;
     selectedOfficePlugin = plugin;
@@ -1179,6 +1193,7 @@
     if (!uri) return;
     const seq = ++loadSeq;
     busy = true;
+    setFullscreen(false);
     busyHint = "Opening with built-in lightweight viewer…";
     error = null;
     selectedOfficePlugin = null;
@@ -1229,6 +1244,7 @@
 <div
   class="viewit-root"
   class:dragover={dragOver}
+  class:fs-mode={fullscreenState.active}
   data-root={root}
   role="region"
   aria-label="ViewIt file viewer"
@@ -1285,8 +1301,34 @@
       >
         <Icon name={mode === "view" ? "grid" : "arrow-left"} />
       </button>
+      <!-- Always occupies its slot so opening a file never shifts any
+           pre-existing control (hard-freeze contract); enabled only when a
+           document is actually shown. -->
+      <button
+        class="fs-toggle"
+        class:pending={!(doc && !busy)}
+        disabled={!(doc && !busy)}
+        onclick={() => setFullscreen(!fullscreenState.active)}
+        aria-label={fullscreenState.active ? "Exit full screen" : "Enter full screen"}
+        aria-pressed={fullscreenState.active}
+        title={fullscreenState.active ? "Exit full screen" : "Full screen"}
+      >
+        <Icon name={fullscreenState.active ? "minimize" : "maximize"} />
+      </button>
     </div>
   </header>
+
+  {#if fullscreenState.active && doc && !busy}
+    <button
+      type="button"
+      class="fs-exit-chip"
+      onclick={() => setFullscreen(false)}
+      aria-label="Exit full screen"
+      title="Exit full screen (Esc)"
+    >
+      <Icon name="minimize" size={16} />
+    </button>
+  {/if}
 
   <main>
     {#if mode === "browse"}
@@ -1744,6 +1786,51 @@
   .mode-toggle {
     font-size: 1rem;
     padding: 0.3rem 0.5rem;
+  }
+  .fs-toggle {
+    font-size: 1rem;
+    padding: 0.3rem 0.5rem;
+  }
+  .fs-toggle.pending {
+    visibility: hidden;
+  }
+  .fs-toggle[aria-pressed="true"] {
+    background: var(--border);
+  }
+  /* Full screen mode: chrome steps aside; each handler restyles its own
+     interior via `fullscreenState`. The chip guarantees a visible exit. */
+  .viewit-root.fs-mode .app-header {
+    display: none;
+  }
+  .viewit-root.fs-mode main {
+    padding: 0;
+    max-width: none;
+  }
+  .viewit-root.fs-mode {
+    background: var(--bg-primary);
+  }
+  .fs-exit-chip {
+    position: fixed;
+    top: max(0.6rem, env(safe-area-inset-top, 0px));
+    right: max(0.6rem, env(safe-area-inset-right, 0px));
+    z-index: 60;
+    width: 44px;
+    height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--bg-primary) 82%, transparent);
+    color: var(--text-primary);
+    cursor: pointer;
+    backdrop-filter: blur(6px);
+    opacity: 0.55;
+    transition: opacity 0.15s ease;
+  }
+  .fs-exit-chip:hover,
+  .fs-exit-chip:focus-visible {
+    opacity: 1;
   }
   main {
     padding: 1rem max(1rem, env(safe-area-inset-right, 0px))

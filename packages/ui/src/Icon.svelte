@@ -16,6 +16,8 @@
       | "grid"
       | "list"
       | "lock"
+      | "maximize"
+      | "minimize"
       | "moon"
       | "package"
       | "sun"
@@ -88,7 +90,16 @@
     <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
   {:else if name === "x"}
     <path d="M18 6 6 18M6 6l12 12" />
-  {:else if name === "arrow-left"}
+  {:else if name === "maximize"}
+    <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+    <path d="M16 3h3a2 2 0 0 1 2 2v3" />
+    <path d="M8 21H5a2 2 0 0 1-2-2v-3" />
+    <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+  {:else if name === "minimize"}
+    <path d="M8 3v3a2 2 0 0 1-2 2H3" />
+    <path d="M21 8h-3a2 2 0 0 1-2-2V3" />
+    <path d="M3 16h3a2 2 0 0 1 2 2v3" />
+    <path d="M16 21v-3a2 2 0 0 1 2-2h3" />
     <path d="m12 19-7-7 7-7M19 12H5" />
   {:else if name === "arrow-right"}
     <path d="m12 5 7 7-7 7M5 12h14" />

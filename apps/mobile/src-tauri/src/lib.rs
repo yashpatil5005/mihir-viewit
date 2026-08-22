@@ -202,6 +202,77 @@ fn probe_uri(
     uri_util::probe_before_read(&app, &uri, name)
 }
 
+#[derive(serde::Serialize)]
+struct BrowseEntry {
+    name: String,
+    path: String,
+    is_dir: bool,
+    size: u64,
+}
+
+#[derive(serde::Serialize)]
+struct BrowseListing {
+    path: String,
+    parent: Option<String>,
+    entries: Vec<BrowseEntry>,
+}
+
+fn read_browse_dir(path: Option<String>) -> Result<BrowseListing, String> {
+    let path = match path {
+        Some(p) if !p.trim().is_empty() => p
+            .strip_prefix("file://")
+            .unwrap_or(&p)
+            .trim_end_matches('/')
+            .to_string(),
+        // Android starts in the user's Download directory (the demo corpus
+        // home); fall back to the external storage root.
+        _ => {
+            for candidate in ["/sdcard/Download", "/sdcard"] {
+                if std::path::Path::new(candidate).is_dir() {
+                    return read_browse_dir(Some(candidate.to_string()));
+                }
+            }
+            return Err("no browsable storage root found".into());
+        }
+    };
+    let dir = std::path::PathBuf::from(&path);
+    let mut entries: Vec<BrowseEntry> = Vec::new();
+    let read_dir =
+        std::fs::read_dir(&dir).map_err(|e| format!("cannot list {}: {e}", dir.display()))?;
+    for item in read_dir.flatten() {
+        let Ok(meta) = item.metadata() else { continue };
+        let name = item.file_name().to_string_lossy().into_owned();
+        if name.starts_with('.') {
+            continue;
+        }
+        entries.push(BrowseEntry {
+            name,
+            path: item.path().to_string_lossy().into_owned(),
+            is_dir: meta.is_dir(),
+            size: meta.len(),
+        });
+    }
+    entries.sort_by(|a, b| {
+        b.is_dir
+            .cmp(&a.is_dir)
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
+    let parent = dir.parent().map(|p| p.to_string_lossy().into_owned());
+    Ok(BrowseListing {
+        path: dir.to_string_lossy().into_owned(),
+        parent,
+        entries,
+    })
+}
+
+/// Real filesystem browsing for the app's Browse mode. On Android 11+ this
+/// requires the user to grant "All files access"; the frontend gates on the
+/// AndroidBridge permission helpers before invoking.
+#[tauri::command]
+fn browse_dir(path: Option<String>) -> Result<BrowseListing, String> {
+    read_browse_dir(path)
+}
+
 /// Picker path: raw `Vec<u8>` from Tauri IPC (not JSON `number[]`).
 #[tauri::command]
 fn open_bytes(bytes: Vec<u8>, name: String) -> Result<Document, String> {
@@ -635,6 +706,7 @@ pub fn run() {
             register_stream_uri,
             epub_chapter,
             archive_extract,
+            browse_dir,
             decode_heic_to_data_url,
             #[cfg(feature = "fmt-pdf")]
             pdf_page

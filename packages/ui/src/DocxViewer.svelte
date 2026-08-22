@@ -16,6 +16,8 @@
     image?: InlineImage;
   };
 
+  import { fullscreenState } from "./fullscreen.svelte";
+
   let { document: docProp = {} }: { document?: any } = $props();
 
   let blocks = $derived((docProp.blocks ?? []) as Array<any>);
@@ -143,7 +145,7 @@
   {/each}
 {/snippet}
 
-<article class="docx-viewer">
+<article class="docx-viewer" class:fs={fullscreenState.active}>
   {#if pluginHtml}
     <div class="plugin-html-surface">{@html pluginHtml}</div>
   {:else}
@@ -328,6 +330,16 @@
   .body {
     line-height: 1.68;
     padding: clamp(1rem, 4vw, 2.5rem);
+  }
+  /* Full screen: a wider reading measure and no side rail clutter. */
+  .docx-viewer.fs .page {
+    max-width: min(100%, 88ch);
+  }
+  .docx-viewer.fs .outline {
+    display: none;
+  }
+  .docx-viewer.fs .layout {
+    grid-template-columns: minmax(0, 1fr);
   }
   /* Offscreen blocks skip layout and paint, so huge documents mount and
      scroll without locking the compositor; intrinsic size keeps the

@@ -555,6 +555,77 @@ class MainActivity : TauriActivity() {
     @JavascriptInterface
     fun materializeExternalUri(uri: String, ext: String): String = materializeExternalUri(uri, ext, "")
 
+    // ---- Browse mode: real filesystem listing + All-files-access flow. ----
+
+    /** True when the app may read shared storage directly (Android 11+). */
+    @JavascriptInterface
+    fun hasAllFilesAccess(): Boolean {
+      return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        android.os.Environment.isExternalStorageManager()
+      } else {
+        true
+      }
+    }
+
+    /** Sends the user to the system "All files access" settings page. */
+    @JavascriptInterface
+    fun requestAllFilesAccess() {
+      runOnUiThread {
+        val intent = try {
+          Intent(
+            android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+            Uri.parse("package:$packageName")
+          )
+        } catch (_: Exception) {
+          Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+        }
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+          startActivity(intent)
+        } catch (_: Exception) {
+          // Nothing sensible left to try; Browse stays gated.
+        }
+      }
+    }
+
+    /** Lists a directory as JSON: {ok, path, parent, entries:[{name,path,isDir,size}]}. */
+    @JavascriptInterface
+    fun listDir(path: String): String {
+      val dir = if (path.isBlank()) {
+        sequenceOf("/sdcard/Download", "/sdcard").firstOrNull { File(it).isDirectory }
+          ?: return JSONObject().put("ok", false).put("error", "no storage root").toString()
+      } else {
+        path.removePrefix("file://").trimEnd('/')
+      }
+      val file = File(dir)
+      val files = file.listFiles()
+      if (files == null) {
+        val err = if (!file.exists()) "not found"
+          else if (!file.isDirectory) "not a directory"
+          else "permission denied"
+        return JSONObject().put("ok", false).put("error", "$err: $dir").toString()
+      }
+      val arr = JSONArray()
+      files
+        .filter { !it.name.startsWith(".") }
+        .sortedWith(compareByDescending<File> { it.isDirectory }.thenBy { it.name.lowercase() })
+        .forEach { f ->
+          arr.put(
+            JSONObject()
+              .put("name", f.name)
+              .put("path", f.absolutePath)
+              .put("isDir", f.isDirectory)
+              .put("size", if (f.isFile) f.length() else 0L)
+          )
+        }
+      return JSONObject()
+        .put("ok", true)
+        .put("path", file.absolutePath)
+        .put("parent", file.parent ?: "")
+        .put("entries", arr)
+        .toString()
+    }
+
     private fun materializeExternalUri(uri: String, ext: String, cacheKey: String): String {
       val parsed = Uri.parse(uri)
       if (parsed.scheme == "file") {

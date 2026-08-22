@@ -50,6 +50,14 @@ async function readChromeGeometry(page: import("@playwright/test").Page): Promis
   });
 }
 
+// The fullscreen toggle appears contextually once a document is open (by
+// design). The freeze contract covers the pre-existing controls: every button
+// present before the open must keep its exact rect afterwards.
+function assertFrozenControls(before: ChromeGeometry, after: ChromeGeometry): void {
+  expect(after.header).toEqual(before.header);
+  expect(after.buttons.slice(0, before.buttons.length)).toEqual(before.buttons);
+}
+
 test("header geometry stays frozen while a multi-MB text file loads", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator(".app-header")).toBeVisible();
@@ -73,7 +81,7 @@ test("header geometry stays frozen while a multi-MB text file loads", async ({ p
   // the transient busy card — just verify the chrome did not move at the
   // earliest observable moment and stays put after mount.
   const during = await readChromeGeometry(page);
-  expect(during).toEqual(before);
+  assertFrozenControls(before, during);
 
   // Controls stay interactive while the document pipeline runs. The debug-log
   // toggle is a cheap local overlay (unlike theme toggling, which legitimately
@@ -87,7 +95,7 @@ test("header geometry stays frozen while a multi-MB text file loads", async ({ p
     timeout: 30_000,
   });
   const after = await readChromeGeometry(page);
-  expect(after).toEqual(before);
+  assertFrozenControls(before, after);
 
   // Freeze budget for the pure open→mount path. The pre-fix regression
   // measured ~3.1s; a clean run stays well under 300ms of long tasks.
@@ -131,7 +139,7 @@ test("wide stress lines never widen the page or shrink controls at phone width",
   expect(overflow.bodyW).toBeLessThanOrEqual(overflow.bodyC);
 
   const after = await readChromeGeometry(page);
-  expect(after).toEqual(before);
+  assertFrozenControls(before, after);
 });
 
 test("search still finds the needle in progressively mounted chunks", async ({ page }) => {

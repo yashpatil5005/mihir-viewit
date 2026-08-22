@@ -4,6 +4,8 @@
   import { readMaterializedBytes, resolvePptxAssetPath, debugLog } from "@viewit/platform";
   import { loadJsPlugin, type PluginInfo } from "./pluginBridge";
 
+  import { fullscreenState } from "./fullscreen.svelte";
+
   let {
     document: docProp = {},
     source_uri = "",
@@ -102,7 +104,7 @@
   }
 </script>
 
-<div class="pvv-root">
+<div class="pvv-root" class:fs={fullscreenState.active}>
   {#if status === "loading"}<p class="muted">Loading presentation…</p>{/if}
   {#if status === "error"}<p class="err">{errorMsg}</p>{/if}
   {#if status === "ready"}
@@ -167,6 +169,11 @@
     align-items: center;
     justify-content: center;
     margin: 0 auto;
+  }
+  /* Full screen: the stage may use every pixel the viewport offers. */
+  .pvv-root.fs .stage {
+    max-height: none;
+    max-width: min(100%, calc(100dvh * 16 / 9));
   }
   .muted {
     color: var(--text-secondary);

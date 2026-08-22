@@ -3,6 +3,8 @@
   import { onDestroy } from "svelte";
   import { readMaterializedBytes, resolvePptxAssetPath, debugLog } from "@viewit/platform";
 
+  import { fullscreenState } from "./fullscreen.svelte";
+
   let {
     document: docProp = {},
     source_uri = "",
@@ -222,7 +224,7 @@
   }
 </script>
 
-<div class="pptx-root" bind:this={rootEl}>
+<div class="pptx-root" class:fs={fullscreenState.active} bind:this={rootEl}>
   {#if pluginHtml}
     <div class="plugin-html-surface">{@html pluginHtml}</div>
   {:else}
@@ -376,6 +378,11 @@
     max-width: 100%;
     max-height: 100%;
     display: block;
+  }
+  /* Full screen: the stage may use every pixel the viewport offers. */
+  .pptx-root.fs .stage {
+    max-height: none;
+    max-width: min(100%, calc(100dvh * 16 / 9));
   }
   .slide-text {
     width: 100%;
