@@ -268,10 +268,12 @@
     while (activePreviewCount < MAX_CONCURRENT_PREVIEWS && previewQueue.length > 0) {
       const item = previewQueue.shift();
       if (!item) break;
-      activePreviewCount++;
-      const next = new Set(visiblePaths);
-      next.add(item.path);
-      visiblePaths = next;
+      if (!visiblePaths.has(item.path)) {
+        activePreviewCount++;
+        const next = new Set(visiblePaths);
+        next.add(item.path);
+        visiblePaths = next;
+      }
     }
   }
 
@@ -292,12 +294,26 @@
             }
             if (leaving.length > 0) {
               const next = new Set(visiblePaths);
-              for (const p of leaving) next.delete(p);
+              let leftCount = 0;
+              for (const p of leaving) {
+                if (next.has(p)) {
+                  next.delete(p);
+                  leftCount++;
+                }
+              }
               visiblePaths = next;
-              activePreviewCount = Math.max(0, activePreviewCount - leaving.length);
+              activePreviewCount = Math.max(0, activePreviewCount - leftCount);
+              previewQueue = previewQueue.filter((item) => !leaving.includes(item.path));
             }
             if (entering.length > 0) {
-              previewQueue.push(...entering);
+              for (const item of entering) {
+                if (
+                  !visiblePaths.has(item.path) &&
+                  !previewQueue.some((q) => q.path === item.path)
+                ) {
+                  previewQueue.push(item);
+                }
+              }
               drainPreviewQueue();
             }
           },
