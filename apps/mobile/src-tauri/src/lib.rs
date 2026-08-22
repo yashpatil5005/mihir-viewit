@@ -215,9 +215,11 @@ struct BrowseListing {
     path: String,
     parent: Option<String>,
     entries: Vec<BrowseEntry>,
+    total: usize,
+    has_more: bool,
 }
 
-fn read_browse_dir(path: Option<String>) -> Result<BrowseListing, String> {
+fn read_browse_dir(path: Option<String>, offset: usize, limit: usize) -> Result<BrowseListing, String> {
     let path = match path {
         Some(p) if !p.trim().is_empty() => p
             .strip_prefix("file://")
@@ -229,7 +231,7 @@ fn read_browse_dir(path: Option<String>) -> Result<BrowseListing, String> {
         _ => {
             for candidate in ["/sdcard/Download", "/sdcard"] {
                 if std::path::Path::new(candidate).is_dir() {
-                    return read_browse_dir(Some(candidate.to_string()));
+                    return read_browse_dir(Some(candidate.to_string()), offset, limit);
                 }
             }
             return Err("no browsable storage root found".into());
@@ -257,11 +259,19 @@ fn read_browse_dir(path: Option<String>) -> Result<BrowseListing, String> {
             .cmp(&a.is_dir)
             .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
+    // Window the sorted set so huge directories ship in bounded pages.
+    let total = entries.len();
+    let offset = offset.min(total);
+    let limit = limit.clamp(1, 1000);
+    let page: Vec<BrowseEntry> = entries.into_iter().skip(offset).take(limit).collect();
+    let has_more = offset + page.len() < total;
     let parent = dir.parent().map(|p| p.to_string_lossy().into_owned());
     Ok(BrowseListing {
         path: dir.to_string_lossy().into_owned(),
         parent,
-        entries,
+        entries: page,
+        total,
+        has_more,
     })
 }
 
@@ -269,8 +279,12 @@ fn read_browse_dir(path: Option<String>) -> Result<BrowseListing, String> {
 /// requires the user to grant "All files access"; the frontend gates on the
 /// AndroidBridge permission helpers before invoking.
 #[tauri::command]
-fn browse_dir(path: Option<String>) -> Result<BrowseListing, String> {
-    read_browse_dir(path)
+fn browse_dir(
+    path: Option<String>,
+    offset: Option<usize>,
+    limit: Option<usize>,
+) -> Result<BrowseListing, String> {
+    read_browse_dir(path, offset.unwrap_or(0), limit.unwrap_or(300))
 }
 
 /// Picker path: raw `Vec<u8>` from Tauri IPC (not JSON `number[]`).

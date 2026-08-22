@@ -57,6 +57,13 @@
   let pdfjsPageCount = $state(0);
   let pdfjsPages = $state<Record<number, HTMLCanvasElement>>({});
   let thumbnailPages = $state<Record<number, HTMLCanvasElement>>({});
+  const MAX_CANVAS_PIXELS = 14_000_000;
+  const renderedCssWidths = new Map<string, number>();
+  const pageRefs = new Map<
+    HTMLElement,
+    { num: number; thumbnail: boolean; intersecting: boolean }
+  >();
+  let resizeObserver: ResizeObserver | null = null;
   let renderingPages = new Set<string>();
   let showThumbnails = $state(true);
   let currentPage = $state(1);
@@ -205,24 +212,44 @@
   async function renderPdfPage(num: number, thumbnail: boolean) {
     const key = `${thumbnail ? "thumb" : "page"}-${num}`;
     const cache = thumbnail ? thumbnailPages : pdfjsPages;
-    if (!pdfjsDocument || cache[num] || renderingPages.has(key)) return;
+    if (!pdfjsDocument || renderingPages.has(key)) return;
+    // Page-column width must be settled before computing density; a capture
+    // during layout used to bake low-res canvases that then upscaled blurry.
+    let cssW = thumbnail ? 140 : (containerEl?.clientWidth ?? 0);
+    for (let i = 0; !thumbnail && i < 20 && cssW < 80; i++) {
+      await new Promise((r) => requestAnimationFrame(r));
+      cssW = containerEl?.clientWidth ?? 0;
+    }
+    if (!thumbnail && cssW < 40) return;
+    if (cache[num] && renderedCssWidths.get(key) === Math.round(cssW)) return;
     renderingPages.add(key);
     try {
       const page = await pdfjsDocument.getPage(num);
       const unscaled = page.getViewport({ scale: 1 });
-      const scale = thumbnail
-        ? Math.min(140 / unscaled.width, 180 / unscaled.height)
-        : Math.min(
-            ((containerEl?.clientWidth ?? 800) * (window.devicePixelRatio || 1)) / unscaled.width,
-            3,
-          );
+      const dpr = window.devicePixelRatio || 1;
+      // Density target: one device pixel per canvas pixel. The old flat cap
+      // of 3 starved DPR-3 phones; budget by total pixels instead so huge
+      // pages stay inside GPU texture limits while normal pages stay sharp.
+      let scale = ((thumbnail ? 140 : cssW) * dpr) / unscaled.width;
+      if (thumbnail) scale = Math.min(scale, 180 / unscaled.height);
+      else {
+        const maxSide = 4096;
+        const areaScale = Math.sqrt(MAX_CANVAS_PIXELS / (unscaled.width * unscaled.height));
+        scale = Math.min(scale, maxSide / unscaled.width, maxSide / unscaled.height, areaScale);
+      }
       const viewport = page.getViewport({ scale });
       const canvas = document.createElement("canvas");
       canvas.width = Math.ceil(viewport.width);
       canvas.height = Math.ceil(viewport.height);
+      if (!thumbnail) {
+        // Pin CSS size explicitly so the browser maps device pixels 1:1.
+        canvas.style.width = `${cssW}px`;
+        canvas.style.height = `${(viewport.height / viewport.width) * cssW}px`;
+      }
       const context = canvas.getContext("2d");
       if (!context) return;
       await page.render({ canvasContext: context, viewport }).promise;
+      renderedCssWidths.set(key, Math.round(cssW));
       if (thumbnail) thumbnailPages = { ...thumbnailPages, [num]: canvas };
       else pdfjsPages = { ...pdfjsPages, [num]: canvas };
     } catch (e) {
@@ -232,18 +259,32 @@
     }
   }
 
+  function invalidatePdfRenders() {
+    pdfjsPages = {};
+    thumbnailPages = {};
+    renderedCssWidths.clear();
+    for (const ref of pageRefs.values()) {
+      if (ref.intersecting) void renderPdfPage(ref.num, ref.thumbnail);
+    }
+  }
+
   function lazyPdfPage(node: HTMLElement, params: { num: number; thumbnail: boolean }) {
+    const ref = { num: params.num, thumbnail: params.thumbnail, intersecting: false };
+    pageRefs.set(node, ref);
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          void renderPdfPage(params.num, params.thumbnail);
-          observer.disconnect();
-        }
+        ref.intersecting = entries.some((entry) => entry.isIntersecting);
+        if (ref.intersecting) void renderPdfPage(params.num, params.thumbnail);
       },
       { rootMargin: params.thumbnail ? "300px" : "800px" },
     );
     observer.observe(node);
-    return { destroy: () => observer.disconnect() };
+    return {
+      destroy: () => {
+        observer.disconnect();
+        pageRefs.delete(node);
+      },
+    };
   }
 
   function jumpToPage(num: number) {
@@ -313,8 +354,22 @@
     window.addEventListener("keydown", onKey);
     // Primary trigger — matches MediaViewer's proven onMount pattern.
     kickOffPdf();
+    // Rotation / sidebar toggle / window resize change the page-column width;
+    // stale canvases would display upscaled and blurry, so re-render.
+    let lastW = containerEl?.clientWidth ?? 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    resizeObserver = new ResizeObserver(() => {
+      const w = containerEl?.clientWidth ?? 0;
+      if (Math.abs(w - lastW) < 24) return;
+      lastW = w;
+      clearTimeout(timer);
+      timer = setTimeout(() => invalidatePdfRenders(), 180);
+    });
+    if (containerEl) resizeObserver.observe(containerEl);
   });
   onDestroy(() => {
+    resizeObserver?.disconnect();
+    resizeObserver = null;
     window.removeEventListener("keydown", onKey);
     if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
   });

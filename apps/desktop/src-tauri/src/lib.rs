@@ -220,6 +220,8 @@ struct BrowseListing {
     path: String,
     parent: Option<String>,
     entries: Vec<BrowseEntry>,
+    total: usize,
+    has_more: bool,
 }
 
 fn browse_default_root() -> String {
@@ -235,7 +237,7 @@ fn browse_default_root() -> String {
     ".".into()
 }
 
-fn read_browse_dir(path: Option<String>) -> Result<BrowseListing, String> {
+fn read_browse_dir(path: Option<String>, offset: usize, limit: usize) -> Result<BrowseListing, String> {
     let path = match path {
         Some(p) if !p.trim().is_empty() => p
             .strip_prefix("file://")
@@ -266,18 +268,30 @@ fn read_browse_dir(path: Option<String>) -> Result<BrowseListing, String> {
             .cmp(&a.is_dir)
             .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
+    // Window the sorted set so huge directories ship in bounded pages.
+    let total = entries.len();
+    let offset = offset.min(total);
+    let limit = limit.clamp(1, 1000);
+    let page: Vec<BrowseEntry> = entries.into_iter().skip(offset).take(limit).collect();
+    let has_more = offset + page.len() < total;
     let parent = dir.parent().map(|p| p.to_string_lossy().into_owned());
     Ok(BrowseListing {
         path: dir.to_string_lossy().into_owned(),
         parent,
-        entries,
+        entries: page,
+        total,
+        has_more,
     })
 }
 
 /// Real filesystem browsing for the app's Browse mode (desktop + mobile).
 #[tauri::command]
-fn browse_dir(path: Option<String>) -> Result<BrowseListing, String> {
-    read_browse_dir(path)
+fn browse_dir(
+    path: Option<String>,
+    offset: Option<usize>,
+    limit: Option<usize>,
+) -> Result<BrowseListing, String> {
+    read_browse_dir(path, offset.unwrap_or(0), limit.unwrap_or(300))
 }
 
 #[tauri::command]

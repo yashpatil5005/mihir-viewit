@@ -154,6 +154,8 @@
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
   }
 
+  const PAGE_SIZE = 300;
+
   async function load(path = "") {
     loading = true;
     browseError = "";
@@ -165,13 +167,13 @@
           return;
         }
         permDenied = false;
-        listing = androidListDir(path);
+        listing = androidListDir(path, 0, PAGE_SIZE);
         if (!listing) {
           permDenied = !hasAllFilesAccess();
           browseError = "Could not read this folder.";
         }
       } else {
-        const result = await browseDir(path);
+        const result = await browseDir(path, 0, PAGE_SIZE);
         if (!result) {
           browseError = "Browsing is unavailable on this platform — use Open file instead.";
           return;
@@ -183,6 +185,60 @@
       if (listing) untrack(() => onListed?.(listing!.path, listing!.parent || null));
     }
   }
+
+  // Append the next page when the sentinel scrolls into view. Entries are
+  // accumulated into the same listing so the grid grows in place.
+  let loadingMore = $state(false);
+  async function loadMore() {
+    if (loadingMore || !listing?.hasMore || loading) return;
+    loadingMore = true;
+    try {
+      const { path, entries: current } = listing;
+      const offset = current.length;
+      const page = isAndroidBridge()
+        ? androidListDir(path, offset, PAGE_SIZE)
+        : await browseDir(path, offset, PAGE_SIZE);
+      if (
+        !page ||
+        page.path !== path ||
+        !page.entries.length ||
+        !listing ||
+        listing.path !== path
+      ) {
+        if (listing && listing.path === path && page) listing = { ...page, entries: [...current] };
+        return;
+      }
+      // De-dup by path just in case the folder changed mid-scroll.
+      const seen = new Set(current.map((e) => e.path));
+      const fresh = page.entries.filter((e) => !seen.has(e.path));
+      listing = {
+        ...page,
+        entries: [...current, ...fresh],
+        hasMore: page.hasMore,
+        total: page.total,
+      };
+    } finally {
+      loadingMore = false;
+    }
+  }
+
+  let moreSentinel: HTMLElement | null = $state(null);
+  let sentinelObserver: IntersectionObserver | null = null;
+  $effect(() => {
+    if (!moreSentinel || !listing?.hasMore) return;
+    sentinelObserver?.disconnect();
+    sentinelObserver = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) void loadMore();
+      },
+      { rootMargin: "600px" },
+    );
+    sentinelObserver.observe(moreSentinel);
+    return () => {
+      sentinelObserver?.disconnect();
+      sentinelObserver = null;
+    };
+  });
 
   // Parent-driven "go up one folder" (back navigation from the app shell).
   let lastUpSignal: number | null = null;
@@ -402,7 +458,14 @@
         </button>
       {/each}
     </div>
-    {#if listing.entries.length === 0}
+    {#if listing.hasMore}
+      <div class="more-sentinel" bind:this={moreSentinel} aria-hidden="true">
+        {#if loadingMore}
+          <p class="status">Loading more…</p>
+        {/if}
+      </div>
+    {/if}
+    {#if listing.entries.length === 0 && !listing.hasMore}
       <p class="status">This folder is empty.</p>
     {/if}
   {/if}
@@ -586,6 +649,12 @@
     color: var(--text-primary);
     cursor: pointer;
   }
+  .more-sentinel {
+    min-height: 56px;
+    display: grid;
+    place-items: center;
+  }
+
   .perm-hint {
     font-size: 0.75rem;
   }

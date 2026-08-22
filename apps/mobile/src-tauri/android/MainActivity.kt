@@ -621,9 +621,17 @@ class MainActivity : TauriActivity() {
       }
     }
 
-    /** Lists a directory as JSON: {ok, path, parent, entries:[{name,path,isDir,size}]}. */
+    /**
+     * Lists a directory page as JSON:
+     * {ok, path, parent, entries:[...], total, offset, hasMore}.
+     * Pagination keeps the bridge payload bounded — directories with tens of
+     * thousands of entries used to OOM the WebView on one giant string.
+     */
     @JavascriptInterface
-    fun listDir(path: String): String {
+    fun listDir(path: String): String = listDir(path, 0, 300)
+
+    @JavascriptInterface
+    fun listDir(path: String, offset: Int, limit: Int): String {
       val dir = if (path.isBlank()) {
         sequenceOf("/sdcard/Download", "/sdcard").firstOrNull { File(it).isDirectory }
           ?: return JSONObject().put("ok", false).put("error", "no storage root").toString()
@@ -638,23 +646,30 @@ class MainActivity : TauriActivity() {
           else "permission denied"
         return JSONObject().put("ok", false).put("error", "$err: $dir").toString()
       }
-      val arr = JSONArray()
-      files
+      // Sort the full name set (cheap vs shipping it), then window it.
+      val sorted = files
         .filter { !it.name.startsWith(".") }
         .sortedWith(compareByDescending<File> { it.isDirectory }.thenBy { it.name.lowercase() })
-        .forEach { f ->
-          arr.put(
-            JSONObject()
-              .put("name", f.name)
-              .put("path", f.absolutePath)
-              .put("isDir", f.isDirectory)
-              .put("size", if (f.isFile) f.length() else 0L)
-          )
-        }
+      val safeOffset = offset.coerceAtLeast(0)
+      val safeLimit = limit.coerceIn(1, 1000)
+      val page = sorted.drop(safeOffset).take(safeLimit)
+      val arr = JSONArray()
+      for (f in page) {
+        arr.put(
+          JSONObject()
+            .put("name", f.name)
+            .put("path", f.absolutePath)
+            .put("isDir", f.isDirectory)
+            .put("size", if (f.isFile) f.length() else 0L)
+        )
+      }
       return JSONObject()
         .put("ok", true)
         .put("path", file.absolutePath)
         .put("parent", file.parent ?: "")
+        .put("total", sorted.size)
+        .put("offset", safeOffset)
+        .put("hasMore", safeOffset + page.size < sorted.size)
         .put("entries", arr)
         .toString()
     }

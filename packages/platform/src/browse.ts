@@ -10,7 +10,7 @@ type AndroidBridgeHost = {
   AndroidBridge?: {
     hasAllFilesAccess?: () => boolean;
     requestAllFilesAccess?: () => void;
-    listDir?: (path: string) => string;
+    listDir?: (path: string, offset?: number, limit?: number) => string;
   };
 };
 
@@ -39,6 +39,8 @@ export interface BrowseListing {
   path: string;
   parent: string;
   entries: BrowseEntry[];
+  total?: number;
+  hasMore?: boolean;
 }
 
 /**
@@ -130,12 +132,18 @@ export function reportBackConsumer(active: boolean): void {
 }
 
 /**
- * List a directory via the native side. Returns null when unsupported. */
-export async function browseDir(path = ""): Promise<BrowseListing | null> {
+ * List one directory page via the native side. Returns null when
+ * unsupported. Pagination keeps huge folders from OOMing the webview.
+ */
+export async function browseDir(path = "", offset = 0, limit = 300): Promise<BrowseListing | null> {
   if (!IS_TAURI) return null;
   try {
     const { invoke } = await import("@tauri-apps/api/core");
-    return await invoke<BrowseListing>("browse_dir", { path: path || null });
+    return await invoke<BrowseListing>("browse_dir", {
+      path: path || null,
+      offset,
+      limit,
+    });
   } catch {
     return null;
   }
@@ -145,12 +153,21 @@ export async function browseDir(path = ""): Promise<BrowseListing | null> {
  * List a directory on Android through the WebView JS bridge (synchronous,
  * permission-gated). Returns null when the bridge is unavailable or denied.
  */
-export function androidListDir(path = ""): BrowseListing | null {
+export function androidListDir(path = "", offset = 0, limit = 300): BrowseListing | null {
   const bridge = (window as unknown as AndroidBridgeHost).AndroidBridge;
   if (!bridge?.listDir || !bridge.hasAllFilesAccess?.()) return null;
   try {
-    const parsed = JSON.parse(bridge.listDir(path)) as
-      | { ok: true; path: string; parent: string; entries: BrowseEntry[] }
+    const raw =
+      offset === 0 && limit === 300 ? bridge.listDir(path) : bridge.listDir(path, offset, limit);
+    const parsed = JSON.parse(raw) as
+      | {
+          ok: true;
+          path: string;
+          parent: string;
+          entries: BrowseEntry[];
+          total?: number;
+          hasMore?: boolean;
+        }
       | { ok: false; error: string };
     return parsed.ok ? parsed : null;
   } catch {

@@ -130,6 +130,18 @@ class PluginManager(private val context: Context) {
             else if (BuildConfig.VIEWIT_APP_PROFILE == RuntimeBuildPolicy.DEVELOPMENT) CATALOG_URL_DEBUG
             else CATALOG_URL_RELEASE
         }
+
+        /**
+         * Catalog sources in priority order. A debug build pointing at the
+         * adb-reverse localhost server falls back to the production mirror
+         * when that server is not running, so the store never dead-ends.
+         */
+        fun catalogCandidateUrls(): List<String> =
+            listOf(
+                BuildConfig.VIEWIT_PLUGIN_CATALOG_URL.takeIf { it.isNotBlank() },
+                if (BuildConfig.VIEWIT_APP_PROFILE == RuntimeBuildPolicy.DEVELOPMENT) CATALOG_URL_DEBUG else null,
+                CATALOG_URL_RELEASE,
+            ).filterNotNull().distinct()
     }
 
     data class InstalledPlugin(
@@ -385,7 +397,19 @@ class PluginManager(private val context: Context) {
         }
     }
 
-    fun fetchCatalog(url: String = getCatalogUrl()): Result<List<PluginManifest>> {
+    fun fetchCatalog(url: String? = null): Result<List<PluginManifest>> {
+        if (url != null) return fetchCatalogFrom(url)
+        var lastError: Throwable? = null
+        for (candidate in catalogCandidateUrls()) {
+            val result = fetchCatalogFrom(candidate)
+            if (result.isSuccess) return result
+            lastError = result.exceptionOrNull()
+            Log.w(TAG, "catalog source failed: $candidate (${lastError?.message})")
+        }
+        return Result.failure(lastError ?: Exception("No catalog source reachable"))
+    }
+
+    private fun fetchCatalogFrom(url: String): Result<List<PluginManifest>> {
         return try {
             val conn = URL(url).openConnection() as HttpURLConnection
             conn.connectTimeout = 10_000

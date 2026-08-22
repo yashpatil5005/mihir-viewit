@@ -64,6 +64,11 @@ export const FONT_EXTS = new Set([
 
 export const OFFICE_KINDS = new Set(["docx", "xlsx", "pptx"]);
 export const NON_ARCHIVE_BUNDLE_EXTS = new Set([
+  // Ebook containers are zip-derived; a failed ebook parse must surface an
+  // honest error instead of being claimed as an archive by compression.
+  "epub",
+  "mobi",
+  "azw3",
   "pages",
   "numbers",
   "key",
