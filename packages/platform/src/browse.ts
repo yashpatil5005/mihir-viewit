@@ -153,6 +153,55 @@ export async function browseDir(path = "", offset = 0, limit = 300): Promise<Bro
  * List a directory on Android through the WebView JS bridge (synchronous,
  * permission-gated). Returns null when the bridge is unavailable or denied.
  */
+export interface FuzzyFileMatch {
+  name: string;
+  path: string;
+  isDir: boolean;
+  score: number;
+}
+
+export interface ContentSearchMatch {
+  path: string;
+  lineNumber: number;
+  lineText: string;
+}
+
+export async function searchFilesFuzzy(
+  query: string,
+  root?: string,
+  limit = 50,
+): Promise<FuzzyFileMatch[]> {
+  if (!IS_TAURI) return [];
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<FuzzyFileMatch[]>("search_files_fuzzy", {
+      query,
+      root: root || null,
+      limit,
+    });
+  } catch {
+    return [];
+  }
+}
+
+export async function searchFilesContent(
+  query: string,
+  root?: string,
+  limit = 50,
+): Promise<ContentSearchMatch[]> {
+  if (!IS_TAURI) return [];
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<ContentSearchMatch[]>("search_files_content", {
+      query,
+      root: root || null,
+      limit,
+    });
+  } catch {
+    return [];
+  }
+}
+
 export function androidListDir(path = "", offset = 0, limit = 300): BrowseListing | null {
   const bridge = (window as unknown as AndroidBridgeHost).AndroidBridge;
   if (!bridge?.listDir || !bridge.hasAllFilesAccess?.()) return null;

@@ -217,6 +217,11 @@
       searchCurrentMatch = 0;
       return;
     }
+    if (mode === "browse") {
+      searchMatchCount = 0;
+      searchCurrentMatch = 0;
+      return;
+    }
     const text = extractSearchableText(doc);
     const { findAllMatches } = await import("./search");
     const matches = findAllMatches(text, q, cs);
@@ -1445,6 +1450,7 @@
         initialPath={browsePath}
         onListed={onGridListed}
         {upSignal}
+        searchQuery={mode === "browse" ? searchQuery : ""}
         onPick={(f) => pickFile(f)}
       />
     {:else if !busy && !error && !doc}
@@ -1455,6 +1461,7 @@
         initialPath={browsePath}
         onListed={onGridListed}
         {upSignal}
+        searchQuery={searchQuery}
         onPick={(f) => pickFile(f)}
       />
     {:else if busy}

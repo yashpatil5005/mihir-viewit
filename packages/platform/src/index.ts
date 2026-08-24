@@ -293,9 +293,13 @@ export {
   reportBackConsumer,
   fileSrcUrl,
   warmFileSrc,
+  searchFilesFuzzy,
+  searchFilesContent,
   type BrowseEntry,
   type BrowseListing,
   type Crumb,
+  type FuzzyFileMatch,
+  type ContentSearchMatch,
 } from "./browse";
 
 /** After `<input type="file">` — checks size/type first (no read for video/large). */

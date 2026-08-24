@@ -9,10 +9,14 @@
     hasAllFilesAccess,
     pickSingleFile,
     requestAllFilesAccess,
+    searchFilesFuzzy,
+    searchFilesContent,
     warmFileSrc,
     type BrowseEntry,
     type BrowseListing,
     type Crumb,
+    type FuzzyFileMatch,
+    type ContentSearchMatch,
   } from "@viewit/platform";
   import Icon from "./Icon.svelte";
 
@@ -22,15 +26,14 @@
     initialPath = "",
     onListed = undefined,
     upSignal = 0,
+    searchQuery = "",
   }: {
     onPick: (file: File) => void;
     root?: string;
-    /** Folder to open on mount (back-navigation restore). */
     initialPath?: string;
-    /** Fired after each successful listing with [path, parent|null]. */
     onListed?: (path: string, parent: string | null) => void;
-    /** Increment to make the grid go up one folder. */
     upSignal?: number;
+    searchQuery?: string;
   } = $props();
 
   // Web keeps the directory-input fallback; Tauri roots get real browsing.
@@ -40,6 +43,35 @@
   let browseError = $state("");
   let loading = $state(false);
   let permDenied = $state(false);
+  let searchMode: "none" | "filename" | "content" = $state("none");
+  let searchResults: Array<FuzzyFileMatch | ContentSearchMatch> = $state([]);
+  let searchLoading = $state(false);
+
+  async function runSearch(query: string) {
+    if (!query.trim()) {
+      searchMode = "none";
+      searchResults = [];
+      return;
+    }
+    searchLoading = true;
+    try {
+      const fuzzy = await searchFilesFuzzy(query, listing?.path || undefined, 100);
+      if (fuzzy.length > 0) {
+        searchMode = "filename";
+        searchResults = fuzzy;
+      } else {
+        const content = await searchFilesContent(query, listing?.path || undefined, 100);
+        searchMode = "content";
+        searchResults = content;
+      }
+    } finally {
+      searchLoading = false;
+    }
+  }
+
+  $effect(() => {
+    runSearch(searchQuery);
+  });
 
   function isAndroidBridge(): boolean {
     return root === "mobile" && androidBridgeAvailable();
@@ -438,6 +470,40 @@
     <p class="status">Loading folder…</p>
   {:else if browseError}
     <p class="status error">{browseError}</p>
+  {:else if searchMode !== "none"}
+    {#if searchLoading}
+      <p class="status">Searching…</p>
+    {:else if searchResults.length === 0}
+      <p class="status">No matches found.</p>
+    {:else}
+      <div class="grid" role="grid">
+        {#each searchResults as result}
+          {@const isContent = "lineNumber" in result}
+          {@const path = isContent ? (result as ContentSearchMatch).path : (result as FuzzyFileMatch).path}
+          {@const name = isContent ? basename((result as ContentSearchMatch).path) : (result as FuzzyFileMatch).name}
+          <button
+            type="button"
+            class="cell"
+            onclick={() => {
+              const f = new File([], name);
+              Object.defineProperty(f, "viewitUri", { value: `file://${path}`, enumerable: true });
+              onPick(f);
+            }}
+            role="gridcell"
+          >
+            <div class="icon ftype">
+              <Icon name={fileTypeIcon(name)} size={40} strokeWidth={1.6} />
+            </div>
+            <span class="label">{name}</span>
+            {#if isContent}
+              <span class="size">L{(result as ContentSearchMatch).lineNumber}: {(result as ContentSearchMatch).lineText.slice(0, 40)}</span>
+            {:else if !(result as FuzzyFileMatch).isDir}
+              <span class="size">Score: {(result as FuzzyFileMatch).score}</span>
+            {/if}
+          </button>
+        {/each}
+      </div>
+    {/if}
   {:else if listing}
     <div class="grid" role="grid">
       {#if listing.parent !== "" && listing.parent !== listing.path}
