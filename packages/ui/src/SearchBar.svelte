@@ -31,9 +31,9 @@
 <div class="search-bar">
   <input
     type="search"
-    placeholder="Search in file…"
+    placeholder="Search..."
     bind:value={query}
-    aria-label="Search in file"
+    aria-label="Search"
   />
   <button
     class="cs-toggle"

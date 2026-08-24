@@ -1771,15 +1771,15 @@
       <p class="empty">Drop a file or pick one — everything opens.</p>
     {/if}
   </main>
-  {#if doc && !busy}
-    <footer class="bottom-bar">
-      <SearchBar
-        onSearch={onGlobalSearch}
-        matchCount={searchMatchCount}
-        currentMatch={searchCurrentMatch}
-        onNext={() => searchNavCounter++}
-        onPrev={() => searchNavCounter--}
-      />
+  <footer class="bottom-bar">
+    <SearchBar
+      onSearch={onGlobalSearch}
+      matchCount={searchMatchCount}
+      currentMatch={searchCurrentMatch}
+      onNext={() => searchNavCounter++}
+      onPrev={() => searchNavCounter--}
+    />
+    {#if doc && !busy}
       <button
         type="button"
         class="fs-toggle"
@@ -1791,8 +1791,8 @@
         <Icon name={fullscreenState.active ? "minimize" : "maximize"} />
         <span>{fullscreenState.active ? "Exit" : "Expand"}</span>
       </button>
-    </footer>
-  {/if}
+    {/if}
+  </footer>
   <DebugPanel bind:open={debugOpen} />
   <PluginStore open={pluginStoreOpen} onClose={() => (pluginStoreOpen = false)} />
   <RuntimeChooser
