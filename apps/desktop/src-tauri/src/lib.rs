@@ -294,6 +294,63 @@ fn browse_dir(
     read_browse_dir(path, offset.unwrap_or(0), limit.unwrap_or(300))
 }
 
+#[derive(serde::Serialize)]
+struct FuzzyFileMatch {
+    name: String,
+    path: String,
+    is_dir: bool,
+    score: i32,
+}
+
+#[tauri::command]
+fn search_files_fuzzy(query: String, root: Option<String>, limit: Option<usize>) -> Result<Vec<FuzzyFileMatch>, String> {
+    use fuzzy_matcher::FuzzyMatcher;
+    use fuzzy_matcher::skim::SkimMatcherV2;
+    let matcher = SkimMatcherV2::default();
+    let root_path = match root {
+        Some(p) if !p.trim().is_empty() => p
+            .strip_prefix("file://")
+            .unwrap_or(&p)
+            .trim_end_matches('/')
+            .to_string(),
+        _ => browse_default_root(),
+    };
+    let max_results = limit.unwrap_or(50).clamp(1, 200);
+    let mut results: Vec<FuzzyFileMatch> = Vec::new();
+    fn walk(
+        dir: &std::path::Path,
+        query: &str,
+        matcher: &SkimMatcherV2,
+        results: &mut Vec<FuzzyFileMatch>,
+        max: usize,
+    ) {
+        if results.len() >= max { return; }
+        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        for entry in entries.flatten() {
+            if results.len() >= max { return; }
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.starts_with('.') { continue; }
+            if let Some(score) = matcher.fuzzy_match(&name, query) {
+                if score > 0 {
+                    results.push(FuzzyFileMatch {
+                        name: name.clone(),
+                        path: entry.path().to_string_lossy().into_owned(),
+                        is_dir: entry.file_type().map(|t| t.is_dir()).unwrap_or(false),
+                        score: score as i32,
+                    });
+                }
+            }
+            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                walk(&entry.path(), query, matcher, results, max);
+            }
+        }
+    }
+    walk(std::path::Path::new(&root_path), &query, &matcher, &mut results, max_results);
+    results.sort_by(|a, b| b.score.cmp(&a.score));
+    results.truncate(max_results);
+    Ok(results)
+}
+
 #[tauri::command]
 fn desktop_e2e_report(payload: String) -> Result<bool, String> {
     let Some(path) = std::env::var_os("VIEWIT_DESKTOP_E2E_REPORT") else {
@@ -676,6 +733,7 @@ pub fn run() {
             archive_extract,
             pdf_page,
             browse_dir,
+            search_files_fuzzy,
             desktop_e2e_report
         ])
         .setup(|app| {

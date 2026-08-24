@@ -40,6 +40,10 @@ base64.workspace = true
 # cross-target confusion on x86_64 desktop builds.
 hpvcd = { version = "0.3" }
 image = { workspace = true, default-features = false, features = ["jpeg"] }
+fuzzy-matcher.workspace = true
+grep-searcher.workspace = true
+grep-regex.workspace = true
+ignore.workspace = true
 
 [features]
 default = ["fmt-everything"]

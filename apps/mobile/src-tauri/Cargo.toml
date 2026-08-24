@@ -47,6 +47,10 @@ viewit-fmt-image = { path = "../../../crates/fmt-image" }
 # replaces the former AGPL `heic` crate). neon = arm64 SIMD.
 hpvcd = { version = "0.3", features = ["neon"] }
 image = { workspace = true, default-features = false, features = ["jpeg"] }
+fuzzy-matcher.workspace = true
+grep-searcher.workspace = true
+grep-regex.workspace = true
+ignore.workspace = true
 
 [target.'cfg(target_os = "android")'.dependencies]
 android_logger = "0.13"

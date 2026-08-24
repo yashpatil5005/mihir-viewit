@@ -287,6 +287,141 @@ fn browse_dir(
     read_browse_dir(path, offset.unwrap_or(0), limit.unwrap_or(300))
 }
 
+#[derive(serde::Serialize)]
+struct FuzzyFileMatch {
+    name: String,
+    path: String,
+    is_dir: bool,
+    score: i32,
+}
+
+#[tauri::command]
+fn search_files_fuzzy(query: String, root: Option<String>, limit: Option<usize>) -> Result<Vec<FuzzyFileMatch>, String> {
+    use fuzzy_matcher::FuzzyMatcher;
+    use fuzzy_matcher::skim::SkimMatcherV2;
+    let matcher = SkimMatcherV2::default();
+    let root_path = match root {
+        Some(p) if !p.trim().is_empty() => p
+            .strip_prefix("file://")
+            .unwrap_or(&p)
+            .trim_end_matches('/')
+            .to_string(),
+        _ => {
+            for candidate in ["/sdcard/Download", "/sdcard"] {
+                if std::path::Path::new(candidate).is_dir() {
+                    return search_files_fuzzy(query, Some(candidate.to_string()), limit);
+                }
+            }
+            return Err("no browsable storage root found".into());
+        }
+    };
+    let max_results = limit.unwrap_or(50).clamp(1, 200);
+    let mut results: Vec<FuzzyFileMatch> = Vec::new();
+    fn walk(
+        dir: &std::path::Path,
+        query: &str,
+        matcher: &SkimMatcherV2,
+        results: &mut Vec<FuzzyFileMatch>,
+        max: usize,
+    ) {
+        if results.len() >= max { return; }
+        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        for entry in entries.flatten() {
+            if results.len() >= max { return; }
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.starts_with('.') { continue; }
+            if let Some(score) = matcher.fuzzy_match(&name, query) {
+                if score > 0 {
+                    results.push(FuzzyFileMatch {
+                        name: name.clone(),
+                        path: entry.path().to_string_lossy().into_owned(),
+                        is_dir: entry.file_type().map(|t| t.is_dir()).unwrap_or(false),
+                        score: score as i32,
+                    });
+                }
+            }
+            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                walk(&entry.path(), query, matcher, results, max);
+            }
+        }
+    }
+    walk(std::path::Path::new(&root_path), &query, &matcher, &mut results, max_results);
+    results.sort_by(|a, b| b.score.cmp(&a.score));
+    results.truncate(max_results);
+    Ok(results)
+}
+
+#[derive(serde::Serialize)]
+struct ContentSearchMatch {
+    path: String,
+    line_number: u64,
+    line_text: String,
+}
+
+#[tauri::command]
+fn search_files_content(query: String, root: Option<String>, limit: Option<usize>) -> Result<Vec<ContentSearchMatch>, String> {
+    use grep_regex::RegexMatcher;
+    use grep_searcher::SearcherBuilder;
+    use grep_searcher::sinks::UTF8;
+    let root_path = match root {
+        Some(p) if !p.trim().is_empty() => p
+            .strip_prefix("file://")
+            .unwrap_or(&p)
+            .trim_end_matches('/')
+            .to_string(),
+        _ => {
+            for candidate in ["/sdcard/Download", "/sdcard"] {
+                if std::path::Path::new(candidate).is_dir() {
+                    return search_files_content(query, Some(candidate.to_string()), limit);
+                }
+            }
+            return Err("no browsable storage root found".into());
+        }
+    };
+    let max_results = limit.unwrap_or(50).clamp(1, 500);
+    let matcher = RegexMatcher::new(&query).map_err(|e| format!("invalid regex: {}", e))?;
+    let mut results: Vec<ContentSearchMatch> = Vec::new();
+    let mut searcher = SearcherBuilder::new()
+        .line_number(true)
+        .build();
+    fn walk_content(
+        dir: &std::path::Path,
+        matcher: &grep_regex::RegexMatcher,
+        searcher: &mut grep_searcher::Searcher,
+        results: &mut Vec<ContentSearchMatch>,
+        max: usize,
+    ) {
+        if results.len() >= max { return; }
+        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        for entry in entries.flatten() {
+            if results.len() >= max { return; }
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.starts_with('.') { continue; }
+            let ft = entry.file_type();
+            if ft.as_ref().map(|t| t.is_dir()).unwrap_or(false) {
+                walk_content(&entry.path(), matcher, searcher, results, max);
+            } else if ft.as_ref().map(|t| t.is_file()).unwrap_or(false) {
+                let path = entry.path();
+                let meta = entry.metadata();
+                if meta.as_ref().map(|m| m.len() > 1_000_000).unwrap_or(true) { continue; }
+                let sink = UTF8(|line_num, line| {
+                    if results.len() < max {
+                        results.push(ContentSearchMatch {
+                            path: path.to_string_lossy().into_owned(),
+                            line_number: line_num,
+                            line_text: line.to_string().trim_end().to_string(),
+                        });
+                    }
+                    Ok(true)
+                });
+                let _ = searcher.search_path(matcher, &path, sink);
+            }
+        }
+    }
+    walk_content(std::path::Path::new(&root_path), &matcher, &mut searcher, &mut results, max_results);
+    Ok(results)
+}
+
 /// Picker path: raw `Vec<u8>` from Tauri IPC (not JSON `number[]`).
 #[tauri::command]
 fn open_bytes(bytes: Vec<u8>, name: String) -> Result<Document, String> {
@@ -721,6 +856,7 @@ pub fn run() {
             epub_chapter,
             archive_extract,
             browse_dir,
+            search_files_fuzzy,
             decode_heic_to_data_url,
             #[cfg(feature = "fmt-pdf")]
             pdf_page
