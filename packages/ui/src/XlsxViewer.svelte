@@ -7,11 +7,13 @@
     document: docProp = {},
     searchQuery = "",
     searchCaseSensitive = false,
+    searchNav = 0,
     onSearchResult = (_count: number, _current: number) => {},
   }: {
     document?: any;
     searchQuery?: string;
     searchCaseSensitive?: boolean;
+    searchNav?: number;
     onSearchResult?: (count: number, current: number) => void;
   } = $props();
   let sheets = $derived(
@@ -49,6 +51,9 @@
   let activeSheet = $state(0);
   let query = $state("");
   let caseSensitive = $state(false);
+  let matches: Array<{ index: number; length: number }> = $state([]);
+  let currentIdx = $state(0);
+  let lastNav = 0;
 
   $effect(() => {
     const q = searchQuery;
@@ -59,8 +64,18 @@
     const text = sheets
       .map((s) => [...(s.header ?? []), ...(s.preview_rows ?? []).flat()].join("\t"))
       .join("\n");
-    const m = findAllMatches(text, q, cs);
-    onSearchResult(m.length, m.length > 0 ? 1 : 0);
+    matches = findAllMatches(text, q, cs);
+    currentIdx = 0;
+    onSearchResult(matches.length, matches.length > 0 ? 1 : 0);
+  });
+
+  $effect(() => {
+    const nav = searchNav;
+    if (nav === lastNav || matches.length === 0) return;
+    const direction = nav > lastNav ? 1 : -1;
+    lastNav = nav;
+    currentIdx = (((currentIdx + direction) % matches.length) + matches.length) % matches.length;
+    onSearchResult(matches.length, currentIdx + 1);
   });
 
   $effect(() => {
@@ -145,7 +160,7 @@
     ].join("\n");
   });
 
-  let matches = $derived(query ? findAllMatches(textBody, query, caseSensitive) : []);
+  let highlightMatches = $derived(query ? findAllMatches(textBody, query, caseSensitive) : []);
 
   function cellMatches(s: string): string {
     if (!query) return escapeHtml(s);

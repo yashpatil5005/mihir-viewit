@@ -9,6 +9,7 @@
     truncated = false,
     searchQuery = "",
     searchCaseSensitive = false,
+    searchNav = 0,
     onSearchResult = (_count: number, _current: number) => {},
   }: {
     content: string;
@@ -17,6 +18,7 @@
     truncated?: boolean;
     searchQuery?: string;
     searchCaseSensitive?: boolean;
+    searchNav?: number;
     onSearchResult?: (count: number, current: number) => void;
   } = $props();
 
@@ -105,6 +107,8 @@
 
   let highlightVersion = 0;
 
+  let lastNav = 0;
+
   $effect(() => {
     const q = searchQuery;
     const cs = searchCaseSensitive;
@@ -116,6 +120,16 @@
     highlightVersion++;
     scrollToMatch(0);
     onSearchResult(matches.length, matches.length > 0 ? 1 : 0);
+  });
+
+  $effect(() => {
+    const nav = searchNav;
+    if (nav === lastNav || matches.length === 0) return;
+    const direction = nav > lastNav ? 1 : -1;
+    lastNav = nav;
+    const next = (((currentIdx + direction) % matches.length) + matches.length) % matches.length;
+    scrollToMatch(next);
+    onSearchResult(matches.length, next + 1);
   });
 
   // Rendered HTML per mounted chunk, computed in a single derived so the

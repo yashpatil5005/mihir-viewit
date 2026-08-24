@@ -188,6 +188,7 @@
   let searchCaseSensitive = $state(false);
   let searchMatchCount = $state(0);
   let searchCurrentMatch = $state(0);
+  let searchNavCounter = $state(0);
 
   function extractSearchableText(doc: Document | null): string {
     if (!doc) return "";
@@ -1517,6 +1518,7 @@
               {...doc as any}
               {searchQuery}
               {searchCaseSensitive}
+              searchNav={searchNavCounter}
               onSearchResult={(count: number, current: number) => {
                 searchMatchCount = count;
                 searchCurrentMatch = current;
@@ -1685,6 +1687,7 @@
                 document={doc}
                 {searchQuery}
                 {searchCaseSensitive}
+                searchNav={searchNavCounter}
                 onSearchResult={(count: number, current: number) => {
                   searchMatchCount = count;
                   searchCurrentMatch = current;
@@ -1724,6 +1727,7 @@
                 document={doc}
                 {searchQuery}
                 {searchCaseSensitive}
+                searchNav={searchNavCounter}
                 onSearchResult={(count: number, current: number) => {
                   searchMatchCount = count;
                   searchCurrentMatch = current;
@@ -1773,6 +1777,8 @@
         onSearch={onGlobalSearch}
         matchCount={searchMatchCount}
         currentMatch={searchCurrentMatch}
+        onNext={() => searchNavCounter++}
+        onPrev={() => searchNavCounter--}
       />
       <button
         type="button"
