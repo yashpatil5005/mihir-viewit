@@ -298,9 +298,56 @@
       }
     } finally {
       loading = false;
-      if (listing) untrack(() => onListed?.(listing!.path, listing!.parent || null));
+      if (listing) {
+        untrack(() => {
+          onListed?.(listing!.path, listing!.parent || null);
+          rememberRecentFolder(listing!.path);
+        });
+      }
     }
   }
+
+  // --- Recent folders ---------------------------------------------------------
+  const RECENTS_KEY = "omnia.recentFolders";
+  let recentFolders: string[] = $state(loadRecentFolders());
+
+  function loadRecentFolders(): string[] {
+    if (typeof localStorage === "undefined") return [];
+    try {
+      const raw = localStorage.getItem(RECENTS_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.filter((p) => typeof p === "string").slice(0, 6) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function rememberRecentFolder(path: string) {
+    if (!path || path === "/" || path === "") return;
+    const next = [path, ...recentFolders.filter((p) => p !== path)].slice(0, 6);
+    recentFolders = next;
+    try {
+      localStorage.setItem(RECENTS_KEY, JSON.stringify(next));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function clearRecentFolders() {
+    recentFolders = [];
+    try {
+      localStorage.removeItem(RECENTS_KEY);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function shortFolderName(path: string): string {
+    const parts = path.split("/").filter(Boolean);
+    return parts[parts.length - 1] ?? path;
+  }
+
+  let visibleRecents = $derived(recentFolders.filter((p) => p !== listing?.path).slice(0, 4));
 
   // Append the next page when the sentinel scrolls into view. Entries are
   // accumulated into the same listing so the grid grows in place.
@@ -524,6 +571,23 @@
     {/if}
   </div>
 
+  {#if visibleRecents.length > 0 && searchMode === "none"}
+    <div class="recents" aria-label="Recent folders">
+      <span class="recents-label">Recent:</span>
+      {#each visibleRecents as r}
+        <button type="button" class="recent-chip" title={r} onclick={() => void load(r)}>
+          {shortFolderName(r)}
+        </button>
+      {/each}
+      <button
+        type="button"
+        class="recents-clear"
+        onclick={clearRecentFolders}
+        aria-label="Clear recent folders">✕</button
+      >
+    </div>
+  {/if}
+
   {#if root === "web"}
     {#if webEntries.length > 0}
       <div class="grid" role="grid">
@@ -707,6 +771,44 @@
   }
   .crumbs .sep {
     color: var(--text-secondary);
+    font-size: 0.75rem;
+  }
+  .recents {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    padding: 0.25rem 1rem 0.5rem;
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+  }
+  .recents-label {
+    opacity: 0.85;
+  }
+  .recent-chip {
+    padding: 0.22rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    cursor: pointer;
+    max-width: 11rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-height: 32px;
+    font-size: 0.72rem;
+  }
+  .recent-chip:hover {
+    border-color: var(--link);
+  }
+  .recents-clear {
+    border: 0;
+    background: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    min-width: 32px;
+    min-height: 32px;
   }
   .crumb {
     border: 0;

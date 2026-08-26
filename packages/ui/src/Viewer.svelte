@@ -1559,12 +1559,31 @@
         {/key}
       {:else if doc.kind === "csv" && CsvViewer}
         {#key docUri}
-          <CsvViewer {...doc as any} />
+          <CsvViewer
+            {...doc as any}
+            {searchQuery}
+            {searchCaseSensitive}
+            searchNav={searchNavCounter}
+            onSearchResult={(count: number, current: number) => {
+              searchMatchCount = count;
+              searchCurrentMatch = current;
+            }}
+          />
         {/key}
       {:else if doc.kind === "stream-file"}
         {#key docUri}
           {#if PdfViewer}
-            <PdfViewer document={doc} source_uri={docUri ?? ""} />
+            <PdfViewer
+              document={doc}
+              source_uri={docUri ?? ""}
+              {searchQuery}
+              {searchCaseSensitive}
+              searchNav={searchNavCounter}
+              onSearchResult={(count: number, current: number) => {
+                searchMatchCount = count;
+                searchCurrentMatch = current;
+              }}
+            />
           {:else}
             <p class="status">Loading PDF viewer…</p>
           {/if}
@@ -1593,7 +1612,17 @@
         {/key}
       {:else if doc.kind === "pdf" && PdfViewer}
         {#key docUri}
-          <PdfViewer document={doc} source_uri={docUri ?? ""} />
+          <PdfViewer
+            document={doc}
+            source_uri={docUri ?? ""}
+            {searchQuery}
+            {searchCaseSensitive}
+            searchNav={searchNavCounter}
+            onSearchResult={(count: number, current: number) => {
+              searchMatchCount = count;
+              searchCurrentMatch = current;
+            }}
+          />
         {/key}
       {:else if (doc.kind === "epub" || doc.kind === "mobi" || doc.kind === "azw3") && EpubViewer}
         {#key docUri}

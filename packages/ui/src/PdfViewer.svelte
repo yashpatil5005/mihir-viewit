@@ -28,6 +28,10 @@
   let {
     document: docProp = {},
     source_uri = "",
+    searchQuery = "",
+    searchCaseSensitive = false,
+    searchNav = 0,
+    onSearchResult = (_count: number, _current: number) => {},
   }: {
     document?: {
       page_count?: number;
@@ -39,6 +43,10 @@
       stream_url?: string;
     };
     source_uri?: string;
+    searchQuery?: string;
+    searchCaseSensitive?: boolean;
+    searchNav?: number;
+    onSearchResult?: (count: number, current: number) => void;
   } = $props();
 
   let native = $derived(
@@ -71,6 +79,151 @@
   let pdfjsError = $state("");
   let pdfBlobUrl = $state("");
   let pdfStarted = false;
+
+  // --- Page jump ------------------------------------------------------------
+  let jumpValue = $state("");
+
+  function submitJump(event: Event) {
+    event.preventDefault();
+    const n = parseInt(jumpValue, 10);
+    if (!Number.isFinite(n) || n < 1) return;
+    const target = Math.min(n, pdfjsPageCount || n);
+    jumpToPage(target);
+    jumpValue = "";
+    if (currentPage !== target) currentPage = target;
+  }
+
+  // --- Text search with highlight overlays -----------------------------------
+  type PdfMatch = { page: number; left: number; top: number; width: number; height: number };
+  let pdfMatches: PdfMatch[] = $state([]);
+  let pdfMatchCurrent = $state(0);
+  let pdfSearchSeq = 0;
+  const textContentCache = new Map<
+    number,
+    Promise<Array<{ str: string; transform: number[]; width: number; height: number }>>
+  >();
+
+  function pageText(num: number) {
+    let cached = textContentCache.get(num);
+    if (!cached) {
+      cached = (async () => {
+        if (!pdfjsDocument) return [];
+        const page = await pdfjsDocument.getPage(num);
+        const viewport = page.getViewport({ scale: 1 });
+        const content = await page.getTextContent();
+        return content.items
+          .filter((it: any) => typeof it.str === "string" && it.str.length > 0)
+          .map((it: any) => ({
+            str: it.str as string,
+            transform: it.transform as number[],
+            width: (it.width as number) ?? 0,
+            height: (it.height as number) ?? 0,
+            viewport,
+          }));
+      })();
+      textContentCache.set(num, cached);
+    }
+    return cached;
+  }
+
+  $effect(() => {
+    const q = searchQuery;
+    const seq = ++pdfSearchSeq;
+    const delay = setTimeout(() => {
+      void runPdfSearch(q, seq);
+    }, 250);
+    return () => clearTimeout(delay);
+  });
+
+  async function runPdfSearch(q: string, seq: number) {
+    if (!pdfjsDocument || !q.trim()) {
+      if (seq !== pdfSearchSeq) return;
+      pdfMatches = [];
+      pdfMatchCurrent = 0;
+      onSearchResult(0, 0);
+      return;
+    }
+    const needle = searchCaseSensitive ? q : q.toLowerCase();
+    const found: PdfMatch[] = [];
+    for (let num = 1; num <= pdfjsPageCount; num++) {
+      if (seq !== pdfSearchSeq) return;
+      let items: Array<{
+        str: string;
+        transform: number[];
+        width: number;
+        height: number;
+        viewport?: any;
+      }> = [];
+      try {
+        items = (await pageText(num)) as any;
+      } catch {
+        continue;
+      }
+      const viewport = items[0]?.viewport;
+      if (!viewport) continue;
+      const pw = viewport.width || 1;
+      const ph = viewport.height || 1;
+      for (const item of items) {
+        const hay = searchCaseSensitive ? item.str : item.str.toLowerCase();
+        let idx = hay.indexOf(needle);
+        while (idx !== -1 && item.width > 0) {
+          // Approximate match rect by proportional offset within the text item.
+          const fracStart = idx / item.str.length;
+          const fracLen = needle.length / item.str.length;
+          const [a, , , d, e, f] = item.transform;
+          // Unrotated assumption: x advances along a, baseline at f.
+          const x0 = e + item.width * fracStart * (a >= 0 ? 1 : -1);
+          const w = Math.max(item.width * fracLen, 0.5);
+          const h = item.height || Math.abs(d) || 10;
+          found.push({
+            page: num,
+            left: x0 / pw,
+            top: (f - h) / ph,
+            width: w / pw,
+            height: h / ph,
+          });
+          idx = hay.indexOf(needle, idx + needle.length);
+        }
+      }
+      // Publish progressive counts so the toolbar updates on long documents.
+      if (seq === pdfSearchSeq && (num % 5 === 0 || num === pdfjsPageCount)) {
+        pdfMatches = [...found];
+        onSearchResult(found.length, found.length > 0 ? 1 : 0);
+      }
+    }
+    if (seq !== pdfSearchSeq) return;
+    pdfMatches = found;
+    pdfMatchCurrent = 0;
+    onSearchResult(found.length, found.length > 0 ? 1 : 0);
+    if (found.length > 0) applyPdfMatch(0);
+  }
+
+  $effect(() => {
+    const nav = searchNav;
+    if (nav === lastNavCounter || pdfMatches.length === 0) return;
+    const direction = nav > lastNavCounter ? 1 : -1;
+    lastNavCounter = nav;
+    pdfMatchCurrent =
+      (((pdfMatchCurrent + direction) % pdfMatches.length) + pdfMatches.length) % pdfMatches.length;
+    onSearchResult(pdfMatches.length, pdfMatchCurrent + 1);
+    applyPdfMatch(pdfMatchCurrent);
+  });
+  let lastNavCounter = 0;
+
+  function applyPdfMatch(idx: number) {
+    const m = pdfMatches[idx];
+    if (!m) return;
+    if (m.page !== currentPage) jumpToPage(m.page);
+    else void renderPdfPage(m.page, false);
+  }
+
+  function isMatchOnPage(page: number): boolean {
+    return pdfMatches.some((m) => m.page === page);
+  }
+
+  function onPageInputKeydown(event: KeyboardEvent) {
+    if (event.key === "Escape") (event.currentTarget as HTMLInputElement).blur();
+  }
 
   $effect(() => {
     pages = [...(docProp.pages ?? [])];
@@ -388,6 +541,23 @@
         <button class="thumbnail-toggle" onclick={() => (showThumbnails = !showThumbnails)}>
           {showThumbnails ? "Hide" : "Show"} thumbnails
         </button>
+        <form class="page-jump" onsubmit={submitJump}>
+          <input
+            type="number"
+            min="1"
+            max={pdfjsPageCount}
+            placeholder="Page 1–{pdfjsPageCount}"
+            bind:value={jumpValue}
+            onkeydown={onPageInputKeydown}
+            aria-label="Jump to page"
+          />
+          <button type="submit" disabled={!jumpValue}>Go</button>
+          {#if pdfMatches.length > 0}
+            <span class="match-pill">{pdfMatchCurrent + 1}/{pdfMatches.length}</span>
+          {:else if searchQuery.trim()}
+            <span class="match-pill">0 matches</span>
+          {/if}
+        </form>
       {/if}
     </aside>
   {/if}
@@ -429,9 +599,26 @@
             >
               <figcaption>Page {i + 1}</figcaption>
               {#if pdfjsPages[i + 1]}
-                <div class="canvas-wrap" use:mountCanvas={pdfjsPages[i + 1]}></div>
+                <div class="page-body">
+                  <div class="canvas-wrap" use:mountCanvas={pdfjsPages[i + 1]}></div>
+                  <div class="pdf-overlay">
+                    {#each pdfMatches as m, mi}
+                      {#if m.page === i + 1}
+                        <span
+                          class="pdf-highlight"
+                          class:current={mi === pdfMatchCurrent}
+                          style="left:{m.left * 100}%;top:{m.top * 100}%;width:{m.width *
+                            100}%;height:{m.height * 100}%"
+                        ></span>
+                      {/if}
+                    {/each}
+                  </div>
+                </div>
               {:else}
-                <div class="page-placeholder">Rendering page {i + 1}…</div>
+                <div class="page-placeholder">
+                  Rendering page {i + 1}…{#if isMatchOnPage(i + 1)}<span class="match-dot"
+                    ></span>{/if}
+                </div>
               {/if}
             </figure>
           {/each}
@@ -485,6 +672,78 @@
     border: 0;
     cursor: pointer;
     font: inherit;
+  }
+  .page-jump {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-left: 0.75rem;
+  }
+  .page-jump input {
+    width: 8.5rem;
+    padding: 0.3rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 0.35rem;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font: inherit;
+    min-height: 44px;
+  }
+  .page-jump button {
+    padding: 0.3rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 0.35rem;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    cursor: pointer;
+    min-height: 44px;
+  }
+  .page-jump button:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  .match-pill {
+    font-size: 0.72rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.12rem 0.5rem;
+    color: var(--text-secondary);
+  }
+  .page-body {
+    position: relative;
+    display: inline-block;
+    max-width: 100%;
+    line-height: 0;
+  }
+  .canvas-wrap {
+    display: block;
+    line-height: 0;
+  }
+  .pdf-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    line-height: normal;
+  }
+  .pdf-highlight {
+    position: absolute;
+    background: rgba(255, 213, 79, 0.4);
+    border-radius: 2px;
+    pointer-events: none;
+  }
+  .pdf-highlight.current {
+    background: rgba(255, 152, 0, 0.55);
+    outline: 2px solid rgba(255, 111, 0, 0.9);
+    outline-offset: -1px;
+  }
+  .match-dot {
+    display: inline-block;
+    width: 0.5rem;
+    height: 0.5rem;
+    margin-left: 0.4rem;
+    border-radius: 999px;
+    background: rgba(255, 152, 0, 0.9);
   }
   .native-layout.with-thumbnails {
     display: grid;

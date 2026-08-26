@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
-  import { debugLog, openWithExternal } from "@viewit/platform";
+  import { debugLog, openWithExternal, readUriBytes, pickSingleFile } from "@viewit/platform";
   import RuntimeChooser from "./RuntimeChooser.svelte";
   import type { PluginInfo } from "./pluginBridge";
 
@@ -39,6 +39,152 @@
   let duration = $state(0);
   let volume = $state(1);
   let playbackRate = $state(1);
+
+  // --- Picture-in-Picture ----------------------------------------------------
+  let pipAvailable = $state(false);
+  let pipActive = $state(false);
+
+  function checkPipSupport() {
+    const videoDoc = document as Document & { pictureInPictureEnabled?: boolean };
+    pipAvailable =
+      media_kind === "video" &&
+      typeof (HTMLVideoElement.prototype as any).requestPictureInPicture === "function" &&
+      videoDoc.pictureInPictureEnabled !== false;
+  }
+
+  async function togglePip() {
+    const el = mediaEl as
+      | (HTMLVideoElement & {
+          requestPictureInPicture?: () => Promise<any>;
+          disablePictureInPicture?: boolean;
+        })
+      | null;
+    if (!el || typeof el.requestPictureInPicture !== "function") return;
+    try {
+      if ((document as any).pictureInPictureElement) {
+        await (document as any).exitPictureInPicture();
+        pipActive = false;
+      } else {
+        await el.requestPictureInPicture();
+        pipActive = true;
+      }
+    } catch (e) {
+      debugLog(`[media] PiP failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  // --- Subtitles (.srt / .vtt) -------------------------------------------------
+  let subtitleUrl = $state("");
+  let subtitleLabel = $state("");
+  let subtitleLoading = $state(false);
+
+  function srtToVtt(text: string): string {
+    const body = text.replace(/\r+\n/g, "\n").replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, "$1.$2");
+    return body.startsWith("WEBVTT") ? body : `WEBVTT\n\n${body}`;
+  }
+
+  function vttBlob(vtt: string): string {
+    return URL.createObjectURL(new Blob([vtt], { type: "text/vtt" }));
+  }
+
+  async function readSubtitleText(handle: File): Promise<string> {
+    const viewitUri = (handle as File & { viewitUri?: string }).viewitUri;
+    // Tauri (desktop + Android SAF): picked handles carry a viewitUri that the
+    // Rust fs layer can stream. Plain web builds get a real File.
+    if (viewitUri) return new TextDecoder().decode(await readUriBytes(viewitUri));
+    return handle.text();
+  }
+
+  async function loadSubtitleFromPicker(): Promise<void> {
+    if (subtitleLoading) return;
+    subtitleLoading = true;
+    // tauri-plugin-dialog never resolves its promise when SAF is dismissed
+    // without a selection (observed on Android). Recover so CC stays usable:
+    // clear the flag shortly after the window regains focus, plus a hard cap.
+    const recover = () => {
+      if (!subtitleLoading) return;
+      setTimeout(() => {
+        subtitleLoading = false;
+        window.removeEventListener("focus", recover);
+      }, 1500);
+    };
+    window.addEventListener("focus", recover);
+    const hardCap = setTimeout(() => {
+      subtitleLoading = false;
+      window.removeEventListener("focus", recover);
+    }, 120_000);
+    try {
+      const f = await pickSingleFile();
+      clearTimeout(hardCap);
+      window.removeEventListener("focus", recover);
+      subtitleLoading = false;
+      if (!f) return;
+      if (!/\.(srt|vtt)$/i.test(f.name)) {
+        debugLog(`[media] subtitle picker: unsupported file ${f.name}`);
+        return;
+      }
+      const text = await readSubtitleText(f);
+      if (subtitleUrl) URL.revokeObjectURL(subtitleUrl);
+      subtitleUrl = vttBlob(/\.(vtt)$/i.test(f.name) ? text : srtToVtt(text));
+      subtitleLabel = f.name;
+      attachSubtitleTrack();
+    } catch (e) {
+      debugLog(`[media] subtitle load failed: ${e instanceof Error ? e.message : String(e)}`);
+      clearTimeout(hardCap);
+      window.removeEventListener("focus", recover);
+      subtitleLoading = false;
+    }
+  }
+
+  /** Desktop convenience: auto-attach a same-name .srt/.vtt next to the media. */
+  async function autoDetectSiblingSubtitle(): Promise<void> {
+    if (!asset_path || "AndroidBridge" in window) return;
+    const base = asset_path.replace(/\.[^.]+$/, "");
+    for (const ext of ["vtt", "srt"]) {
+      try {
+        const { readFile, exists } = await import("@tauri-apps/plugin-fs");
+        const candidate = `${base}.${ext}`;
+        if (typeof exists === "function" && !(await exists(candidate))) continue;
+        const bytes = await readFile(candidate);
+        const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes as ArrayBuffer);
+        const text = new TextDecoder().decode(u8);
+        subtitleUrl = vttBlob(ext === "srt" ? srtToVtt(text) : text);
+        const parts = candidate.split(/[/\\]/);
+        subtitleLabel = parts[parts.length - 1];
+        attachSubtitleTrack();
+        return;
+      } catch {
+        /* no sibling subtitle — fine */
+      }
+    }
+  }
+
+  function attachSubtitleTrack() {
+    const el = mediaEl as HTMLVideoElement | null;
+    if (!el || !subtitleUrl) return;
+    for (const old of Array.from(el.querySelectorAll("track"))) old.remove();
+    const track = document.createElement("track");
+    track.kind = "subtitles";
+    track.label = subtitleLabel;
+    track.srclang = "en";
+    track.default = true;
+    track.src = subtitleUrl;
+    el.appendChild(track);
+    const activate = () => {
+      const tracks = el.textTracks;
+      if (tracks.length > 0) tracks[tracks.length - 1].mode = "showing";
+    };
+    if (el.textTracks.length > 0) activate();
+    else el.addEventListener("loadstart", activate, { once: true });
+  }
+
+  function clearSubtitles() {
+    if (subtitleUrl) URL.revokeObjectURL(subtitleUrl);
+    subtitleUrl = "";
+    subtitleLabel = "";
+    const el = mediaEl as HTMLVideoElement | null;
+    if (el) for (const old of Array.from(el.querySelectorAll("track"))) old.remove();
+  }
 
   const MIME_MAP: Record<string, string> = {
     mp4: "video/mp4",
@@ -463,6 +609,8 @@
     const elapsed = Date.now() - loadStart;
     debugLog(`[media] loaded in ${elapsed}ms via ${currentStrategy}`);
     syncPlaybackState();
+    checkPipSupport();
+    if (media_kind === "video" && !subtitleUrl && asset_path) void autoDetectSiblingSubtitle();
   }
 
   function syncPlaybackState() {
@@ -666,6 +814,35 @@
           <option value="2">2x</option>
         </select>
       </label>
+      {#if media_kind === "video"}
+        <div class="extra-controls">
+          {#if pipAvailable}
+            <button
+              class="pill-button"
+              class:active={pipActive}
+              onclick={togglePip}
+              title="Picture-in-picture"
+              aria-label="Toggle picture-in-picture">PiP</button
+            >
+          {/if}
+          {#if subtitleUrl}
+            <button
+              class="pill-button active"
+              onclick={clearSubtitles}
+              title="Remove subtitles ({subtitleLabel})"
+              aria-label="Remove subtitles">{subtitleLabel.slice(0, 18)} ✕</button
+            >
+          {:else if media_kind === "video"}
+            <button
+              class="pill-button"
+              onclick={() => void loadSubtitleFromPicker()}
+              disabled={subtitleLoading}
+              title="Load .srt or .vtt subtitles"
+              aria-label="Load subtitles">{subtitleLoading ? "…" : "CC"}</button
+            >
+          {/if}
+        </div>
+      {/if}
     </div>
   {/if}
 </article>
@@ -787,6 +964,32 @@
   .volume-control input {
     width: 5rem;
   }
+  .extra-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .pill-button {
+    padding: 0.3rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg-primary, #161b22);
+    color: var(--text-primary);
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    min-height: 44px;
+    min-width: 44px;
+  }
+  .pill-button.active {
+    background: var(--link);
+    border-color: var(--link);
+    color: #fff;
+  }
+  .pill-button:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
   .status {
     color: var(--text-secondary);
     font-style: italic;
@@ -828,6 +1031,10 @@
     .speed-control {
       grid-column: 4;
       grid-row: 2;
+    }
+    .extra-controls {
+      grid-column: 1 / 4;
+      grid-row: 3;
     }
   }
   @media (max-width: 374px) {
