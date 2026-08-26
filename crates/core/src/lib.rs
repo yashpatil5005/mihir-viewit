@@ -114,35 +114,153 @@ fn sniff_zip_as_office_or_epub(bytes: &[u8], ext: &str) -> Format {
 }
 
 /// OOXML / ODF / EPUB / iWork inside a ZIP (when extension missing or wrong).
+/// Scans local file headers in the byte slice rather than requiring central directory.
 fn sniff_zip_inner(bytes: &[u8]) -> Option<Format> {
+    // 1. Try full ZipArchive if the full buffer or central directory is intact
     let cursor = std::io::Cursor::new(bytes);
-    let mut archive = zip::ZipArchive::new(cursor).ok()?;
+    if let Ok(mut archive) = zip::ZipArchive::new(cursor) {
+        let mut has_content_types = false;
+        let mut has_word = false;
+        let mut has_xl = false;
+        let mut has_ppt = false;
+        let mut has_epub = false;
+        let mut has_opendocument = false;
+        let mut has_oasis = false;
+        for i in 0..archive.len() {
+            let Ok(file) = archive.by_index(i) else {
+                continue;
+            };
+            let name = file.name();
+            if name == "[Content_Types].xml" {
+                has_content_types = true;
+            }
+            if name.starts_with("word/") {
+                has_word = true;
+            }
+            if name.starts_with("xl/") {
+                has_xl = true;
+            }
+            if name.starts_with("ppt/") {
+                has_ppt = true;
+            }
+            if name == "META-INF/container.xml" {
+                has_epub = true;
+            }
+            if name == "content.xml" {
+                has_opendocument = true;
+            }
+            if name == "mimetype" {
+                has_oasis = true;
+            }
+        }
+        if has_epub {
+            return Some(Format::Epub);
+        }
+        if has_content_types {
+            if has_xl {
+                return Some(Format::Xlsx);
+            }
+            if has_word {
+                return Some(Format::Docx);
+            }
+            if has_ppt {
+                return Some(Format::Pptx);
+            }
+        }
+        if has_opendocument || has_oasis {
+            return Some(Format::Odt);
+        }
+    }
+
+    // 2. Fallback: Parse streaming local file headers (PK\x03\x04) directly from slice
+    // Local header structure:
+    // 0..4: signature (0x04034b50)
+    // 18..22: compressed size (u32)
+    // 22..26: uncompressed size (u32)
+    // 26..28: filename length (u16)
+    // 28..30: extra field length (u16)
+    // 30..30+filename_len: filename
+    let mut pos = 0;
     let mut has_content_types = false;
     let mut has_word = false;
     let mut has_xl = false;
     let mut has_ppt = false;
     let mut has_epub = false;
-    for i in 0..archive.len() {
-        let Ok(file) = archive.by_index(i) else {
-            continue;
-        };
-        let name = file.name();
-        if name == "[Content_Types].xml" {
-            has_content_types = true;
-        }
-        if name.starts_with("word/") {
-            has_word = true;
-        }
-        if name.starts_with("xl/") {
-            has_xl = true;
-        }
-        if name.starts_with("ppt/") {
-            has_ppt = true;
-        }
-        if name == "META-INF/container.xml" {
-            has_epub = true;
+    let mut has_opendocument = false;
+
+    // Check for uncompressed EPUB/ODF mimetype in the first entry
+    if bytes.len() >= 30 && &bytes[0..4] == b"PK\x03\x04" {
+        let fn_len = u16::from_le_bytes([bytes[26], bytes[27]]) as usize;
+        let extra_len = u16::from_le_bytes([bytes[28], bytes[29]]) as usize;
+        let data_start = 30 + fn_len + extra_len;
+        if fn_len == 8 && bytes.len() >= 30 + 8 && &bytes[30..38] == b"mimetype" {
+            let comp_size = u32::from_le_bytes([bytes[18], bytes[19], bytes[20], bytes[21]]) as usize;
+            let uncomp_size = u32::from_le_bytes([bytes[22], bytes[23], bytes[24], bytes[25]]) as usize;
+            let mime_len = if comp_size > 0 && comp_size <= 100 { comp_size } else if uncomp_size > 0 && uncomp_size <= 100 { uncomp_size } else { 50 };
+            if bytes.len() >= data_start + mime_len {
+                let mime_bytes = &bytes[data_start..data_start + mime_len];
+                let mime_str = String::from_utf8_lossy(mime_bytes);
+                if mime_str.contains("application/epub+zip") {
+                    return Some(Format::Epub);
+                }
+                if mime_str.contains("application/vnd.oasis.opendocument.text") {
+                    return Some(Format::Odt);
+                }
+                if mime_str.contains("application/vnd.oasis.opendocument.spreadsheet") {
+                    return Some(Format::Ods);
+                }
+                if mime_str.contains("application/vnd.oasis.opendocument.presentation") {
+                    return Some(Format::Odp);
+                }
+            }
         }
     }
+
+    while pos + 30 <= bytes.len() {
+        if &bytes[pos..pos + 4] != b"PK\x03\x04" {
+            // Stop if no longer at local file header signature
+            break;
+        }
+        let fn_len = u16::from_le_bytes([bytes[pos + 26], bytes[pos + 27]]) as usize;
+        let extra_len = u16::from_le_bytes([bytes[pos + 28], bytes[pos + 29]]) as usize;
+        let comp_size = u32::from_le_bytes([
+            bytes[pos + 18],
+            bytes[pos + 19],
+            bytes[pos + 20],
+            bytes[pos + 21],
+        ]) as usize;
+
+        let name_start = pos + 30;
+        let name_end = name_start + fn_len;
+        if name_end <= bytes.len() {
+            let name = String::from_utf8_lossy(&bytes[name_start..name_end]);
+            if name == "[Content_Types].xml" {
+                has_content_types = true;
+            }
+            if name.starts_with("word/") {
+                has_word = true;
+            }
+            if name.starts_with("xl/") {
+                has_xl = true;
+            }
+            if name.starts_with("ppt/") {
+                has_ppt = true;
+            }
+            if name == "META-INF/container.xml" {
+                has_epub = true;
+            }
+            if name == "content.xml" {
+                has_opendocument = true;
+            }
+        }
+
+        let next_pos = pos + 30 + fn_len + extra_len + comp_size;
+        if next_pos <= pos || next_pos > bytes.len() {
+            break;
+        }
+        pos = next_pos;
+    }
+
     if has_epub {
         return Some(Format::Epub);
     }
@@ -157,6 +275,10 @@ fn sniff_zip_inner(bytes: &[u8]) -> Option<Format> {
             return Some(Format::Pptx);
         }
     }
+    if has_opendocument {
+        return Some(Format::Odt);
+    }
+
     None
 }
 

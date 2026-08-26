@@ -29,12 +29,7 @@
 </script>
 
 <div class="search-bar">
-  <input
-    type="search"
-    placeholder="Search..."
-    bind:value={query}
-    aria-label="Search"
-  />
+  <input type="search" placeholder="Search..." bind:value={query} aria-label="Search" />
   <button
     class="cs-toggle"
     class:active={caseSensitive}

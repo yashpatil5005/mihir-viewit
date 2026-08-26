@@ -38,6 +38,7 @@
   import DebugPanel from "./DebugPanel.svelte";
   import PluginStore from "./PluginStore.svelte";
   import RuntimeChooser from "./RuntimeChooser.svelte";
+  import SettingsModal from "./SettingsModal.svelte";
   import Icon from "./Icon.svelte";
   import SearchBar from "./SearchBar.svelte";
   import { fullscreenState, setFullscreen } from "./fullscreen.svelte";
@@ -183,6 +184,7 @@
   let error: string | null = $state(null);
   let debugOpen = $state(false);
   let pluginStoreOpen = $state(false);
+  let settingsOpen = $state(false);
   let searchOpen = $state(false);
   let searchQuery = $state("");
   let searchCaseSensitive = $state(false);
@@ -417,21 +419,22 @@
     return false;
   }
 
-  /** Best-effort real display name for a picker File (SAF content:// URIs often
-   *  have no extension — Samsung My Files: `msf:1000483515`). */
+  /** Best-effort real display name for a picker File across Android OEM providers */
   function resolvePickerName(f: File, viewitUri: string): string | null {
     const base = f.name;
-    if (/^[a-z0-9._%+-]{1,120}\.[a-z0-9]{1,10}$/i.test(base)) return base;
+    if (base && base !== "file" && base !== "picked-file" && !/^\d+$/.test(base)) {
+      return base;
+    }
     try {
       const bridge = (window as any).AndroidBridge;
       if (bridge && typeof bridge.getDisplayName === "function") {
         const name = bridge.getDisplayName(viewitUri);
-        if (name && /^[a-z0-9._%+-]{1,120}\.[a-z0-9]{1,10}$/i.test(name)) return name;
+        if (name && name !== "file" && !/^\d+$/.test(name)) return name;
       }
     } catch {
       /* ignore */
     }
-    return null;
+    return base || null;
   }
 
   function setPendingOpen(record: unknown) {
@@ -1424,6 +1427,15 @@
       <button
         type="button"
         class="hint-btn"
+        title="Settings & Preferences"
+        aria-label="Open settings"
+        onclick={() => (settingsOpen = true)}
+      >
+        <Icon name="sliders" />
+      </button>
+      <button
+        type="button"
+        class="hint-btn"
         title="Tap for on-device debug log (replaces Chrome inspect)"
         aria-label={debugOpen ? "Hide debug log" : "Show debug log"}
         onclick={() => (debugOpen = !debugOpen)}
@@ -1461,7 +1473,7 @@
         initialPath={browsePath}
         onListed={onGridListed}
         {upSignal}
-        searchQuery={searchQuery}
+        {searchQuery}
         onPick={(f) => pickFile(f)}
       />
     {:else if busy}
@@ -1802,6 +1814,7 @@
   </footer>
   <DebugPanel bind:open={debugOpen} />
   <PluginStore open={pluginStoreOpen} onClose={() => (pluginStoreOpen = false)} />
+  <SettingsModal bind:open={settingsOpen} onClose={() => (settingsOpen = false)} />
   <RuntimeChooser
     open={officeRuntimeChooserOpen}
     uri={docUri ?? ""}

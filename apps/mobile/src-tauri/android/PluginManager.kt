@@ -414,7 +414,17 @@ class PluginManager(private val context: Context) {
             val conn = URL(url).openConnection() as HttpURLConnection
             conn.connectTimeout = 10_000
             conn.readTimeout = 10_000
-            val body = conn.inputStream.bufferedReader().readText()
+            conn.setRequestProperty("Accept", "application/json")
+            conn.setRequestProperty("User-Agent", "Omnia-Android/${BuildConfig.VERSION_NAME}")
+            val responseCode = conn.responseCode
+            if (responseCode !in 200..299) {
+                return Result.failure(Exception("HTTP $responseCode from catalog source: $url"))
+            }
+            val contentType = conn.contentType ?: ""
+            val body = conn.inputStream.bufferedReader().readText().trim()
+            if (body.startsWith("<") || contentType.contains("text/html", ignoreCase = true)) {
+                return Result.failure(Exception("Catalog server returned HTML instead of JSON from $url"))
+            }
             val obj = JSONObject(body)
 
             // Verify catalog signature if present

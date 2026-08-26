@@ -46,31 +46,86 @@
   let searchMode: "none" | "filename" | "content" = $state("none");
   let searchResults: Array<FuzzyFileMatch | ContentSearchMatch> = $state([]);
   let searchLoading = $state(false);
+  let searchError = $state("");
+  let searchSeq = 0;
+  let completedSearchSeq = $state(0);
+  let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let isDestroyed = false;
 
-  async function runSearch(query: string) {
-    if (!query.trim()) {
-      searchMode = "none";
-      searchResults = [];
+  async function executeSearch(query: string, seq: number) {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      if (seq === searchSeq && !isDestroyed) {
+        searchMode = "none";
+        searchResults = [];
+        searchLoading = false;
+        searchError = "";
+        completedSearchSeq = seq;
+      }
       return;
     }
+
+    if (seq !== searchSeq || isDestroyed) return;
     searchLoading = true;
+    searchError = "";
+
     try {
-      const fuzzy = await searchFilesFuzzy(query, listing?.path || undefined, 100);
+      const rootPath =
+        listing?.path && listing.path !== "/" && listing.path !== "" ? listing.path : undefined;
+      const fuzzy = await searchFilesFuzzy(trimmed, rootPath, 100);
+      if (seq !== searchSeq || isDestroyed) return;
+
       if (fuzzy.length > 0) {
         searchMode = "filename";
         searchResults = fuzzy;
       } else {
-        const content = await searchFilesContent(query, listing?.path || undefined, 100);
+        const content = await searchFilesContent(trimmed, rootPath, 100, false);
+        if (seq !== searchSeq || isDestroyed) return;
         searchMode = "content";
         searchResults = content;
       }
+    } catch (e: unknown) {
+      if (seq === searchSeq && !isDestroyed) {
+        searchError = e instanceof Error ? e.message : "Search failed";
+        searchResults = [];
+      }
     } finally {
-      searchLoading = false;
+      if (seq === searchSeq && !isDestroyed) {
+        searchLoading = false;
+        completedSearchSeq = seq;
+      }
     }
   }
 
   $effect(() => {
-    runSearch(searchQuery);
+    const query = searchQuery;
+    const seq = ++searchSeq;
+
+    if (searchDebounceTimer) {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = null;
+    }
+
+    if (!query.trim()) {
+      searchMode = "none";
+      searchResults = [];
+      searchLoading = false;
+      searchError = "";
+      completedSearchSeq = seq;
+      return;
+    }
+
+    searchLoading = true;
+    searchDebounceTimer = setTimeout(() => {
+      void executeSearch(query, seq);
+    }, 200);
+
+    return () => {
+      if (searchDebounceTimer) {
+        clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = null;
+      }
+    };
   });
 
   function isAndroidBridge(): boolean {
@@ -150,10 +205,29 @@
     ).toLowerCase();
     return EXT_TYPES[ext] ?? "file-text";
   }
-  // ---- Previews -----------------------------------------------------------
-  // Images render as <img>, videos as first-frame <video> posters, both fed
-  // by the asset protocol. Media mounts only once its cell scrolls into
-  // view; failures fall back to the type icon.
+  function arePreviewsEnabled(): boolean {
+    if (typeof localStorage === "undefined") return false;
+    try {
+      const raw = localStorage.getItem("omnia.settings");
+      if (!raw) return false;
+      const parsed = JSON.parse(raw);
+      return Boolean(parsed.enableMediaPreviews);
+    } catch {
+      return false;
+    }
+  }
+
+  // Previews gate: images/videos only render when explicitly enabled in Settings.
+  let previewsEnabled = $state(arePreviewsEnabled());
+
+  $effect(() => {
+    // Re-check when window gains focus or settings change
+    const onFocus = () => {
+      previewsEnabled = arePreviewsEnabled();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  });
   let srcVersion = $state(0);
   let visiblePaths = $state<Set<string>>(new Set());
   let failedPreviews = $state<Set<string>>(new Set());
@@ -353,6 +427,11 @@
         )
       : null;
   onDestroy(() => {
+    isDestroyed = true;
+    if (searchDebounceTimer) {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = null;
+    }
     observer?.disconnect();
     observer = null;
   });
@@ -421,7 +500,13 @@
   }
 </script>
 
-<div class="grid-view">
+<div
+  class="grid-view"
+  data-search-state={searchMode}
+  data-search-loading={searchLoading}
+  data-search-seq={completedSearchSeq}
+  data-result-count={searchResults.length}
+>
   <div class="browse-bar">
     <button type="button" onclick={choose}>Choose file…</button>
     {#if listing}
@@ -470,17 +555,23 @@
     <p class="status">Loading folder…</p>
   {:else if browseError}
     <p class="status error">{browseError}</p>
-  {:else if searchMode !== "none"}
+  {:else if searchMode !== "none" || searchLoading || searchError}
     {#if searchLoading}
       <p class="status">Searching…</p>
+    {:else if searchError}
+      <p class="status error">{searchError}</p>
     {:else if searchResults.length === 0}
       <p class="status">No matches found.</p>
     {:else}
       <div class="grid" role="grid">
         {#each searchResults as result}
-          {@const isContent = "lineNumber" in result}
-          {@const path = isContent ? (result as ContentSearchMatch).path : (result as FuzzyFileMatch).path}
-          {@const name = isContent ? basename((result as ContentSearchMatch).path) : (result as FuzzyFileMatch).name}
+          {@const isContent = searchMode === "content" || "lineNumber" in result}
+          {@const path = isContent
+            ? (result as ContentSearchMatch).path
+            : (result as FuzzyFileMatch).path}
+          {@const name = isContent
+            ? basename((result as ContentSearchMatch).path)
+            : (result as FuzzyFileMatch).name}
           <button
             type="button"
             class="cell"
@@ -496,7 +587,11 @@
             </div>
             <span class="label">{name}</span>
             {#if isContent}
-              <span class="size">L{(result as ContentSearchMatch).lineNumber}: {(result as ContentSearchMatch).lineText.slice(0, 40)}</span>
+              <span class="size"
+                >L{(result as ContentSearchMatch).lineNumber}: {(
+                  result as ContentSearchMatch
+                ).lineText.slice(0, 40)}</span
+              >
             {:else if !(result as FuzzyFileMatch).isDir}
               <span class="size">Score: {(result as FuzzyFileMatch).score}</span>
             {/if}
@@ -527,6 +622,7 @@
             {@const kind = fileTypeIcon(entry.name)}
             {@const src = fileSrcUrl(entry.path)}
             {@const canPreview =
+              previewsEnabled &&
               (kind === "image" || kind === "video") &&
               !failedPreviews.has(entry.path) &&
               visiblePaths.has(entry.path) &&

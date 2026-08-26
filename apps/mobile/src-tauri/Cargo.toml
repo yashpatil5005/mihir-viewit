@@ -50,6 +50,7 @@ image = { workspace = true, default-features = false, features = ["jpeg"] }
 fuzzy-matcher.workspace = true
 grep-searcher.workspace = true
 grep-regex.workspace = true
+regex.workspace = true
 ignore.workspace = true
 
 [target.'cfg(target_os = "android")'.dependencies]

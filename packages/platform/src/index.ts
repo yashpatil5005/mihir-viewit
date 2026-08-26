@@ -568,10 +568,13 @@ function streamDocFromFile(file: File, ext: string): Document | null {
 export async function openFileFromPicker(file: File): Promise<Document> {
   const viewitUri = (file as File & { viewitUri?: string }).viewitUri;
   if (viewitUri) {
-    const nameHint =
-      file.name && /^[a-z0-9._%+-]{1,120}\.[a-z0-9]{1,10}$/i.test(file.name)
+    let nameHint: string | null =
+      file.name && file.name !== "file" && file.name !== "picked-file" && !/^\d+$/.test(file.name)
         ? file.name
         : await resolveDisplayName(viewitUri);
+    if (!nameHint || nameHint === "file" || /^\d+$/.test(nameHint)) {
+      nameHint = displayNameFromUri(viewitUri);
+    }
     return openFile(viewitUri, nameHint);
   }
   const gate = checkFileBeforeRead(file);

@@ -188,6 +188,7 @@ export async function searchFilesContent(
   query: string,
   root?: string,
   limit = 50,
+  isRegex = false,
 ): Promise<ContentSearchMatch[]> {
   if (!IS_TAURI) return [];
   try {
@@ -196,6 +197,7 @@ export async function searchFilesContent(
       query,
       root: root || null,
       limit,
+      isRegex,
     });
   } catch {
     return [];

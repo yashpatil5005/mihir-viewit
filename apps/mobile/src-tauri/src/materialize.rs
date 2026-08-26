@@ -63,7 +63,7 @@ pub fn materialize_uri_to_cache(
     if dest.exists() {
         let _ = std::fs::remove_file(&dest);
     }
-    let fp = FilePath::from_str(uri).expect("infallible FilePath parse");
+    let fp = FilePath::from_str(uri).map_err(|e| e.to_string())?;
     let mut opts = tauri_plugin_fs::OpenOptions::new();
     opts.read(true);
     let mut reader = app.fs().open(fp, opts).map_err(|e| e.to_string())?;

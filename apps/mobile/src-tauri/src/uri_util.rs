@@ -275,8 +275,10 @@ fn percent_decode_segment(s: &str) -> String {
 }
 
 fn percent_decode_path(uri: &str) -> String {
-    let path = uri.split("://").nth(1).unwrap_or(uri);
-    percent_decode_segment(path)
+    let raw = uri.split("://").nth(1).unwrap_or(uri);
+    // If it's a URL query string, take before '?'
+    let clean = raw.split('?').next().unwrap_or(raw);
+    percent_decode_segment(clean)
 }
 
 /// Read only the first SNIFF_READ_CAP bytes for format detection.
@@ -298,10 +300,9 @@ pub fn read_uri_prefix(app: &AppHandle, uri: &str) -> Result<Vec<u8>, String> {
 }
 
 /// Read full URI bytes (for small files only).
+/// Uses open stream to avoid EACCES issues on Android scoped storage.
 pub fn read_uri_bytes(app: &AppHandle, uri: &str) -> Result<Vec<u8>, String> {
-    app.fs()
-        .read(FilePath::from_str(uri).expect("infallible FilePath parse"))
-        .map_err(|e| e.to_string())
+    read_uri_bytes_open(app, uri)
 }
 
 /// Read full URI bytes via an open stream (not `.read()`).

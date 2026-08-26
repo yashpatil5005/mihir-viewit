@@ -302,6 +302,165 @@ struct FuzzyFileMatch {
     score: i32,
 }
 
+#[derive(serde::Serialize)]
+struct ContentSearchMatch {
+    path: String,
+    line_number: u64,
+    line_text: String,
+}
+
+fn search_office_zip_entry(
+    zip_path: &std::path::Path,
+    entry_pattern: &str,
+    query_lower: &str,
+    results: &mut Vec<ContentSearchMatch>,
+    max: usize,
+) {
+    if results.len() >= max { return; }
+    let Ok(file) = std::fs::File::open(zip_path) else { return };
+    let Ok(mut archive) = zip::ZipArchive::new(file) else { return };
+    for i in 0..archive.len() {
+        if results.len() >= max { return; }
+        let Ok(mut entry) = archive.by_index(i) else { continue };
+        let name = entry.name().to_string();
+        if name.contains(entry_pattern) {
+            use std::io::BufRead;
+            let reader = std::io::BufReader::new(&mut entry);
+            let mut line_num = 1;
+            for line_res in reader.lines() {
+                if results.len() >= max { return; }
+                if let Ok(line) = line_res {
+                    // Strip basic XML tags to extract readable text
+                    let stripped: String = line
+                        .split('<')
+                        .filter_map(|part| part.split_once('>').map(|(_, text)| text))
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    let haystack = if stripped.is_empty() { &line } else { &stripped };
+                    if haystack.to_lowercase().contains(query_lower) {
+                        results.push(ContentSearchMatch {
+                            path: zip_path.to_string_lossy().into_owned(),
+                            line_number: line_num,
+                            line_text: haystack.trim().chars().take(80).collect(),
+                        });
+                    }
+                    line_num += 1;
+                }
+            }
+        }
+    }
+}
+
+fn is_searchable_text_file(path: &std::path::Path) -> bool {
+    const BINARY_EXTENSIONS: &[&str] = &[
+        "mp3", "wav", "flac", "ogg", "oga", "m4a", "aac", "opus", "aiff", "aif", "wma", "mid", "midi",
+        "mp4", "mkv", "mov", "avi", "webm", "m4v", "wmv", "flv", "ts", "3gp",
+        "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "heic", "heif", "avif", "tif", "tiff",
+        "zip", "7z", "rar", "tar", "gz", "bz2", "xz", "zst", "lz4", "lzma", "cab", "iso", "jar", "apk",
+        "exe", "dll", "so", "dylib", "bin", "dat", "class", "pyc", "wasm", "pdf",
+        "docx", "docm", "dotx", "pptx", "pptm", "potx", "xlsx", "xlsm", "xltx", "odt", "ods", "odp", "epub"
+    ];
+
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase());
+
+    if let Some(ext) = ext {
+        if BINARY_EXTENSIONS.contains(&ext.as_str()) {
+            return false;
+        }
+    }
+    true
+}
+
+#[tauri::command]
+fn search_files_content(
+    query: String,
+    root: Option<String>,
+    limit: Option<usize>,
+    is_regex: Option<bool>,
+) -> Result<Vec<ContentSearchMatch>, String> {
+    use grep_regex::RegexMatcher;
+    use grep_searcher::SearcherBuilder;
+    use grep_searcher::sinks::UTF8;
+    let root_path = match root {
+        Some(p) if !p.trim().is_empty() => p
+            .strip_prefix("file://")
+            .unwrap_or(&p)
+            .trim_end_matches('/')
+            .to_string(),
+        _ => browse_default_root(),
+    };
+    let max_results = limit.unwrap_or(50).clamp(1, 500);
+    let pattern = if is_regex.unwrap_or(false) {
+        query.clone()
+    } else {
+        regex::escape(&query)
+    };
+    let matcher = RegexMatcher::new(&pattern).map_err(|e| format!("invalid search pattern: {}", e))?;
+    let mut results: Vec<ContentSearchMatch> = Vec::new();
+    let mut searcher = SearcherBuilder::new()
+        .line_number(true)
+        .build();
+    fn walk_content(
+        dir: &std::path::Path,
+        query: &str,
+        matcher: &grep_regex::RegexMatcher,
+        searcher: &mut grep_searcher::Searcher,
+        results: &mut Vec<ContentSearchMatch>,
+        max: usize,
+        depth: usize,
+    ) {
+        if results.len() >= max || depth > 5 { return; }
+        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        for entry in entries.flatten() {
+            if results.len() >= max { return; }
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.starts_with('.') || name == "node_modules" || name == "target" || name == ".git" { continue; }
+            let ft = entry.file_type();
+            if ft.as_ref().map(|t| t.is_dir()).unwrap_or(false) {
+                walk_content(&entry.path(), query, matcher, searcher, results, max, depth + 1);
+            } else if ft.as_ref().map(|t| t.is_file()).unwrap_or(false) {
+                let path = entry.path();
+                let ext = path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).unwrap_or_default();
+                
+                if matches!(ext.as_str(), "docx" | "docm" | "dotx" | "pptx" | "pptm" | "potx" | "xlsx" | "xlsm" | "xltx" | "odt" | "ods" | "odp" | "epub") {
+                    let query_lower = query.to_lowercase();
+                    match ext.as_str() {
+                        "docx" | "docm" | "dotx" => search_office_zip_entry(&path, "word/document.xml", &query_lower, results, max),
+                        "pptx" | "pptm" | "potx" => search_office_zip_entry(&path, "ppt/slides/slide", &query_lower, results, max),
+                        "xlsx" | "xlsm" | "xltx" => search_office_zip_entry(&path, "xl/sharedStrings.xml", &query_lower, results, max),
+                        "odt" | "ods" | "odp" => search_office_zip_entry(&path, "content.xml", &query_lower, results, max),
+                        "epub" => search_office_zip_entry(&path, ".xhtml", &query_lower, results, max),
+                        _ => {}
+                    }
+                    continue;
+                }
+
+                if !is_searchable_text_file(&path) {
+                    continue;
+                }
+                let meta = entry.metadata();
+                if meta.as_ref().map(|m| m.len() > 500_000).unwrap_or(true) { continue; }
+                let sink = UTF8(|line_num, line| {
+                    if results.len() < max {
+                        results.push(ContentSearchMatch {
+                            path: path.to_string_lossy().into_owned(),
+                            line_number: line_num,
+                            line_text: line.to_string().trim_end().to_string(),
+                        });
+                    }
+                    Ok(results.len() < max)
+                });
+                let _ = searcher.search_path(matcher, &path, sink);
+            }
+        }
+    }
+    walk_content(std::path::Path::new(&root_path), &query, &matcher, &mut searcher, &mut results, max_results, 0);
+    Ok(results)
+}
+
 #[tauri::command]
 fn search_files_fuzzy(query: String, root: Option<String>, limit: Option<usize>) -> Result<Vec<FuzzyFileMatch>, String> {
     use fuzzy_matcher::FuzzyMatcher;
@@ -323,13 +482,14 @@ fn search_files_fuzzy(query: String, root: Option<String>, limit: Option<usize>)
         matcher: &SkimMatcherV2,
         results: &mut Vec<FuzzyFileMatch>,
         max: usize,
+        depth: usize,
     ) {
-        if results.len() >= max { return; }
+        if results.len() >= max || depth > 8 { return; }
         let Ok(entries) = std::fs::read_dir(dir) else { return };
         for entry in entries.flatten() {
             if results.len() >= max { return; }
             let name = entry.file_name().to_string_lossy().into_owned();
-            if name.starts_with('.') { continue; }
+            if name.starts_with('.') || name == "node_modules" || name == "target" { continue; }
             if let Some(score) = matcher.fuzzy_match(&name, query) {
                 if score > 0 {
                     results.push(FuzzyFileMatch {
@@ -341,11 +501,11 @@ fn search_files_fuzzy(query: String, root: Option<String>, limit: Option<usize>)
                 }
             }
             if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                walk(&entry.path(), query, matcher, results, max);
+                walk(&entry.path(), query, matcher, results, max, depth + 1);
             }
         }
     }
-    walk(std::path::Path::new(&root_path), &query, &matcher, &mut results, max_results);
+    walk(std::path::Path::new(&root_path), &query, &matcher, &mut results, max_results, 0);
     results.sort_by(|a, b| b.score.cmp(&a.score));
     results.truncate(max_results);
     Ok(results)
@@ -734,6 +894,7 @@ pub fn run() {
             pdf_page,
             browse_dir,
             search_files_fuzzy,
+            search_files_content,
             desktop_e2e_report
         ])
         .setup(|app| {

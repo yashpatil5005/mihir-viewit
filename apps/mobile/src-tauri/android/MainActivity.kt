@@ -320,6 +320,17 @@ class MainActivity : TauriActivity() {
 
     intent.data?.let { lines.add(grantWithDisplayName(it, intent.type)) }
 
+    // Check clipData for additional URIs (common on Xiaomi/MIUI/Redmi, Vivo, Oppo, modern Android)
+    val clipData = intent.clipData
+    if (clipData != null) {
+      for (i in 0 until clipData.itemCount) {
+        val itemUri = clipData.getItemAt(i)?.uri
+        if (itemUri != null && !lines.any { it.startsWith(itemUri.toString()) }) {
+          lines.add(grantWithDisplayName(itemUri, intent.type))
+        }
+      }
+    }
+
     // Debug-driven open: `am start -a ${ACTION_DEBUG_OPEN} --es uri ... --es name ...`
     // carries an explicit name (and optional ext/plugin) so extension-less SAF URIs
     // from scripts / automation resolve exactly like filesystem paths.
@@ -466,18 +477,39 @@ class MainActivity : TauriActivity() {
 
   private fun queryDisplayName(uri: Uri): String? {
     if (uri.scheme == "file") return uri.lastPathSegment
-    val projection = arrayOf(MediaStore.MediaColumns.DISPLAY_NAME)
+    val projection = arrayOf(
+      MediaStore.MediaColumns.DISPLAY_NAME,
+      MediaStore.MediaColumns.TITLE,
+      MediaStore.Images.Media.DATA
+    )
     return try {
       val cursor: Cursor? = contentResolver.query(uri, projection, null, null, null)
       cursor?.use {
         if (it.moveToFirst()) {
-          val idx = it.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME)
-          if (idx >= 0) it.getString(idx) else null
+          val nameIdx = it.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME)
+          if (nameIdx >= 0) {
+            val name = it.getString(nameIdx)
+            if (!name.isNullOrBlank()) return@use name
+          }
+          val dataIdx = it.getColumnIndex(MediaStore.Images.Media.DATA)
+          if (dataIdx >= 0) {
+            val data = it.getString(dataIdx)
+            if (!data.isNullOrBlank()) {
+              val tail = data.substringAfterLast('/')
+              if (tail.isNotBlank()) return@use tail
+            }
+          }
+          val titleIdx = it.getColumnIndex(MediaStore.MediaColumns.TITLE)
+          if (titleIdx >= 0) {
+            val title = it.getString(titleIdx)
+            if (!title.isNullOrBlank()) return@use title
+          }
+          null
         } else null
       }
     } catch (_: Exception) {
       uri.lastPathSegment
-    }
+    } ?: uri.lastPathSegment
   }
 
   override fun onDestroy() {

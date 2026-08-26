@@ -118,7 +118,7 @@ pub fn ensure_cached(app: &AppHandle, entry: &mut StreamEntry) -> Result<(PathBu
             return Ok((p.clone(), len));
         }
     }
-    let fp = FilePath::from_str(&entry.source_uri).expect("infallible FilePath parse");
+    let fp = FilePath::from_str(&entry.source_uri).map_err(|e| e.to_string())?;
     let bytes = app.fs().read(fp).map_err(|e| e.to_string())?;
     let dir = app.path().app_cache_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;

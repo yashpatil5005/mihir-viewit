@@ -129,3 +129,6 @@ plugins/player-base/node_modules/
 plugins/editor-base/dist/
 plugins/editor-base/zipout/
 plugins/editor-base/node_modules/
+
+# --- Deploy scripts & local deployments ---
+scripts/deploy-omnia-landing.sh
